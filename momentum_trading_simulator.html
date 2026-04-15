@@ -814,6 +814,43 @@
   }
   .vol-pane.hidden{display:none!important;}
   #vol-chart{width:100%;height:100%;}
+  .eq-pane{
+    height: 120px;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: hidden;
+    z-index: 10;
+    position: relative;
+  }
+  .eq-pane.hidden{display:none!important;}
+  #eq-chart{width:100%;height:100%;}
+  .eq-pane-info{
+    position:absolute;
+    top:6px;
+    left:10px;
+    z-index: 20;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    pointer-events:none;
+    user-select:none;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.35);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
+  }
+  .eq-pane-info .v{
+    color: var(--accent);
+    font-weight: 600;
+    display: inline-block;
+    min-width: 90px;
+    text-align: left;
+  }
   .vol-resize-hit{
     position:absolute;
     top:0;
@@ -1467,6 +1504,12 @@
           </div>
           <div id="vol-chart"></div>
         </div>
+        <div class="eq-pane hidden" id="eq-pane" aria-hidden="true">
+          <div class="eq-pane-info" id="eq-pane-info" aria-hidden="true">
+            <span>Equity</span><span class="v" id="eq-pane-val">—</span>
+          </div>
+          <div id="eq-chart"></div>
+        </div>
         <canvas id="crosshair-overlay"></canvas>
       </div>
       <!-- (old trade float placeholder removed) -->
@@ -1681,6 +1724,9 @@ let volChart=null;
 let volPaneEnabled=false;
 let volPaneHeight=140;
 let _syncingVolRange=false;
+let eqChart=null;
+let eqSeries=null;
+let eqBaselineSeries=null;
 let priceSeries=null;
 let currentBars=[],currentSymbol='';
 let currentMoveRow=null; // cache selected row for re-applying markers after setData()
@@ -3647,6 +3693,12 @@ function initChart(){
         volChart.resize(wrap.clientWidth||w, volPaneEl.clientHeight || volPaneHeight || 140);
       }
     }catch(e){}
+    try{
+      const eqPaneElLocal = document.getElementById('eq-pane');
+      if (eqChart && eqPaneElLocal) {
+        eqChart.resize(wrap.clientWidth||w, eqPaneElLocal.clientHeight || 120);
+      }
+    }catch(e){}
     try { resizeCanvas(); } catch(e) {}
     try { resizeCrosshairOverlay(); } catch(e) {}
   }
@@ -3722,7 +3774,15 @@ function initChart(){
           timeScale:{borderColor:borderColor,visible:true,timeVisible:false,rightOffset:persistedRightOffset},
           localization:{locale:'en-US'},
           handleScroll:false,
-          handleScale:false,
+          // Wheel + pinch stay on the main chart (single source of truth to
+          // avoid sync races). But the *visible* time axis is volChart's, so
+          // axis-drag-to-scale must work here — the bidirectional range sync
+          // below propagates the new range back to the main chart.
+          handleScale:{
+            axisPressedMouseMove:{time:true,price:false},
+            mouseWheel:false,
+            pinch:false,
+          },
         });
 
         // Update crosshair overlay while hovering the volume pane.
@@ -3766,18 +3826,24 @@ function initChart(){
           });
         }catch(e){}
 
-        // Sync visible range between main chart and volume pane chart.
+        // Sync visible range across all panes (main ↔ vol ↔ eq). Single
+        // re-entrance lock (_syncingVolRange) guards against loops since any
+        // pane driving a range change cascades to the others; when their
+        // range-change subscribers fire as a side effect of the programmatic
+        // setVisibleLogicalRange, the lock is held and they short-circuit.
         try{
           chart?.timeScale().subscribeVisibleLogicalRangeChange((range)=>{
-            if (!volChart || _syncingVolRange) return;
+            if (_syncingVolRange) return;
             _syncingVolRange = true;
-            try { volChart.timeScale().setVisibleLogicalRange(range); } catch(e) {}
+            try { volChart?.timeScale().setVisibleLogicalRange(range); } catch(e) {}
+            try { eqChart?.timeScale().setVisibleLogicalRange(range); } catch(e) {}
             _syncingVolRange = false;
           });
           volChart.timeScale().subscribeVisibleLogicalRangeChange((range)=>{
-            if (!chart || _syncingVolRange) return;
+            if (_syncingVolRange) return;
             _syncingVolRange = true;
-            try { chart.timeScale().setVisibleLogicalRange(range); } catch(e) {}
+            try { chart?.timeScale().setVisibleLogicalRange(range); } catch(e) {}
+            try { eqChart?.timeScale().setVisibleLogicalRange(range); } catch(e) {}
             _syncingVolRange = false;
           });
         }catch(e){}
@@ -4410,6 +4476,7 @@ let simSelectedBarIdx=null;// user-clicked bar, overrides current for L/H/C fill
 function simSetLayoutActive(active){
   const main=document.querySelector('.main');
   const tp=document.getElementById('trade-panel');
+  const eqPane=document.getElementById('eq-pane');
   // CRITICAL: clear any inline gridTemplateColumns left by the resize handler.
   // Inline style overrides the CSS rule for .sim-active, which can produce a
   // broken 2-column layout with a 3rd item wrapping to a new row, or vice versa.
@@ -4418,10 +4485,20 @@ function simSetLayoutActive(active){
     main.classList.add('sim-active');
     document.getElementById('playback-bar').classList.remove('hidden');
     tp.classList.remove('hidden');
+    if (eqPane) {
+      eqPane.classList.remove('hidden');
+      eqPane.setAttribute('aria-hidden','false');
+    }
+    // Chart instance is created lazily the first time the pane is shown.
+    try{initEqPane();}catch(e){}
   }else{
     main.classList.remove('sim-active');
     document.getElementById('playback-bar').classList.add('hidden');
     tp.classList.add('hidden');
+    if (eqPane) {
+      eqPane.classList.add('hidden');
+      eqPane.setAttribute('aria-hidden','true');
+    }
   }
   setTimeout(()=>{try{syncChartLayout();}catch(e){}},50);
 }
@@ -4472,7 +4549,126 @@ function simApplyBars(){
   updateCrosshairInfo(null);
   simUpdatePlaybackUI();
   try{secondaryApplyBars();}catch(e){}
+  try{eqApplyBars();}catch(e){}
   redrawAll();
+}
+
+// ============================================================
+// Equity curve pane — plots running mark-to-market equity across
+// the sim's time series, one value per bar. Time-synced with main
+// chart via the triangle-sync block in setupChartEvents.
+// ============================================================
+function initEqPane(){
+  if (eqChart) return;
+  const eqEl = document.getElementById('eq-chart');
+  const eqPaneEl = document.getElementById('eq-pane');
+  if (!eqEl || !eqPaneEl) return;
+  const root = getComputedStyle(document.documentElement);
+  const bgColor = root.getPropertyValue('--bg').trim() || '#0e0f11';
+  const textColor = root.getPropertyValue('--text').trim() || '#eaecef';
+  const borderColor = root.getPropertyValue('--border').trim() || '#2a2d33';
+  const wrap = document.getElementById('chart-wrap');
+  const w = (wrap && wrap.clientWidth) || eqPaneEl.clientWidth || 800;
+  const h = eqPaneEl.clientHeight || 120;
+  eqChart = LightweightCharts.createChart(eqEl, {
+    width: w, height: h,
+    layout:{background:{color:bgColor},textColor:textColor},
+    grid:{vertLines:{visible:false},horzLines:{visible:false}},
+    crosshair:{
+      mode:LightweightCharts.CrosshairMode.None,
+      vertLine:{visible:false,color:'rgba(0,0,0,0)',width:1,style:LightweightCharts.LineStyle.Solid},
+      horzLine:{visible:false,color:'rgba(0,0,0,0)',width:1,style:LightweightCharts.LineStyle.Dashed},
+    },
+    rightPriceScale:{borderColor:borderColor,visible:true,borderVisible:true,scaleMargins:{top:0.15,bottom:0.10}},
+    timeScale:{borderColor:borderColor,visible:false,timeVisible:false,rightOffset:persistedRightOffset},
+    localization:{locale:'en-US'},
+    handleScroll:false,
+    // Wheel + pinch stay on main chart (single source of truth). Axis drag
+    // on this pane's price scale stays disabled (user can't rescale equity
+    // independently). Time axis is hidden so no axis drag here either.
+    handleScale:{
+      axisPressedMouseMove:{time:false,price:false},
+      mouseWheel:false,
+      pinch:false,
+    },
+  });
+  // Faint dashed baseline at starting capital
+  eqBaselineSeries = eqChart.addLineSeries({
+    color:'rgba(138,143,152,0.45)',
+    lineWidth:1,
+    lineStyle:LightweightCharts.LineStyle.Dashed,
+    priceLineVisible:false,
+    lastValueVisible:false,
+    crosshairMarkerVisible:false,
+  });
+  // Main equity line (yellow accent)
+  eqSeries = eqChart.addLineSeries({
+    color:'#f5c842',
+    lineWidth:2,
+    priceLineVisible:false,
+    lastValueVisible:true,
+    crosshairMarkerVisible:false,
+  });
+  // Sync eq → others
+  try{
+    eqChart.timeScale().subscribeVisibleLogicalRangeChange((range)=>{
+      if (_syncingVolRange) return;
+      _syncingVolRange = true;
+      try { chart?.timeScale().setVisibleLogicalRange(range); } catch(e) {}
+      try { volChart?.timeScale().setVisibleLogicalRange(range); } catch(e) {}
+      _syncingVolRange = false;
+    });
+  }catch(e){}
+}
+
+// Compute per-bar equity from simStart to simIdx using mark-to-market on open shares.
+function computeEquitySeries(){
+  if (!simAllBars.length || !simConfig) return [];
+  const startingCapital = simConfig.startingCapital || 100000;
+  const startIdx = (typeof simStartIdx === 'number') ? simStartIdx : 0;
+  const series = [];
+  for (let i = startIdx; i <= simIdx; i++){
+    const bar = simAllBars[i]; if (!bar) continue;
+    let equity = startingCapital;
+    for (const t of simTrades){
+      if ((t._createdAtIdx || 0) > i) continue;
+      const totalShares = t.entries.reduce((s,e)=>s+e.shares, 0);
+      if (!totalShares) continue;
+      const avgEntry = t.entries.reduce((s,e)=>s+e.price*e.shares, 0) / totalShares;
+      const sign = t.direction === 'long' ? 1 : -1;
+      const visExits = t.exits.filter(e => (e._atIdx || 0) <= i);
+      const realizedShares = visExits.reduce((s,e)=>s+e.shares, 0);
+      const realizedPL = visExits.reduce((s,e)=>s + sign*(e.price - avgEntry)*e.shares, 0);
+      const remainShares = totalShares - realizedShares;
+      const unrealizedPL = remainShares > 0 ? remainShares * sign * (bar.close - avgEntry) : 0;
+      equity += realizedPL + unrealizedPL;
+    }
+    series.push({ time: bar.time, value: equity });
+  }
+  return series;
+}
+
+function eqApplyBars(){
+  if (!eqChart || !eqSeries) return;
+  const data = computeEquitySeries();
+  eqSeries.setData(data);
+  if (eqBaselineSeries) {
+    const cap = simConfig?.startingCapital || 100000;
+    eqBaselineSeries.setData(data.map(p => ({ time: p.time, value: cap })));
+  }
+  const last = data[data.length - 1];
+  const el = document.getElementById('eq-pane-val');
+  if (el) {
+    if (last) {
+      const delta = last.value - (simConfig?.startingCapital || 100000);
+      const sign = delta >= 0 ? '+' : '−';
+      el.textContent = `$${Math.round(last.value).toLocaleString()}  (${sign}$${Math.abs(Math.round(delta)).toLocaleString()})`;
+      el.style.color = delta >= 0 ? 'var(--green)' : 'var(--red)';
+    } else {
+      el.textContent = '—';
+      el.style.color = '';
+    }
+  }
 }
 
 function simUpdatePlaybackUI(){
@@ -4534,6 +4730,9 @@ function simRecalcAnalytics(){
   simAnalytics.totalPL=simAnalytics.realizedPL+simAnalytics.unrealizedPL;
   simAnalytics.totalR=simAnalytics.realizedR+simAnalytics.unrealizedR;
   simAnalytics.currentCapital=cap+simAnalytics.totalPL;
+  // Keep the equity pane in lockstep with analytics — any path that mutates
+  // trades/exits recomputes analytics, so this one hook covers them all.
+  try{eqApplyBars();}catch(e){}
 }
 
 // Get trades visible at current simIdx
@@ -4747,6 +4946,7 @@ function simOpenTradeNow(direction,entryPrice,sl,shares){
     _createdAtIdx:simIdx
   };
   simTrades.push(trade);
+  simRecalcAnalytics();
   simUpdateStatsUI();simRenderOpenTrades();simRenderTradesList();simAutoSave();
   redrawAll();
 }
@@ -5206,16 +5406,7 @@ function simDrawActiveTradesIndicator(){
     const avgEntry=t.entries.reduce((s,e)=>s+e.price*e.shares,0)/t.entries.reduce((s,e)=>s+e.shares,0);
     const entryY=price2p(avgEntry);
 
-    // Entry line (cyan dashed)
-    if(entryY!=null){
-      ctx2.save();ctx2.strokeStyle='#00d4aa';ctx2.lineWidth=1;ctx2.setLineDash([6,4]);ctx2.globalAlpha=0.9;
-      ctx2.beginPath();ctx2.moveTo(0,entryY);ctx2.lineTo(canvas.width,entryY);ctx2.stroke();
-      ctx2.setLineDash([]);ctx2.font='10px var(--mono)';ctx2.fillStyle='#00d4aa';
-      ctx2.fillText(`Entry $${avgEntry.toFixed(2)}`,canvas.width-120,entryY-4);
-      ctx2.restore();
-    }
-
-    // SL line (red solid)
+    // SL line (red solid) — drawn first so Entry can sit on top when SL == entry (BE stop).
     if(t.stopLoss){
       const slY=price2p(t.stopLoss);
       if(slY!=null){
@@ -5225,21 +5416,36 @@ function simDrawActiveTradesIndicator(){
         ctx2.fillText(`SL $${t.stopLoss.toFixed(2)}`,canvas.width-110,slY-4);
         ctx2.restore();
       }
+    }
 
-      // R-level lines (gray dashed)
-      const r=Math.abs(avgEntry-t.stopLoss);
-      if(r>0){
-        for(let n=1;n<=simRLevels;n++){
-          const rPrice=t.direction==='long'?avgEntry+r*n:avgEntry-r*n;
-          const rY=price2p(rPrice);
-          if(rY==null)continue;
-          ctx2.save();ctx2.strokeStyle='#8a8f98';ctx2.lineWidth=1;ctx2.setLineDash([4,4]);ctx2.globalAlpha=0.5;
-          ctx2.beginPath();ctx2.moveTo(0,rY);ctx2.lineTo(canvas.width,rY);ctx2.stroke();
-          ctx2.setLineDash([]);ctx2.font='10px var(--mono)';ctx2.fillStyle='#8a8f98';ctx2.globalAlpha=0.8;
-          ctx2.fillText(`${n}R`,canvas.width-30,rY-4);
-          ctx2.restore();
-        }
+    // R-level lines (gray dashed) — anchored to the ORIGINAL risk at entry
+    // (_initialRisk, frozen), not |avgEntry - stopLoss|. A BE stop (SL moved
+    // to entry) leaves the current gap at 0, but 2R, 3R etc are still well-
+    // defined targets measured from the risk the trade was sized on.
+    const r = t._initialRisk > 0
+      ? t._initialRisk
+      : (t.stopLoss ? Math.abs(avgEntry - t.stopLoss) : 0);
+    if(r>0){
+      for(let n=1;n<=simRLevels;n++){
+        const rPrice=t.direction==='long'?avgEntry+r*n:avgEntry-r*n;
+        const rY=price2p(rPrice);
+        if(rY==null)continue;
+        ctx2.save();ctx2.strokeStyle='#8a8f98';ctx2.lineWidth=1;ctx2.setLineDash([4,4]);ctx2.globalAlpha=0.5;
+        ctx2.beginPath();ctx2.moveTo(0,rY);ctx2.lineTo(canvas.width,rY);ctx2.stroke();
+        ctx2.setLineDash([]);ctx2.font='10px var(--mono)';ctx2.fillStyle='#8a8f98';ctx2.globalAlpha=0.8;
+        ctx2.fillText(`${n}R`,canvas.width-30,rY-4);
+        ctx2.restore();
       }
+    }
+
+    // Entry line (cyan dashed) — drawn LAST so it stays visible on top of SL
+    // when the trader has moved SL to breakeven (common risk-management move).
+    if(entryY!=null){
+      ctx2.save();ctx2.strokeStyle='#00d4aa';ctx2.lineWidth=1.5;ctx2.setLineDash([6,4]);ctx2.globalAlpha=1;
+      ctx2.beginPath();ctx2.moveTo(0,entryY);ctx2.lineTo(canvas.width,entryY);ctx2.stroke();
+      ctx2.setLineDash([]);ctx2.font='10px var(--mono)';ctx2.fillStyle='#00d4aa';
+      ctx2.fillText(`Entry $${avgEntry.toFixed(2)}`,canvas.width-120,entryY-4);
+      ctx2.restore();
     }
 
     // Entry bar vertical lines (yellow dashed)
@@ -5272,6 +5478,59 @@ function simDrawActiveTradesIndicator(){
       ctx2.beginPath();ctx2.moveTo(x1,y1);ctx2.lineTo(x2,y2);ctx2.stroke();ctx2.restore();
     }
   }
+  // Always-on entry-bar marker for every visible trade:
+  //   - dotted vertical line spanning the chart at the entry bar
+  //   - #XXXX trade ordinal chip anchored at the bottom of that line
+  // Line + chip are colored by trade outcome:
+  //   green = net profit, red = net loss, gray = breakeven / no SL / no price.
+  // For open trades P/L is realized + mark-to-market on current bar.close.
+  // Chip is drawn after the line so its dark fill hides the line segment
+  // behind the label, keeping the chip readable.
+  const allVis=simVisibleTrades();
+  const curBar=simCurrentBar();
+  for(let i=0;i<allVis.length;i++){
+    const tr=allVis[i];
+    const ed=tr.entries?.[0]?.date;
+    if(!ed)continue;
+    const x=time2p(ed);
+    if(x==null)continue;
+    // Per-trade P/L: realized from exits ≤ simIdx + unrealized at current close for remaining shares
+    let pl=0;
+    const totalShares=tr.entries.reduce((s,e)=>s+e.shares,0);
+    if(totalShares>0){
+      const avgEntry=tr.entries.reduce((s,e)=>s+e.price*e.shares,0)/totalShares;
+      const sign=tr.direction==='long'?1:-1;
+      const visExits=tr.exits.filter(e=>(e._atIdx||0)<=simIdx);
+      const realizedShares=visExits.reduce((s,e)=>s+e.shares,0);
+      const realizedPL=visExits.reduce((s,e)=>s+sign*(e.price-avgEntry)*e.shares,0);
+      const remainShares=totalShares-realizedShares;
+      const unrealizedPL=(remainShares>0&&curBar)?remainShares*sign*(curBar.close-avgEntry):0;
+      pl=realizedPL+unrealizedPL;
+    }
+    const markerColor=pl>0?'#26a69a':pl<0?'#ef5350':'#8a8f98';
+    // Dotted vertical
+    ctx2.save();
+    ctx2.strokeStyle=markerColor;
+    ctx2.lineWidth=1;
+    ctx2.setLineDash([2,3]);
+    ctx2.globalAlpha=0.5;
+    ctx2.beginPath();ctx2.moveTo(x,0);ctx2.lineTo(x,canvas.height);ctx2.stroke();
+    ctx2.restore();
+    // Trade # chip
+    const label=`#${String(i+1).padStart(4,'0')}`;
+    ctx2.save();
+    ctx2.font='9px var(--mono)';
+    ctx2.textAlign='center';
+    ctx2.globalAlpha=0.85;
+    const w=ctx2.measureText(label).width+6;
+    const h=12;
+    const y=canvas.height-18;
+    ctx2.fillStyle='rgba(26,28,32,0.75)';
+    ctx2.fillRect(x-w/2,y-h+2,w,h);
+    ctx2.fillStyle=markerColor;
+    ctx2.fillText(label,x,y);
+    ctx2.restore();
+  }
 }
 
 // Toggle chart review for a closed trade: scroll the chart to center the
@@ -5282,18 +5541,14 @@ function simToggleReview(id){
   const t=simTrades.find(tr=>tr.id===id);
   if(!t||!t.entries?.length)return;
   _simReviewId=id;
-  const entryDate=t.entries[0].date;
-  const exitDate=t.exits?.length?t.exits[t.exits.length-1].date:entryDate;
-  const entryIdx=simAllBars.findIndex(b=>b.time===entryDate);
-  const exitIdx=simAllBars.findIndex(b=>b.time===exitDate);
+  // Keep the user's current zoom; just re-center the viewport on the entry bar.
+  const entryIdx=simAllBars.findIndex(b=>b.time===t.entries[0].date);
   if(entryIdx>=0&&chart){
-    const eIdx=exitIdx>=0?exitIdx:entryIdx;
-    const span=Math.max(1,eIdx-entryIdx);
-    // Pad by ~40% of trade span on each side (min 5 bars) so both entry and
-    // exit bars are in view with context, and the price axis auto-scales to
-    // include both prices.
-    const pad=Math.max(5,Math.ceil(span*0.4));
-    chart.timeScale().setVisibleLogicalRange({from:entryIdx-pad,to:eIdx+pad});
+    const vis=chart.timeScale().getVisibleLogicalRange();
+    if(vis){
+      const width=vis.to-vis.from;
+      chart.timeScale().setVisibleLogicalRange({from:entryIdx-width/2,to:entryIdx+width/2});
+    }
   }
   // Chart re-layout is async; paint overlay on the next frame.
   requestAnimationFrame(()=>redrawAll());
@@ -5305,17 +5560,21 @@ function simDrawReviewOverlay(){
   const t=simTrades.find(tr=>tr.id===_simReviewId);
   if(!t||!t.entries?.length)return;
   const avgEntry=t.entries.reduce((s,e)=>s+e.price*e.shares,0)/t.entries.reduce((s,e)=>s+e.shares,0);
-  // Draw order matters when two lines share a Y coordinate (e.g. a BE stop
-  // where SL == entry). Paint SL first, then Exit, then Entry on top — Entry
-  // is the focal point of a review, so it must always be visible.
-  // SL line (red solid)
-  if(t.stopLoss){
-    const slY=price2p(t.stopLoss);
+  // Original SL at entry time — reconstructed from _initialRisk (frozen at entry,
+  // never modified by B/E or SL-move). t.stopLoss would reflect the *current* SL,
+  // which is usually break-even by the time a trade closes — not useful for review.
+  // If _initialRisk is 0 (very old trades missing the field), skip SL entirely.
+  const origSL=t._initialRisk>0
+    ? (t.direction==='long' ? avgEntry - t._initialRisk : avgEntry + t._initialRisk)
+    : null;
+  // SL line (red solid) — original SL at entry time
+  if(origSL!=null){
+    const slY=price2p(origSL);
     if(slY!=null){
       ctx2.save();ctx2.strokeStyle='#ef5350';ctx2.lineWidth=1.5;ctx2.globalAlpha=0.9;
       ctx2.beginPath();ctx2.moveTo(0,slY);ctx2.lineTo(canvas.width,slY);ctx2.stroke();
       ctx2.font='10px var(--mono)';ctx2.fillStyle='#ef5350';
-      ctx2.fillText(`SL $${t.stopLoss.toFixed(2)}`,8,slY-4);
+      ctx2.fillText(`SL $${origSL.toFixed(2)} (original)`,8,slY-4);
       ctx2.restore();
     }
   }
