@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Momentum Trading Simulator</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230a0c0f'/><path d='M4 24 L12 16 L18 20 L27 9' stroke='%2300d4aa' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/><path d='M21 9 L27 9 L27 15' stroke='%2300d4aa' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -1535,11 +1536,9 @@
             <span id="tf-gap-row" class="hidden" style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;">
               max gap% <input type="number" id="tf-gap-pct" step="0.5" value="0" title="Cancel order if bar gaps completely past limit by more than this %. 0 = no cancel." style="width:44px;padding:2px 4px;font-size:10px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:2px;font-family:var(--mono);">
             </span>
-          </div>
-          <div class="tf-limit-row" style="justify-content:flex-end;">
-            <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;color:var(--muted);margin:0;" title="On the bar where a trade enters, use only the bar's close to check SL — and cap any fill at the SL price. Addresses the case where a bar opens past SL, rallies to trigger entry, dips back, then closes above SL: strict mode would report an impossible fill at the bar's open. Applies only to same-bar entries; all subsequent bars use plain strict-touch SL.">
+            <label style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;color:var(--muted);white-space:nowrap;" title="On the bar where a trade enters, use only the bar's close to check SL — and cap any fill at the SL price. Addresses the case where a bar opens past SL, rallies to trigger entry, dips back, then closes above SL: strict mode would report an impossible fill at the bar's open. Applies only to same-bar entries; all subsequent bars use plain strict-touch SL.">
               <input type="checkbox" id="sim-entry-bar-protect-live" checked style="margin:0;">
-              <span>Flexed opening-bar SL</span>
+              <span>Flex open-bar SL</span>
             </label>
           </div>
           <div class="tf-foot">
@@ -2632,6 +2631,8 @@ function redrawAll(){
     try{simDrawPreviewLevels();}catch(e){}
   if(typeof simDrawSelectedBarHighlight==='function'&&simState!=='idle')
     try{simDrawSelectedBarHighlight();}catch(e){}
+  if(typeof simDrawReviewOverlay==='function'&&simState!=='idle'&&!pendingP1&&!measureStart)
+    try{simDrawReviewOverlay();}catch(e){}
 }
 
 function drawPreview(){
@@ -3715,10 +3716,10 @@ function initChart(){
             horzLine:{visible:false,color:'rgba(0,0,0,0)',width:1,style:LightweightCharts.LineStyle.Dashed},
           },
           rightPriceScale:{borderColor:borderColor, visible:true, borderVisible:true},
-          // Hide vol-pane's time axis — main chart directly above already
-          // shows the authoritative timeline. Otherwise two rows of date
-          // labels stack at the bottom (e.g., "06" overlapping "6 Aug '21").
-          timeScale:{borderColor:borderColor,visible:false,timeVisible:false,rightOffset:persistedRightOffset},
+          // Vol pane sits below the main chart and owns the authoritative
+          // timeline while enabled. The main chart's time axis is hidden
+          // (see above) to avoid two stacked rows of date labels.
+          timeScale:{borderColor:borderColor,visible:true,timeVisible:false,rightOffset:persistedRightOffset},
           localization:{locale:'en-US'},
           handleScroll:false,
           handleScale:false,
@@ -4396,6 +4397,7 @@ let simStartIdx=0;   // index of start bar in simAllBars
 let simIdx=0;        // current playback index
 let simTrades=[];    // [{id,direction,entries,exits,stopLoss,riskPerShare,status,currentShares}]
 let simPending=[];   // pending limit orders
+let _simReviewId=null; // id of closed trade currently being reviewed on chart (null = none)
 let simTradeIdCtr=0;
 // Undo works via _createdAtIdx on trades — no snapshots needed
 let simAnalytics={currentCapital:0,totalPL:0,totalTrades:0,wins:0,losses:0,totalWinPL:0,totalLossPL:0,totalWinDays:0,totalLossDays:0,totalWinR:0,totalLossR:0};
@@ -4552,6 +4554,7 @@ function simAdvance(){
   if(simState!=='playing'&&simState!=='paused')return false;
   if(simIdx>=simAllBars.length-1)return false;
   simIdx++;
+  _simReviewId=null;
   simSetSelectedBar(null);
   const bar=simCurrentBar();
   simCheckPending(bar);
@@ -4569,6 +4572,7 @@ function simRetreat(){
   if(simState!=='playing'&&simState!=='paused')return false;
   if(simIdx<=simStartIdx)return false;
   simIdx--;
+  _simReviewId=null;
   simSetSelectedBar(null);
   // Permanently discard trades/exits/pending created after current bar
   simTrades=simTrades.filter(t=>t._createdAtIdx<=simIdx);
@@ -4591,7 +4595,7 @@ function simJumpStart(){
   simIdx=simStartIdx;
   simSetSelectedBar(null);
   // Discard everything — clean slate
-  simTrades=[];simPending=[];simTradeIdCtr=0;
+  simTrades=[];simPending=[];simTradeIdCtr=0;_simReviewId=null;
   simRecalcAnalytics();
   simApplyBars();simUpdateStatsUI();simRenderOpenTrades();simRenderTradesList();
 }
@@ -4667,7 +4671,7 @@ function simCheckSL(bar){
   for(const t of simVisibleOpenTrades()){
     if(!t.stopLoss)continue;
     const isLong=t.direction==='long';
-    let hit=false, exitPrice=0;
+    let hit=false, exitPrice=0, flexNotified=false;
     // Entry-bar SL protection: on the bar a trade was first entered, bar.low/high
     // may reflect pre-entry action we didn't participate in. If the bar also
     // opened past SL (the scenario where strict mode produces an impossible
@@ -4676,7 +4680,14 @@ function simCheckSL(bar){
     const openPastSL=isLong?bar.open<t.stopLoss:bar.open>t.stopLoss;
     if(entryBarProtect && isEntryBar && openPastSL){
       const closePastSL=isLong?bar.close<=t.stopLoss:bar.close>=t.stopLoss;
-      if(closePastSL){hit=true;exitPrice=t.stopLoss;}
+      if(closePastSL){
+        hit=true;exitPrice=t.stopLoss;
+        flash(`Flex open-bar SL: stopped at SL $${t.stopLoss.toFixed(2)} (strict would've filled @ $${bar.open.toFixed(2)})`);
+        flexNotified=true;
+      }else{
+        flash(`Flex open-bar SL: stop-out skipped — bar closed back on the right side of SL`);
+        flexNotified=true;
+      }
     }else{
       // Strict: any bar whose low/high crosses SL triggers a stop-out.
       // Gap fills at open, otherwise fills at SL.
@@ -4685,7 +4696,7 @@ function simCheckSL(bar){
     }
     if(hit){
       simCloseTrade(t,exitPrice,t.currentShares,bar.time,'sl_hit');
-      flash(`SL hit: ${t.direction.toUpperCase()} @ $${exitPrice.toFixed(2)}`);
+      if(!flexNotified)flash(`SL hit: ${t.direction.toUpperCase()} @ $${exitPrice.toFixed(2)}`);
     }
   }
 }
@@ -4985,7 +4996,11 @@ function simRenderTradesList(){
         </div>
       </div>`:'';
 
-    rows.push(`<div class="open-trade-card">
+    const reviewActive=!isOpen && _simReviewId===t.id;
+    const cardAttrs=!isOpen
+      ? ` onclick="simToggleReview(${t.id})" style="cursor:pointer;${reviewActive?'outline:1px solid var(--accent);':''}" title="Click to review this trade on the chart"`
+      : '';
+    rows.push(`<div class="open-trade-card"${cardAttrs}>
       <div class="otc-header">
         <span style="font-size:9px;color:var(--muted);font-weight:400;">${idx}</span>
         <span class="otc-dir ${t.direction}">${t.direction.toUpperCase()}</span>
@@ -5259,12 +5274,107 @@ function simDrawActiveTradesIndicator(){
   }
 }
 
+// Toggle chart review for a closed trade: scroll the chart to center the
+// entry bar in the current viewport (without changing simIdx) and overlay
+// entry/SL/exit price lines + a vertical dotted line at the entry bar.
+function simToggleReview(id){
+  if(_simReviewId===id){_simReviewId=null;redrawAll();return;}
+  const t=simTrades.find(tr=>tr.id===id);
+  if(!t||!t.entries?.length)return;
+  _simReviewId=id;
+  const entryDate=t.entries[0].date;
+  const exitDate=t.exits?.length?t.exits[t.exits.length-1].date:entryDate;
+  const entryIdx=simAllBars.findIndex(b=>b.time===entryDate);
+  const exitIdx=simAllBars.findIndex(b=>b.time===exitDate);
+  if(entryIdx>=0&&chart){
+    const eIdx=exitIdx>=0?exitIdx:entryIdx;
+    const span=Math.max(1,eIdx-entryIdx);
+    // Pad by ~40% of trade span on each side (min 5 bars) so both entry and
+    // exit bars are in view with context, and the price axis auto-scales to
+    // include both prices.
+    const pad=Math.max(5,Math.ceil(span*0.4));
+    chart.timeScale().setVisibleLogicalRange({from:entryIdx-pad,to:eIdx+pad});
+  }
+  // Chart re-layout is async; paint overlay on the next frame.
+  requestAnimationFrame(()=>redrawAll());
+}
+
+// Draw the review overlay (entry/SL/exit price lines + vertical at entry bar).
+function simDrawReviewOverlay(){
+  if(_simReviewId==null||simState==='idle')return;
+  const t=simTrades.find(tr=>tr.id===_simReviewId);
+  if(!t||!t.entries?.length)return;
+  const avgEntry=t.entries.reduce((s,e)=>s+e.price*e.shares,0)/t.entries.reduce((s,e)=>s+e.shares,0);
+  // Draw order matters when two lines share a Y coordinate (e.g. a BE stop
+  // where SL == entry). Paint SL first, then Exit, then Entry on top — Entry
+  // is the focal point of a review, so it must always be visible.
+  // SL line (red solid)
+  if(t.stopLoss){
+    const slY=price2p(t.stopLoss);
+    if(slY!=null){
+      ctx2.save();ctx2.strokeStyle='#ef5350';ctx2.lineWidth=1.5;ctx2.globalAlpha=0.9;
+      ctx2.beginPath();ctx2.moveTo(0,slY);ctx2.lineTo(canvas.width,slY);ctx2.stroke();
+      ctx2.font='10px var(--mono)';ctx2.fillStyle='#ef5350';
+      ctx2.fillText(`SL $${t.stopLoss.toFixed(2)}`,8,slY-4);
+      ctx2.restore();
+    }
+  }
+  // Exit line — green if profit, red if loss/BE
+  if(t.exits.length){
+    const lastExit=t.exits[t.exits.length-1];
+    const sign=t.direction==='long'?1:-1;
+    const plPerShare=sign*(lastExit.price-avgEntry);
+    const exitColor=plPerShare>0?'#26a69a':'#ef5350';
+    const exY=price2p(lastExit.price);
+    if(exY!=null){
+      ctx2.save();ctx2.strokeStyle=exitColor;ctx2.lineWidth=1;ctx2.setLineDash([6,4]);ctx2.globalAlpha=0.9;
+      ctx2.beginPath();ctx2.moveTo(0,exY);ctx2.lineTo(canvas.width,exY);ctx2.stroke();
+      ctx2.setLineDash([]);ctx2.font='10px var(--mono)';ctx2.fillStyle=exitColor;
+      ctx2.fillText(`Exit $${lastExit.price.toFixed(2)}`,canvas.width-120,exY-4);
+      ctx2.restore();
+    }
+  }
+  // Entry line (blue dashed) — drawn LAST so it sits on top of overlapping SL/Exit
+  const entryY=price2p(avgEntry);
+  if(entryY!=null){
+    ctx2.save();ctx2.strokeStyle='#2196f3';ctx2.lineWidth=1.5;ctx2.setLineDash([6,4]);ctx2.globalAlpha=1;
+    ctx2.beginPath();ctx2.moveTo(0,entryY);ctx2.lineTo(canvas.width,entryY);ctx2.stroke();
+    ctx2.setLineDash([]);ctx2.font='10px var(--mono)';ctx2.fillStyle='#2196f3';
+    ctx2.fillText(`Entry $${avgEntry.toFixed(2)}`,8,entryY-4);
+    ctx2.restore();
+  }
+  // Vertical dotted line crossing the entry bar + trade # label at its base
+  const vx=time2p(t.entries[0].date);
+  if(vx!=null){
+    ctx2.save();ctx2.strokeStyle='#b0b6c2';ctx2.lineWidth=1;ctx2.setLineDash([3,3]);ctx2.globalAlpha=0.9;
+    ctx2.beginPath();ctx2.moveTo(vx,0);ctx2.lineTo(vx,canvas.height);ctx2.stroke();
+    // Trade number label below the line
+    const visible=simVisibleTrades();
+    const ordinal=visible.findIndex(tr=>tr.id===t.id)+1;
+    if(ordinal>0){
+      const label=`#${String(ordinal).padStart(4,'0')}`;
+      ctx2.setLineDash([]);ctx2.font='bold 10px var(--mono)';ctx2.textAlign='center';ctx2.globalAlpha=1;
+      // label chip background so it's readable over candles
+      const w=ctx2.measureText(label).width+10;
+      const h=14;
+      const y=canvas.height-18;
+      ctx2.fillStyle='rgba(26,28,32,0.85)';
+      ctx2.fillRect(vx-w/2,y-h+3,w,h);
+      ctx2.strokeStyle='#b0b6c2';ctx2.lineWidth=1;
+      ctx2.strokeRect(vx-w/2,y-h+3,w,h);
+      ctx2.fillStyle='#b0b6c2';
+      ctx2.fillText(label,vx,y);
+    }
+    ctx2.restore();
+  }
+}
+
 
 // Start simulation
 async function simStart(config){
   simConfig=config;
   simState='playing';
-  simTrades=[];simPending=[];simTradeIdCtr=0;simTradePrefs=null;
+  simTrades=[];simPending=[];simTradeIdCtr=0;_simReviewId=null;simTradePrefs=null;
   // New sim starts with empty drawings — don't inherit global per-symbol drawings
   drawings[config.ticker]=[];
   simAnalytics={currentCapital:config.startingCapital,totalPL:0,totalTrades:0,wins:0,losses:0,totalWinPL:0,totalLossPL:0,totalWinDays:0,totalLossDays:0,totalWinR:0,totalLossR:0};
@@ -5299,6 +5409,7 @@ async function simStart(config){
     })});
     const sim=await resp.json();
     simId=sim.id;
+    try{localStorage.setItem('bm_active_sim_id',String(simId));}catch(e){}
   }catch(e){simId=null;}
 
   // Switch UI
@@ -5374,7 +5485,8 @@ async function simPause(){
 
 async function simExit(){
   await simFlushSave();
-  simState='idle';simConfig=null;simAllBars=[];simTrades=[];simPending=[];simId=null;simTradePrefs=null;
+  try{localStorage.removeItem('bm_active_sim_id');}catch(e){}
+  simState='idle';simConfig=null;simAllBars=[];simTrades=[];simPending=[];simId=null;simTradePrefs=null;_simReviewId=null;
   // Restore global drawings (sim-specific drawings were isolated in sim JSON)
   loadDrawings().then(()=>redrawAll());
   simSetLayoutActive(false);
@@ -5424,6 +5536,7 @@ async function simLoadFromServer(id){
     };
 
     simConfig=config;simId=sim.id;
+    try{localStorage.setItem('bm_active_sim_id',String(simId));}catch(e){}
     simState='playing';
     simTrades=(sim.trades||[]).map(t=>{
       let ci=t._createdAtIdx;
@@ -6418,6 +6531,15 @@ window.addEventListener('load',async()=>{
   initChart();
   await loadDrawings();
   loadTickers();
+  // Auto-resume active simulation if one was running before the refresh.
+  try{
+    const activeId=localStorage.getItem('bm_active_sim_id');
+    if(activeId){
+      await simLoadFromServer(activeId);
+    }
+  }catch(e){
+    try{localStorage.removeItem('bm_active_sim_id');}catch(_){}
+  }
 });
 
 // Ensure latest MA edits persist on refresh/close
