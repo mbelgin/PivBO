@@ -1483,14 +1483,6 @@
         <div class="sim-panel-header">
           <div class="sim-name" id="sim-panel-name">—</div>
           <div class="sim-meta" id="sim-panel-meta">—</div>
-          <div style="margin-top:4px;display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);">
-            <span>SL:</span>
-            <select id="sim-sl-mode-live" title="How stop-loss fills are triggered on each bar" style="padding:2px 4px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;border-radius:3px;">
-              <option value="strict">Strict</option>
-              <option value="wick">Wick-forgiving</option>
-              <option value="close">Close-only</option>
-            </select>
-          </div>
         </div>
         <div class="sim-panel-section">
           <h3>Capital</h3>
@@ -1544,6 +1536,12 @@
               max gap% <input type="number" id="tf-gap-pct" step="0.5" value="0" title="Cancel order if bar gaps completely past limit by more than this %. 0 = no cancel." style="width:44px;padding:2px 4px;font-size:10px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:2px;font-family:var(--mono);">
             </span>
           </div>
+          <div class="tf-limit-row" style="justify-content:flex-end;">
+            <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;color:var(--muted);margin:0;" title="On the bar where a trade enters, use only the bar's close to check SL — and cap any fill at the SL price. Addresses the case where a bar opens past SL, rallies to trigger entry, dips back, then closes above SL: strict mode would report an impossible fill at the bar's open. Applies only to same-bar entries; all subsequent bars use plain strict-touch SL.">
+              <input type="checkbox" id="sim-entry-bar-protect-live" checked style="margin:0;">
+              <span>Flexed opening-bar SL</span>
+            </label>
+          </div>
           <div class="tf-foot">
             <button class="sim-btn primary" id="tf-submit">Open &#x23CE;</button>
             <button class="sim-btn" id="sim-flatten" title="Close all open positions (F)">Flatten</button>
@@ -1583,12 +1581,19 @@
       <input type="checkbox" id="sim-use-first" checked>
       <span>Use first available bar</span>
     </div>
-    <label style="margin-top:10px;">Stop-Loss Fill Mode</label>
-    <select id="sim-sl-mode" style="width:100%;padding:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;border-radius:4px;">
-      <option value="strict" selected>Strict (default) — stop if any part of the bar touches SL</option>
-      <option value="wick">Wick-forgiving — stop only if open or close is beyond SL (intrabar spikes that recover are ignored)</option>
-      <option value="close">Close-only — stop only if the bar closes beyond SL</option>
-    </select>
+    <div style="margin-top:10px;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:11px;">
+        <input type="checkbox" id="sim-entry-bar-protect" checked style="margin:0;">
+        <span style="font-weight:600;">Flexed opening-bar SL</span>
+      </label>
+      <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5;">
+        When on, the SL check on the bar a trade enters uses only the bar's <strong>close</strong>, and any fill is capped at the SL price.
+        <br><br>
+        <span style="color:var(--text);">Addresses this corner case:</span> a bar opens <em>below</em> your SL (long), rallies to trigger your entry, dips back toward SL, then closes above entry. Without this flex, strict mode would report a stop-out filled at the bar's open — but your stop order didn't exist yet when the bar opened, so that fill is impossible.
+        <br><br>
+        <span style="color:var(--muted);">Turn off to treat all bars identically and accept the worst-case pessimistic fill on the entry bar.</span>
+      </div>
+    </div>
     <label style="margin-top:10px;">Template (optional)</label>
     <div style="display:flex;gap:6px;">
       <select id="sim-template-picker" style="flex:1;padding:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;border-radius:4px;">
@@ -2621,7 +2626,7 @@ function redrawAll(){
     for(const d of drawings[currentSymbol])drawOne(d,d.id===selectedId);
   if(pendingP1)drawPreview();
   if(measureStart)drawMeasure();
-  if(typeof simDrawActiveTradesIndicator==='function'&&simState!=='idle'&&simTrades&&simTrades.length&&!pendingP1&&!measureStart)
+  if(typeof simDrawActiveTradesIndicator==='function'&&simState!=='idle'&&(simTrades&&simTrades.length||simPending&&simPending.length)&&!pendingP1&&!measureStart)
     try{simDrawActiveTradesIndicator();}catch(e){}
   if(typeof simDrawPreviewLevels==='function'&&simState!=='idle'&&!pendingP1&&!measureStart)
     try{simDrawPreviewLevels();}catch(e){}
@@ -4658,27 +4663,25 @@ function simCheckPending(bar){
 
 // Stop loss monitoring
 function simCheckSL(bar){
+  const entryBarProtect=simConfig?.entryBarSLProtection!==false; // default ON
   for(const t of simVisibleOpenTrades()){
-    // Check stop loss — method depends on simConfig.slMode
     if(!t.stopLoss)continue;
-    const mode=simConfig?.slMode||'strict';
     const isLong=t.direction==='long';
     let hit=false, exitPrice=0;
-    if(mode==='strict'){
-      // Pessimistic: any intrabar penetration of SL is a stop-out.
+    // Entry-bar SL protection: on the bar a trade was first entered, bar.low/high
+    // may reflect pre-entry action we didn't participate in. If the bar also
+    // opened past SL (the scenario where strict mode produces an impossible
+    // fill at the open price), use close-only check and cap fill at SL.
+    const isEntryBar=t.entries.length>0 && t.entries[0].date===bar.time;
+    const openPastSL=isLong?bar.open<t.stopLoss:bar.open>t.stopLoss;
+    if(entryBarProtect && isEntryBar && openPastSL){
+      const closePastSL=isLong?bar.close<=t.stopLoss:bar.close>=t.stopLoss;
+      if(closePastSL){hit=true;exitPrice=t.stopLoss;}
+    }else{
+      // Strict: any bar whose low/high crosses SL triggers a stop-out.
+      // Gap fills at open, otherwise fills at SL.
       hit=isLong?bar.low<=t.stopLoss:bar.high>=t.stopLoss;
       if(hit)exitPrice=isLong?Math.min(bar.open,t.stopLoss):Math.max(bar.open,t.stopLoss);
-    }else if(mode==='wick'){
-      // Wick-forgiving: stop only if bar opens past SL (gap) OR closes past SL.
-      // A pure intrabar wick that recovers to close above SL (long) is ignored.
-      const openBeyond=isLong?bar.open<=t.stopLoss:bar.open>=t.stopLoss;
-      const closeBeyond=isLong?bar.close<=t.stopLoss:bar.close>=t.stopLoss;
-      if(openBeyond){hit=true;exitPrice=bar.open;}
-      else if(closeBeyond){hit=true;exitPrice=bar.close;}
-    }else if(mode==='close'){
-      // Close-only: stop only if the bar closes past SL. Fill at close.
-      hit=isLong?bar.close<=t.stopLoss:bar.close>=t.stopLoss;
-      if(hit)exitPrice=bar.close;
     }
     if(hit){
       simCloseTrade(t,exitPrice,t.currentShares,bar.time,'sl_hit');
@@ -4943,11 +4946,13 @@ function simRenderTradesList(){
     const plStr=pl>=0?`+$${pl.toFixed(0)}`:`-$${Math.abs(pl).toFixed(0)}`;
     const plClass=pl>=0?'pos':'neg';
     const idx=String(tradeIdx.get(t.id)||0).padStart(4,'0');
+    const _fmtMDY=d=>(d&&d.length>=10)?`${d.slice(5,7)}-${d.slice(8,10)}-${d.slice(0,4)}`:'';
+    // Triggered (entry) date — the day the order became a live position
+    const triggeredDate=_fmtMDY(t.entries[0]?.date);
     // Closed date as MM-DD-YYYY
     let closedDate='';
     if(!isOpen&&visExits.length){
-      const d=visExits[visExits.length-1].date;
-      if(d&&d.length>=10){closedDate=`${d.slice(5,7)}-${d.slice(8,10)}-${d.slice(0,4)}`;}
+      closedDate=_fmtMDY(visExits[visExits.length-1].date);
     }
     const status=isOpen
       ?'<span style="color:var(--accent);font-weight:600;font-size:10px;">OPEN</span>'
@@ -4986,7 +4991,7 @@ function simRenderTradesList(){
         <span class="otc-dir ${t.direction}">${t.direction.toUpperCase()}</span>
         ${status}
       </div>
-      <div class="otc-detail">${isOpen?remainShares:totalShares} shs @ $${avgEntry.toFixed(2)}${t.stopLoss?' | SL $'+t.stopLoss.toFixed(2):''}</div>
+      <div class="otc-detail">${isOpen?remainShares:totalShares} shs @ $${avgEntry.toFixed(2)}${t.stopLoss?' | SL $'+t.stopLoss.toFixed(2):''}${triggeredDate?' | '+triggeredDate:''}</div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
         <span class="sim-stat-value ${plClass}" style="font-size:11px;">${plStr}${plR}</span>
       </div>
@@ -5040,7 +5045,7 @@ function simBuildSavePayload(){
       startingCapital:simConfig.startingCapital,
       startDate:simConfig.startDate||null,
       useFirstBar:simConfig.useFirstBar!==false,
-      slMode:simConfig.slMode||'strict'
+      entryBarSLProtection:simConfig.entryBarSLProtection!==false
     };
   }
   return payload;
@@ -5290,7 +5295,7 @@ async function simStart(config){
   // Create on server
   try{
     const resp=await fetch('/api/simulations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      name:config.name,ticker:config.ticker,config:{startingCapital:config.startingCapital,startDate:config.startDate||simAllBars[simStartIdx]?.time,useFirstBar:config.useFirstBar,slMode:config.slMode||'strict'}
+      name:config.name,ticker:config.ticker,config:{startingCapital:config.startingCapital,startDate:config.startDate||simAllBars[simStartIdx]?.time,useFirstBar:config.useFirstBar,entryBarSLProtection:config.entryBarSLProtection!==false}
     })});
     const sim=await resp.json();
     simId=sim.id;
@@ -5415,7 +5420,7 @@ async function simLoadFromServer(id){
       startingCapital:sim.config?.startingCapital||100000,
       startDate:sim.config?.startDate||null,
       useFirstBar:sim.config?.useFirstBar!==false,
-      slMode:sim.config?.slMode||'strict'
+      entryBarSLProtection:sim.config?.entryBarSLProtection!==false
     };
 
     simConfig=config;simId=sim.id;
@@ -5744,7 +5749,7 @@ document.getElementById('sim-modal-start').addEventListener('click',async()=>{
   const capital=parseFloat(document.getElementById('sim-capital').value)||100000;
   const useFirst=document.getElementById('sim-use-first').checked;
   const startDate=useFirst?null:document.getElementById('sim-start-date').value;
-  const slMode=document.getElementById('sim-sl-mode')?.value||'strict';
+  const entryBarSLProtection=document.getElementById('sim-entry-bar-protect')?.checked!==false;
   const templateId=document.getElementById('sim-template-picker').value;
   let tpl=null;
   if(templateId){
@@ -5753,7 +5758,7 @@ document.getElementById('sim-modal-start').addEventListener('click',async()=>{
   document.getElementById('sim-modal').classList.add('hidden');
   showPage('chart');
   try {
-    await simStart({name,ticker,startingCapital:capital,startDate,useFirstBar:useFirst,slMode,template:tpl});
+    await simStart({name,ticker,startingCapital:capital,startDate,useFirstBar:useFirst,entryBarSLProtection,template:tpl});
   } catch(e) {
     flash(`Simulation failed: ${e.message}`);
   }
@@ -6018,15 +6023,15 @@ document.getElementById('sim-flatten').addEventListener('click',simFlattenAll);
 document.getElementById('sim-save').addEventListener('click',()=>{
   simAutoSave();flash('Saved');
 });
-document.getElementById('sim-sl-mode-live').addEventListener('change',e=>{
+document.getElementById('sim-entry-bar-protect-live').addEventListener('change',e=>{
   if(!simConfig)return;
-  simConfig.slMode=e.target.value||'strict';
-  flash(`SL mode: ${simConfig.slMode}`);
+  simConfig.entryBarSLProtection=!!e.target.checked;
+  flash(`Flexed opening-bar SL: ${simConfig.entryBarSLProtection?'on':'off'}`);
   simAutoSave();
 });
 function simSyncSlModeUI(){
-  const sel=document.getElementById('sim-sl-mode-live');
-  if(sel&&simConfig)sel.value=simConfig.slMode||'strict';
+  const cb=document.getElementById('sim-entry-bar-protect-live');
+  if(cb&&simConfig)cb.checked=simConfig.entryBarSLProtection!==false;
 }
 document.getElementById('sim-exit').addEventListener('click',()=>{
   if(!confirm('Exit simulation? It will be saved and you can resume from the Simulations tab.'))return;
