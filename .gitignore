@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude Code / agent tooling
+.claude/
+.graphify_*
+graphify-out/
+
+# Local user state (generated at runtime, not shipped)
+simulations/
+templates/
+drawings.json
+sandbox/
+
+# OS
+.DS_Store
+Thumbs.db
+.git_github_backup/
