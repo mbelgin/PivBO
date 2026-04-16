@@ -4732,8 +4732,12 @@ function ensureEqPane(enabled){
 }
 
 // Timeline mode: per-bar mark-to-market equity, time-synced with main chart.
+// Returns {realized, unrealized} — bars before the earliest open trade are
+// solid (fully realized); bars from that trade onward are dashed (includes
+// unrealized MTM from open positions). If no positions are open, everything
+// is realized and unrealized is empty.
 function computeEquitySeries(){
-  if(!simAllBars.length||!simConfig)return[];
+  if(!simAllBars.length||!simConfig)return{realized:[],unrealized:[]};
   const cap=simConfig.startingCapital||100000;
   const startIdx=(typeof simStartIdx==='number')?simStartIdx:0;
   const series=[];
@@ -4755,7 +4759,19 @@ function computeEquitySeries(){
     }
     series.push({time:bar.time,value:eq});
   }
-  return series;
+  // Find earliest currently-open trade to split solid vs dashed
+  const openTrades=simTrades.filter(t=>{
+    if((t._createdAtIdx||0)>simIdx)return false;
+    const exitSh=t.exits.filter(e=>(e._atIdx||0)<=simIdx).reduce((s,e)=>s+e.shares,0);
+    return exitSh<t.entries.reduce((s,e)=>s+e.shares,0);
+  });
+  if(!openTrades.length)return{realized:series,unrealized:[]};
+  const earliestOpenIdx=Math.min(...openTrades.map(t=>t._createdAtIdx||0));
+  const splitAt=earliestOpenIdx-startIdx;
+  if(splitAt<=0)return{realized:[],unrealized:series};
+  const realized=series.slice(0,splitAt);
+  const unrealized=series.slice(splitAt-1);
+  return{realized,unrealized};
 }
 
 // Trade-index mode: one data point per trade event (close or current MTM for
@@ -4815,14 +4831,15 @@ function eqApplyBars(){
     allData=unrealized.length?unrealized:realized;
     try{eqChart.timeScale().fitContent();}catch(e){}
   }else{
-    const data=computeEquitySeries();
-    eqSeries.setData(data);
-    if(eqUnrealizedSeries)eqUnrealizedSeries.setData([]);
+    const{realized,unrealized}=computeEquitySeries();
+    eqSeries.setData(realized);
+    if(eqUnrealizedSeries)eqUnrealizedSeries.setData(unrealized);
     if(eqBaselineSeries){
       const cap=simConfig?.startingCapital||100000;
-      eqBaselineSeries.setData(data.map(p=>({time:p.time,value:cap})));
+      const allPts=[...realized,...unrealized];
+      eqBaselineSeries.setData(allPts.length?allPts.map(p=>({time:p.time,value:cap})):[]);
     }
-    allData=data;
+    allData=unrealized.length?unrealized:realized;
   }
   const last=allData[allData.length-1];
   const el=document.getElementById('eq-pane-val');
@@ -4839,7 +4856,18 @@ function eqApplyBars(){
 function eqSetMode(mode){
   eqMode=mode;
   eqSyncModeUI();
+  // Suppress sync during data swap so eqChart's stale range doesn't push
+  // into the main chart. After data is set, pull main chart's range into
+  // eqChart (timeline) or fitContent (trades).
+  _syncingVolRange=true;
   try{eqApplyBars();}catch(e){}
+  _syncingVolRange=false;
+  if(mode==='timeline'&&eqChart&&chart){
+    try{
+      const r=chart.timeScale().getVisibleLogicalRange();
+      if(r)eqChart.timeScale().setVisibleLogicalRange(r);
+    }catch(e){}
+  }
   saveSettings();
 }
 function eqSyncModeUI(){
@@ -5191,18 +5219,6 @@ function simCloseTradePercent(tradeId,pct){
 }
 
 
-// Reverse position — close current, open opposite at same size
-function simReverse(tradeId){
-  const t=simTrades.find(tr=>tr.id===tradeId);
-  if(!t||t.status!=='open')return;
-  const bar=simCurrentBar();if(!bar)return;
-  const shares=t.currentShares;
-  const newDir=t.direction==='long'?'short':'long';
-  simCloseTrade(t,bar.close,shares,bar.time,'manual');
-  simOpenTradeNow(newDir,bar.close,0,shares);
-  flash(`Reversed to ${newDir.toUpperCase()} ${shares} shs`);
-  simRecalcAnalytics();simRenderTradesList();redrawAll();simAutoSave();
-}
 
 // Flatten all — close every open position at current bar's close
 function simFlattenAll(){
@@ -5368,9 +5384,6 @@ function simRenderTradesList(){
           <input type="number" id="sl-input-${t.id}" step="0.01" value="${t.stopLoss?t.stopLoss.toFixed(2):''}" placeholder="—" style="${iStyle}">
           <button class="otc-btn" onclick="simModifySL(${t.id})">Set</button>
           <button class="otc-btn" onclick="simSLBreakeven(${t.id})">B/E</button>
-        </div>
-        <div style="margin-top:2px;">
-          <button class="otc-btn" onclick="simReverse(${t.id})" style="width:100%">Reverse</button>
         </div>
       </div>`:'';
 
