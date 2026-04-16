@@ -200,7 +200,7 @@
   }
 
   /* ct-pop modern checkbox (Separate pane) */
-  #ct-vol-pane{
+  #ct-vol-pane, #ct-eq-pane{
     appearance: none;
     -webkit-appearance: none;
     width: 16px;
@@ -214,7 +214,7 @@
     transition: background .12s ease, border-color .12s ease, box-shadow .12s ease, transform .06s ease;
     margin: 0;
   }
-  #ct-vol-pane::before{
+  #ct-vol-pane::before, #ct-eq-pane::before{
     content: "";
     width: 9px;
     height: 6px;
@@ -223,16 +223,16 @@
     transform: rotate(-45deg) translateY(-0.5px);
     transition: border-color .12s ease;
   }
-  #ct-vol-pane:checked{
+  #ct-vol-pane:checked, #ct-eq-pane:checked{
     background: color-mix(in srgb, var(--accent) 20%, var(--bg3) 80%);
     border-color: color-mix(in srgb, var(--accent) 55%, var(--border) 45%);
   }
-  #ct-vol-pane:checked::before{
+  #ct-vol-pane:checked::before, #ct-eq-pane:checked::before{
     border-left-color: var(--accent);
     border-bottom-color: var(--accent);
   }
-  #ct-vol-pane:active{transform: scale(0.96);}
-  #ct-vol-pane:focus-visible{
+  #ct-vol-pane:active, #ct-eq-pane:active{transform: scale(0.96);}
+  #ct-vol-pane:focus-visible, #ct-eq-pane:focus-visible{
     outline: none;
     box-shadow: 0 0 0 3px rgba(0,212,170,0.22);
   }
@@ -827,6 +827,26 @@
   }
   .eq-pane.hidden{display:none!important;}
   #eq-chart{width:100%;height:100%;}
+  .eq-resize-hit{
+    position:absolute;
+    top:0;left:0;right:0;
+    height:8px;
+    cursor:ns-resize;
+    z-index:25;
+  }
+  .eq-resize-hit:hover{background:var(--accent);opacity:0.3;}
+  .eq-mode-toggle{
+    display:inline-flex;gap:1px;margin-left:12px;
+    pointer-events:auto;
+  }
+  .eq-mode-toggle button{
+    padding:1px 6px;font-size:9px;font-family:var(--mono);
+    background:var(--bg);border:1px solid var(--border);color:var(--muted);
+    cursor:pointer;border-radius:0;
+  }
+  .eq-mode-toggle button:first-child{border-radius:3px 0 0 3px;}
+  .eq-mode-toggle button:last-child{border-radius:0 3px 3px 0;}
+  .eq-mode-toggle button.active{color:var(--accent);border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--bg));}
   .eq-pane-info{
     position:absolute;
     top:6px;
@@ -1036,6 +1056,23 @@
   [data-theme="light"] .sim-modal input[type=date]{color-scheme:light;}
   .sim-btn.sim-btn-sm{padding:2px 8px;font-size:10px;}
 
+  /* Save-template dialog */
+  #tpl-save-modal .sim-modal{width:380px;}
+  .tpl-input-wrap{position:relative;}
+  .tpl-input-wrap input{width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;border-radius:4px;outline:none;box-sizing:border-box;}
+  .tpl-input-wrap input:focus{border-color:var(--accent);}
+  .tpl-ghost{position:absolute;top:0;left:0;right:0;padding:6px 8px;font-family:var(--mono);font-size:12px;color:var(--muted);opacity:0.45;pointer-events:none;white-space:nowrap;overflow:hidden;}
+  .tpl-list{margin-top:14px;max-height:200px;overflow-y:auto;}
+  .tpl-list-label{font-size:10px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;}
+  .tpl-item{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:4px;cursor:pointer;font-size:12px;color:var(--text);font-family:var(--mono);}
+  .tpl-item:hover{background:var(--bg3);}
+  .tpl-item.selected{background:var(--bg3);border:1px solid var(--accent);}
+  .tpl-item:not(.selected){border:1px solid transparent;}
+  .tpl-item-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .tpl-item-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 4px;line-height:1;font-family:var(--mono);}
+  .tpl-item-del:hover{color:var(--red);}
+  .tpl-overwrite-hint{font-size:10px;color:var(--yellow);margin-top:8px;display:none;}
+
   /* Playback controls bar */
   .playback-bar{display:flex;align-items:center;gap:8px;padding:4px 10px;background:var(--bg2);border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px;min-height:32px;}
   .playback-bar .pb-btn{background:transparent;border:1px solid var(--border);color:var(--muted);width:28px;height:24px;border-radius:4px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;}
@@ -1212,6 +1249,11 @@
               <label class="ct-color" style="justify-content:flex-start;gap:8px;">
                 <input id="ct-vol-pane" type="checkbox">
                 Separate pane
+              </label>
+              <div class="ct-section-title" style="margin-top:10px;">Equity curve</div>
+              <label class="ct-color" style="justify-content:flex-start;gap:8px;">
+                <input id="ct-eq-pane" type="checkbox">
+                Show equity pane
               </label>
               <div id="ct-right-offset-wrap" class="ct-section-title" style="margin-top:12px;">
                 Right offset
@@ -1505,8 +1547,13 @@
           <div id="vol-chart"></div>
         </div>
         <div class="eq-pane hidden" id="eq-pane" aria-hidden="true">
+          <div class="eq-resize-hit" id="eq-resize-hit" aria-hidden="true"></div>
           <div class="eq-pane-info" id="eq-pane-info" aria-hidden="true">
             <span>Equity</span><span class="v" id="eq-pane-val">—</span>
+            <div class="eq-mode-toggle">
+              <button id="eq-mode-timeline" class="active" title="Time-synced with main chart">Timeline</button>
+              <button id="eq-mode-trades" title="One point per trade, evenly spaced">Trades</button>
+            </div>
           </div>
           <div id="eq-chart"></div>
         </div>
@@ -1650,6 +1697,26 @@
   </div>
 </div>
 
+<!-- Save Template Modal -->
+<div class="sim-modal-overlay hidden" id="tpl-save-modal">
+  <div class="sim-modal">
+    <h2>Save Template</h2>
+    <label>Template name</label>
+    <div class="tpl-input-wrap">
+      <div class="tpl-ghost" id="tpl-ghost"></div>
+      <input type="text" id="tpl-save-name" autocomplete="off" spellcheck="false" placeholder="Enter a name…">
+    </div>
+    <div class="tpl-overwrite-hint" id="tpl-overwrite-hint">Will overwrite existing template</div>
+    <div class="tpl-list" id="tpl-list">
+      <div class="tpl-list-label">Existing templates</div>
+    </div>
+    <div class="sim-actions">
+      <button class="sim-btn" id="tpl-save-cancel">Cancel</button>
+      <button class="sim-btn primary" id="tpl-save-ok" disabled>Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Yahoo Data Download Modal -->
 <div class="sim-modal-overlay hidden" id="yahoo-modal">
   <div class="sim-modal" style="width:520px;">
@@ -1727,6 +1794,10 @@ let _syncingVolRange=false;
 let eqChart=null;
 let eqSeries=null;
 let eqBaselineSeries=null;
+let eqUnrealizedSeries=null;
+let eqPaneEnabled=false;
+let eqPaneHeight=120;
+let eqMode='timeline'; // 'timeline' | 'trades'
 let priceSeries=null;
 let currentBars=[],currentSymbol='';
 let currentMoveRow=null; // cache selected row for re-applying markers after setData()
@@ -1894,6 +1965,9 @@ function saveSettings(){
     adrPeriod: adrPeriod,
     atrEnabled: atrEnabled,
     atrPeriod: atrPeriod,
+    eqPaneEnabled: !!eqPaneEnabled,
+    eqPaneHeight: (typeof eqPaneHeight==='number'&&Number.isFinite(eqPaneHeight))?eqPaneHeight:120,
+    eqMode: eqMode||'timeline',
     maList:maList.map(m=>({type:m.type,period:m.period,color:m.color,enabled:m.enabled}))
   }));
   flash('Settings saved');
@@ -2182,12 +2256,21 @@ function updateCrosshairInfo(param) {
   const infoADR = document.getElementById('info-adr');
   const infoATR = document.getElementById('info-atr');
 
+  function _lastVisibleResampledIdx(tfBars){
+    if(simId && simAllBars.length && simIdx < simAllBars.length){
+      const cutoff = simAllBars[simIdx].time;
+      for(let i=tfBars.length-1;i>=0;i--){ if(tfBars[i].time<=cutoff) return i; }
+    }
+    return tfBars.length-1;
+  }
+
   const renderADR = (endIdx) => {
     if (!infoADR) return;
     if (!adrEnabled) return;
     if (!currentBars || !currentBars.length) { infoADR.textContent = '—'; return; }
     const tfBars = resampleBars(currentBars, currentTF);
-    const v = calcADR(tfBars, adrPeriod, endIdx);
+    const idx = (typeof endIdx === 'number' && endIdx >= 0) ? endIdx : _lastVisibleResampledIdx(tfBars);
+    const v = calcADR(tfBars, adrPeriod, idx);
     infoADR.innerHTML = (v == null)
       ? '—'
       : `<span style="color:var(--yellow);font-weight:600">${v.toFixed(2)}%</span>`;
@@ -2198,7 +2281,8 @@ function updateCrosshairInfo(param) {
     if (!atrEnabled) return;
     if (!currentBars || !currentBars.length) { infoATR.textContent = '—'; return; }
     const tfBars = resampleBars(currentBars, currentTF);
-    const v = calcATR(tfBars, atrPeriod, endIdx);
+    const idx = (typeof endIdx === 'number' && endIdx >= 0) ? endIdx : _lastVisibleResampledIdx(tfBars);
+    const v = calcATR(tfBars, atrPeriod, idx);
     infoATR.innerHTML = (v == null)
       ? '—'
       : `<span style="color:var(--yellow);font-weight:600">${v.toFixed(2)}</span>`;
@@ -3836,14 +3920,14 @@ function initChart(){
             if (_syncingVolRange) return;
             _syncingVolRange = true;
             try { volChart?.timeScale().setVisibleLogicalRange(range); } catch(e) {}
-            try { eqChart?.timeScale().setVisibleLogicalRange(range); } catch(e) {}
+            if(eqMode==='timeline')try{eqChart?.timeScale().setVisibleLogicalRange(range);}catch(e){}
             _syncingVolRange = false;
           });
           volChart.timeScale().subscribeVisibleLogicalRangeChange((range)=>{
             if (_syncingVolRange) return;
             _syncingVolRange = true;
             try { chart?.timeScale().setVisibleLogicalRange(range); } catch(e) {}
-            try { eqChart?.timeScale().setVisibleLogicalRange(range); } catch(e) {}
+            if(eqMode==='timeline')try{eqChart?.timeScale().setVisibleLogicalRange(range);}catch(e){}
             _syncingVolRange = false;
           });
         }catch(e){}
@@ -3953,6 +4037,15 @@ function initChart(){
   }
   if (typeof saved?.atrEnabled === 'boolean') {
     atrEnabled = saved.atrEnabled;
+  }
+  if (typeof saved?.eqPaneEnabled === 'boolean') {
+    eqPaneEnabled = saved.eqPaneEnabled;
+  }
+  if (typeof saved?.eqPaneHeight === 'number' && Number.isFinite(saved.eqPaneHeight)) {
+    eqPaneHeight = Math.max(60, Math.min(400, Math.round(saved.eqPaneHeight)));
+  }
+  if (typeof saved?.eqMode === 'string' && (saved.eqMode === 'timeline' || saved.eqMode === 'trades')) {
+    eqMode = saved.eqMode;
   }
   syncIndicatorRowVisibility();
   syncIndicatorPeriodInputs();
@@ -4308,6 +4401,8 @@ function setupChartMenu(){
 
   volPaneCb.checked = !!volPaneEnabled;
   rightOffsetInput.value = String(persistedRightOffset);
+  const eqPaneCb=document.getElementById('ct-eq-pane');
+  if(eqPaneCb)eqPaneCb.checked=!!eqPaneEnabled;
 
   volPaneCb.addEventListener('change', (e) => {
     const on = !!e.target.checked;
@@ -4317,6 +4412,12 @@ function setupChartMenu(){
       volPaneEnabled = on;
       saveSettings();
     }
+  });
+  if(eqPaneCb)eqPaneCb.addEventListener('change',(e)=>{
+    const on=!!e.target.checked;
+    eqPaneEnabled=on;
+    if(simState!=='idle'){ensureEqPane(on);if(on)try{eqApplyBars();}catch(e){}}
+    saveSettings();
   });
 
   rightOffsetInput.addEventListener('input', (e) => {
@@ -4485,12 +4586,7 @@ function simSetLayoutActive(active){
     main.classList.add('sim-active');
     document.getElementById('playback-bar').classList.remove('hidden');
     tp.classList.remove('hidden');
-    if (eqPane) {
-      eqPane.classList.remove('hidden');
-      eqPane.setAttribute('aria-hidden','false');
-    }
-    // Chart instance is created lazily the first time the pane is shown.
-    try{initEqPane();}catch(e){}
+    ensureEqPane(eqPaneEnabled);
   }else{
     main.classList.remove('sim-active');
     document.getElementById('playback-bar').classList.add('hidden');
@@ -4554,122 +4650,204 @@ function simApplyBars(){
 }
 
 // ============================================================
-// Equity curve pane — plots running mark-to-market equity across
-// the sim's time series, one value per bar. Time-synced with main
-// chart via the triangle-sync block in setupChartEvents.
+// Equity curve pane
 // ============================================================
-function initEqPane(){
-  if (eqChart) return;
-  const eqEl = document.getElementById('eq-chart');
-  const eqPaneEl = document.getElementById('eq-pane');
-  if (!eqEl || !eqPaneEl) return;
-  const root = getComputedStyle(document.documentElement);
-  const bgColor = root.getPropertyValue('--bg').trim() || '#0e0f11';
-  const textColor = root.getPropertyValue('--text').trim() || '#eaecef';
-  const borderColor = root.getPropertyValue('--border').trim() || '#2a2d33';
-  const wrap = document.getElementById('chart-wrap');
-  const w = (wrap && wrap.clientWidth) || eqPaneEl.clientWidth || 800;
-  const h = eqPaneEl.clientHeight || 120;
-  eqChart = LightweightCharts.createChart(eqEl, {
-    width: w, height: h,
-    layout:{background:{color:bgColor},textColor:textColor},
-    grid:{vertLines:{visible:false},horzLines:{visible:false}},
-    crosshair:{
-      mode:LightweightCharts.CrosshairMode.None,
-      vertLine:{visible:false,color:'rgba(0,0,0,0)',width:1,style:LightweightCharts.LineStyle.Solid},
-      horzLine:{visible:false,color:'rgba(0,0,0,0)',width:1,style:LightweightCharts.LineStyle.Dashed},
-    },
-    rightPriceScale:{borderColor:borderColor,visible:true,borderVisible:true,scaleMargins:{top:0.15,bottom:0.10}},
-    timeScale:{borderColor:borderColor,visible:false,timeVisible:false,rightOffset:persistedRightOffset},
-    localization:{locale:'en-US'},
-    handleScroll:false,
-    // Wheel + pinch stay on main chart (single source of truth). Axis drag
-    // on this pane's price scale stays disabled (user can't rescale equity
-    // independently). Time axis is hidden so no axis drag here either.
-    handleScale:{
-      axisPressedMouseMove:{time:false,price:false},
-      mouseWheel:false,
-      pinch:false,
-    },
-  });
-  // Faint dashed baseline at starting capital
-  eqBaselineSeries = eqChart.addLineSeries({
-    color:'rgba(138,143,152,0.45)',
-    lineWidth:1,
-    lineStyle:LightweightCharts.LineStyle.Dashed,
-    priceLineVisible:false,
-    lastValueVisible:false,
-    crosshairMarkerVisible:false,
-  });
-  // Main equity line (yellow accent)
-  eqSeries = eqChart.addLineSeries({
-    color:'#f5c842',
-    lineWidth:2,
-    priceLineVisible:false,
-    lastValueVisible:true,
-    crosshairMarkerVisible:false,
-  });
-  // Sync eq → others
-  try{
-    eqChart.timeScale().subscribeVisibleLogicalRangeChange((range)=>{
-      if (_syncingVolRange) return;
-      _syncingVolRange = true;
-      try { chart?.timeScale().setVisibleLogicalRange(range); } catch(e) {}
-      try { volChart?.timeScale().setVisibleLogicalRange(range); } catch(e) {}
-      _syncingVolRange = false;
+function ensureEqPane(enabled){
+  eqPaneEnabled=!!enabled;
+  const eqPaneEl=document.getElementById('eq-pane');
+  if(!eqPaneEl)return;
+  if(!enabled){
+    eqPaneEl.classList.add('hidden');
+    eqPaneEl.setAttribute('aria-hidden','true');
+    return;
+  }
+  eqPaneEl.classList.remove('hidden');
+  eqPaneEl.setAttribute('aria-hidden','false');
+  eqPaneEl.style.height=eqPaneHeight+'px';
+  if(!eqChart){
+    const eqEl=document.getElementById('eq-chart');
+    if(!eqEl)return;
+    const root=getComputedStyle(document.documentElement);
+    const bgColor=root.getPropertyValue('--bg').trim()||'#0e0f11';
+    const textColor=root.getPropertyValue('--text').trim()||'#eaecef';
+    const borderColor=root.getPropertyValue('--border').trim()||'#2a2d33';
+    const wrap=document.getElementById('chart-wrap');
+    const w=(wrap&&wrap.clientWidth)||eqPaneEl.clientWidth||800;
+    const h=eqPaneEl.clientHeight||eqPaneHeight;
+    eqChart=LightweightCharts.createChart(eqEl,{
+      width:w,height:h,
+      layout:{background:{color:bgColor},textColor:textColor},
+      grid:{vertLines:{visible:false},horzLines:{visible:false}},
+      crosshair:{mode:LightweightCharts.CrosshairMode.None,
+        vertLine:{visible:false,color:'rgba(0,0,0,0)',width:1,style:LightweightCharts.LineStyle.Solid},
+        horzLine:{visible:false,color:'rgba(0,0,0,0)',width:1,style:LightweightCharts.LineStyle.Dashed}},
+      rightPriceScale:{borderColor,visible:true,borderVisible:true,scaleMargins:{top:0.15,bottom:0.10}},
+      timeScale:{borderColor,visible:false,timeVisible:false,rightOffset:persistedRightOffset},
+      localization:{locale:'en-US'},
+      handleScroll:false,
+      handleScale:{axisPressedMouseMove:{time:false,price:false},mouseWheel:false,pinch:false},
     });
-  }catch(e){}
+    eqBaselineSeries=eqChart.addLineSeries({
+      color:'rgba(138,143,152,0.45)',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,
+      priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,
+    });
+    eqSeries=eqChart.addLineSeries({
+      color:'#f5c842',lineWidth:2,priceLineVisible:false,lastValueVisible:true,crosshairMarkerVisible:false,
+    });
+    eqUnrealizedSeries=eqChart.addLineSeries({
+      color:'#f5c842',lineWidth:2,lineStyle:LightweightCharts.LineStyle.Dashed,
+      priceLineVisible:false,lastValueVisible:true,crosshairMarkerVisible:false,
+    });
+    try{
+      eqChart.timeScale().subscribeVisibleLogicalRangeChange((range)=>{
+        if(_syncingVolRange||eqMode==='trades')return;
+        _syncingVolRange=true;
+        try{chart?.timeScale().setVisibleLogicalRange(range);}catch(e){}
+        try{volChart?.timeScale().setVisibleLogicalRange(range);}catch(e){}
+        _syncingVolRange=false;
+      });
+    }catch(e){}
+    // Resize drag handler
+    const hit=document.getElementById('eq-resize-hit');
+    if(hit){
+      let startY=0,startH=0;
+      hit.addEventListener('mousedown',e=>{
+        e.preventDefault();startY=e.clientY;startH=eqPaneEl.clientHeight;
+        const onMove=ev=>{
+          const delta=startY-ev.clientY;
+          const nh=Math.max(60,Math.min(400,startH+delta));
+          eqPaneEl.style.height=nh+'px';
+          eqPaneHeight=nh;
+          try{eqChart.resize(eqPaneEl.clientWidth,nh);}catch(e){}
+          try{syncChartLayout();}catch(e){}
+        };
+        const onUp=()=>{document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);saveSettings();};
+        document.addEventListener('mousemove',onMove);
+        document.addEventListener('mouseup',onUp);
+      });
+    }
+  }
+  eqSyncModeUI();
+  setTimeout(()=>{try{syncChartLayout();}catch(e){}},50);
 }
 
-// Compute per-bar equity from simStart to simIdx using mark-to-market on open shares.
+// Timeline mode: per-bar mark-to-market equity, time-synced with main chart.
 function computeEquitySeries(){
-  if (!simAllBars.length || !simConfig) return [];
-  const startingCapital = simConfig.startingCapital || 100000;
-  const startIdx = (typeof simStartIdx === 'number') ? simStartIdx : 0;
-  const series = [];
-  for (let i = startIdx; i <= simIdx; i++){
-    const bar = simAllBars[i]; if (!bar) continue;
-    let equity = startingCapital;
-    for (const t of simTrades){
-      if ((t._createdAtIdx || 0) > i) continue;
-      const totalShares = t.entries.reduce((s,e)=>s+e.shares, 0);
-      if (!totalShares) continue;
-      const avgEntry = t.entries.reduce((s,e)=>s+e.price*e.shares, 0) / totalShares;
-      const sign = t.direction === 'long' ? 1 : -1;
-      const visExits = t.exits.filter(e => (e._atIdx || 0) <= i);
-      const realizedShares = visExits.reduce((s,e)=>s+e.shares, 0);
-      const realizedPL = visExits.reduce((s,e)=>s + sign*(e.price - avgEntry)*e.shares, 0);
-      const remainShares = totalShares - realizedShares;
-      const unrealizedPL = remainShares > 0 ? remainShares * sign * (bar.close - avgEntry) : 0;
-      equity += realizedPL + unrealizedPL;
+  if(!simAllBars.length||!simConfig)return[];
+  const cap=simConfig.startingCapital||100000;
+  const startIdx=(typeof simStartIdx==='number')?simStartIdx:0;
+  const series=[];
+  for(let i=startIdx;i<=simIdx;i++){
+    const bar=simAllBars[i];if(!bar)continue;
+    let eq=cap;
+    for(const t of simTrades){
+      if((t._createdAtIdx||0)>i)continue;
+      const totalShares=t.entries.reduce((s,e)=>s+e.shares,0);
+      if(!totalShares)continue;
+      const avgEntry=t.entries.reduce((s,e)=>s+e.price*e.shares,0)/totalShares;
+      const sign=t.direction==='long'?1:-1;
+      const visExits=t.exits.filter(e=>(e._atIdx||0)<=i);
+      const realizedShares=visExits.reduce((s,e)=>s+e.shares,0);
+      const realizedPL=visExits.reduce((s,e)=>s+sign*(e.price-avgEntry)*e.shares,0);
+      const remainShares=totalShares-realizedShares;
+      const unrealizedPL=remainShares>0?remainShares*sign*(bar.close-avgEntry):0;
+      eq+=realizedPL+unrealizedPL;
     }
-    series.push({ time: bar.time, value: equity });
+    series.push({time:bar.time,value:eq});
   }
   return series;
 }
 
-function eqApplyBars(){
-  if (!eqChart || !eqSeries) return;
-  const data = computeEquitySeries();
-  eqSeries.setData(data);
-  if (eqBaselineSeries) {
-    const cap = simConfig?.startingCapital || 100000;
-    eqBaselineSeries.setData(data.map(p => ({ time: p.time, value: cap })));
-  }
-  const last = data[data.length - 1];
-  const el = document.getElementById('eq-pane-val');
-  if (el) {
-    if (last) {
-      const delta = last.value - (simConfig?.startingCapital || 100000);
-      const sign = delta >= 0 ? '+' : '−';
-      el.textContent = `$${Math.round(last.value).toLocaleString()}  (${sign}$${Math.abs(Math.round(delta)).toLocaleString()})`;
-      el.style.color = delta >= 0 ? 'var(--green)' : 'var(--red)';
-    } else {
-      el.textContent = '—';
-      el.style.color = '';
+// Trade-index mode: one data point per trade event (close or current MTM for
+// open positions). Evenly spaced via sequential fake dates so the curve fills
+// the pane width regardless of real calendar gaps between trades.
+function computeTradeIndexEquity(){
+  if(!simConfig)return{realized:[],unrealized:[]};
+  const cap=simConfig.startingCapital||100000;
+  const visTrades=simVisibleTrades();
+  const realized=[];
+  const unrealized=[];
+  let runningEq=cap;
+  realized.push({time:'2000-01-01',value:cap});
+  let dayOff=1;
+  const fakeDate=n=>{
+    const yy=2000+Math.floor(n/336);
+    const mm=String(Math.floor(n/28)%12+1).padStart(2,'0');
+    const dd=String(n%28+1).padStart(2,'0');
+    return `${yy}-${mm}-${dd}`;
+  };
+  for(const t of visTrades){
+    const totalShares=t.entries.reduce((s,e)=>s+e.shares,0);
+    if(!totalShares)continue;
+    const avgEntry=t.entries.reduce((s,e)=>s+e.price*e.shares,0)/totalShares;
+    const sign=t.direction==='long'?1:-1;
+    const visExits=t.exits.filter(e=>(e._atIdx||0)<=simIdx);
+    const realizedShares=visExits.reduce((s,e)=>s+e.shares,0);
+    const realizedPL=visExits.reduce((s,e)=>s+sign*(e.price-avgEntry)*e.shares,0);
+    const remainShares=totalShares-realizedShares;
+    if(realizedShares>0){
+      runningEq+=realizedPL;
+      realized.push({time:fakeDate(dayOff++),value:runningEq});
+    }
+    if(remainShares>0){
+      const curBar=simCurrentBar();
+      const unrealizedPL=curBar?remainShares*sign*(curBar.close-avgEntry):0;
+      const lastRealized=realized[realized.length-1];
+      unrealized.push({time:lastRealized.time,value:lastRealized.value});
+      unrealized.push({time:fakeDate(dayOff++),value:runningEq+unrealizedPL});
     }
   }
+  return{realized,unrealized};
 }
+
+function eqApplyBars(){
+  if(!eqChart||!eqSeries)return;
+  let allData;
+  if(eqMode==='trades'){
+    const{realized,unrealized}=computeTradeIndexEquity();
+    eqSeries.setData(realized);
+    if(eqUnrealizedSeries)eqUnrealizedSeries.setData(unrealized);
+    if(eqBaselineSeries){
+      const cap=simConfig?.startingCapital||100000;
+      const allPts=[...realized,...unrealized];
+      eqBaselineSeries.setData(allPts.length?allPts.map(p=>({time:p.time,value:cap})):[]);
+    }
+    allData=unrealized.length?unrealized:realized;
+    try{eqChart.timeScale().fitContent();}catch(e){}
+  }else{
+    const data=computeEquitySeries();
+    eqSeries.setData(data);
+    if(eqUnrealizedSeries)eqUnrealizedSeries.setData([]);
+    if(eqBaselineSeries){
+      const cap=simConfig?.startingCapital||100000;
+      eqBaselineSeries.setData(data.map(p=>({time:p.time,value:cap})));
+    }
+    allData=data;
+  }
+  const last=allData[allData.length-1];
+  const el=document.getElementById('eq-pane-val');
+  if(el){
+    if(last){
+      const delta=last.value-(simConfig?.startingCapital||100000);
+      const sgn=delta>=0?'+':'−';
+      el.textContent=`$${Math.round(last.value).toLocaleString()}  (${sgn}$${Math.abs(Math.round(delta)).toLocaleString()})`;
+      el.style.color=delta>=0?'var(--green)':'var(--red)';
+    }else{el.textContent='—';el.style.color='';}
+  }
+}
+
+function eqSetMode(mode){
+  eqMode=mode;
+  eqSyncModeUI();
+  try{eqApplyBars();}catch(e){}
+  saveSettings();
+}
+function eqSyncModeUI(){
+  document.getElementById('eq-mode-timeline')?.classList.toggle('active',eqMode==='timeline');
+  document.getElementById('eq-mode-trades')?.classList.toggle('active',eqMode==='trades');
+}
+document.getElementById('eq-mode-timeline')?.addEventListener('click',()=>eqSetMode('timeline'));
+document.getElementById('eq-mode-trades')?.addEventListener('click',()=>eqSetMode('trades'));
 
 function simUpdatePlaybackUI(){
   const bar=simCurrentBar();
@@ -6156,27 +6334,140 @@ async function loadTemplatesIntoPicker(){
   }catch(e){}
 }
 
-// Save as Template button
-document.getElementById('sim-save-template').addEventListener('click',async()=>{
-  const name=prompt('Template name:','');
-  if(!name)return;
-  const payload={
-    name,
-    chartState:{chartType,priceColors,isLogScale,timeframe:currentTF,rightOffset:persistedRightOffset},
-    indicators:{maList:maList.map(m=>({type:m.type,period:m.period,color:m.color,enabled:m.enabled})),adrEnabled,adrPeriod,atrEnabled,atrPeriod},
-    tradePrefs:simGetTradePrefs(),
-    secondary:{
-      symbol:secondarySymbol||'',
-      visible:!document.getElementById('chart-wrap-secondary').classList.contains('hidden')
+// Save-template modal
+{
+  const tplModal    = document.getElementById('tpl-save-modal');
+  const tplInput    = document.getElementById('tpl-save-name');
+  const tplGhost    = document.getElementById('tpl-ghost');
+  const tplList     = document.getElementById('tpl-list');
+  const tplHint     = document.getElementById('tpl-overwrite-hint');
+  const tplBtnOk    = document.getElementById('tpl-save-ok');
+  const tplBtnCancel= document.getElementById('tpl-save-cancel');
+  let tplItems = [];
+  let tplSelectedId = null;
+
+  function tplClose(){ tplModal.classList.add('hidden'); }
+
+  async function tplOpen(){
+    tplInput.value = '';
+    tplGhost.textContent = '';
+    tplHint.style.display = 'none';
+    tplBtnOk.disabled = true;
+    tplSelectedId = null;
+    try{
+      const r = await fetch('/api/templates');
+      tplItems = await r.json();
+    }catch(e){ tplItems = []; }
+    tplRenderList();
+    tplModal.classList.remove('hidden');
+    tplInput.focus();
+  }
+
+  function tplRenderList(filter){
+    const f = (filter||'').trim().toLowerCase();
+    const filtered = f ? tplItems.filter(t=>t.name.toLowerCase().includes(f)) : tplItems;
+    let html = '<div class="tpl-list-label">Existing templates'+(tplItems.length?` (${tplItems.length})`:' — none yet')+'</div>';
+    for(const t of filtered){
+      const sel = t.id===tplSelectedId ? ' selected':'';
+      const esc = t.name.replace(/</g,'&lt;').replace(/"/g,'&quot;');
+      html += `<div class="tpl-item${sel}" data-id="${t.id}" data-name="${esc}">
+        <span class="tpl-item-name">${esc}</span>
+        <button class="tpl-item-del" data-id="${t.id}" title="Delete">×</button>
+      </div>`;
     }
-  };
-  try{
-    const r=await fetch('/api/templates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    const tpl=await r.json();
-    if(tpl.error){flash('Template save failed: '+tpl.error);return;}
-    flash(`Template "${name}" saved`);
-  }catch(e){flash('Template save failed: '+e.message);}
-});
+    if(tplItems.length && !filtered.length) html += '<div style="font-size:11px;color:var(--muted);padding:8px 0;">No matches</div>';
+    tplList.innerHTML = html;
+  }
+
+  function tplUpdateGhost(){
+    const val = tplInput.value;
+    if(!val){ tplGhost.textContent=''; tplHint.style.display='none'; tplSelectedId=null; tplBtnOk.disabled=true; tplRenderList(); return; }
+    const lower = val.toLowerCase();
+    const match = tplItems.find(t=>t.name.toLowerCase().startsWith(lower));
+    if(match){
+      tplGhost.textContent = val + match.name.slice(val.length);
+      const exact = tplItems.find(t=>t.name.toLowerCase()===lower);
+      if(exact){ tplSelectedId=exact.id; tplHint.style.display=''; }
+      else { tplSelectedId=null; tplHint.style.display='none'; }
+    } else {
+      tplGhost.textContent = '';
+      tplSelectedId=null;
+      tplHint.style.display='none';
+    }
+    tplBtnOk.disabled = !val.trim();
+    tplBtnOk.textContent = tplSelectedId ? 'Overwrite' : 'Save';
+    tplRenderList(val);
+  }
+
+  tplInput.addEventListener('input', tplUpdateGhost);
+
+  tplInput.addEventListener('keydown', e=>{
+    if(e.key==='Tab' && tplGhost.textContent && tplGhost.textContent!==tplInput.value){
+      e.preventDefault();
+      tplInput.value = tplGhost.textContent;
+      tplUpdateGhost();
+    }
+    if(e.key==='Enter' && !tplBtnOk.disabled) tplBtnOk.click();
+    if(e.key==='Escape') tplClose();
+  });
+
+  tplList.addEventListener('click', async e=>{
+    const delBtn = e.target.closest('.tpl-item-del');
+    if(delBtn){
+      e.stopPropagation();
+      const id = delBtn.dataset.id;
+      const t = tplItems.find(x=>x.id===id);
+      if(!confirm(`Delete template "${t?t.name:id}"?`)) return;
+      await fetch(`/api/templates/${id}`,{method:'DELETE'});
+      tplItems = tplItems.filter(x=>x.id!==id);
+      if(tplSelectedId===id) tplSelectedId=null;
+      tplUpdateGhost();
+      tplRenderList(tplInput.value);
+      await loadTemplatesIntoPicker();
+      return;
+    }
+    const item = e.target.closest('.tpl-item');
+    if(item){
+      tplInput.value = item.dataset.name;
+      tplUpdateGhost();
+    }
+  });
+
+  tplBtnCancel.addEventListener('click', tplClose);
+  tplModal.addEventListener('click', e=>{ if(e.target===tplModal) tplClose(); });
+
+  async function tplDoSave(){
+    const name = tplInput.value.trim();
+    if(!name) return;
+    const payload = {
+      name,
+      chartState:{chartType,priceColors,isLogScale,timeframe:currentTF,rightOffset:persistedRightOffset},
+      indicators:{maList:maList.map(m=>({type:m.type,period:m.period,color:m.color,enabled:m.enabled})),adrEnabled,adrPeriod,atrEnabled,atrPeriod},
+      tradePrefs:simGetTradePrefs(),
+      secondary:{
+        symbol:secondarySymbol||'',
+        visible:!document.getElementById('chart-wrap-secondary').classList.contains('hidden')
+      }
+    };
+    try{
+      let r;
+      if(tplSelectedId){
+        r = await fetch(`/api/templates/${tplSelectedId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      } else {
+        r = await fetch('/api/templates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      }
+      const tpl = await r.json();
+      if(tpl.error){ flash('Template save failed: '+tpl.error); return; }
+      flash(`Template "${name}" ${tplSelectedId?'updated':'saved'}`);
+      tplClose();
+      await loadTemplatesIntoPicker();
+    }catch(e){ flash('Template save failed: '+e.message); }
+  }
+
+  tplBtnOk.addEventListener('click', tplDoSave);
+
+  document.getElementById('sim-save-template').addEventListener('click', ()=>tplOpen());
+}
 document.getElementById('sim-use-first').addEventListener('change',e=>{
   document.getElementById('sim-start-date').disabled=e.target.checked;
 });

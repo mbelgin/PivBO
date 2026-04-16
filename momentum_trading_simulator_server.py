@@ -737,6 +737,26 @@ def api_template_get(tid):
         return jsonify(json.load(f))
 
 
+@app.route("/api/templates/<tid>", methods=["PUT"])
+def api_template_update(tid):
+    p = _template_path(tid)
+    if not os.path.exists(p):
+        return jsonify({"error": "Template not found"}), 404
+    with open(p, "r", encoding="utf-8") as f:
+        existing = json.load(f)
+    data = request.get_json(silent=True) or {}
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    existing["name"] = data.get("name", existing.get("name", "Untitled"))
+    existing["modified"] = now
+    existing["chartState"] = data.get("chartState", existing.get("chartState", {}))
+    existing["indicators"] = data.get("indicators", existing.get("indicators", {}))
+    existing["tradePrefs"] = data.get("tradePrefs", existing.get("tradePrefs", {}))
+    existing["secondary"] = data.get("secondary", existing.get("secondary", {}))
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump(existing, f, ensure_ascii=False, indent=2)
+    return jsonify(existing)
+
+
 @app.route("/api/templates/<tid>", methods=["DELETE"])
 def api_template_delete(tid):
     p = _template_path(tid)
