@@ -376,6 +376,24 @@ def _rebuild_sim_index():
         try:
             with open(os.path.join(SIMULATIONS_DIR, fname), "r", encoding="utf-8") as f:
                 sim = json.load(f)
+            # Compute sim progress %
+            cfg = sim.get("config") or {}
+            ps = sim.get("playbackState") or {}
+            cur_idx = ps.get("currentBarIndex", 0)
+            is_complete = ps.get("isComplete", False)
+            ticker = sim.get("ticker", "")
+            bars = _read_ticker_bars(ticker) if ticker else []
+            total = len(bars)
+            start_idx = 0
+            start_date = cfg.get("startDate")
+            if start_date and not cfg.get("useFirstBar", True):
+                for i, b in enumerate(bars):
+                    if b.get("time", "") >= start_date:
+                        start_idx = i
+                        break
+            sim_len = max(1, total - start_idx)
+            progress = 100.0 if is_complete else min(100.0, max(0.0, (cur_idx - start_idx) / (sim_len - 1) * 100)) if sim_len > 1 else 100.0
+
             index.append({
                 "id": sim.get("id", fname[:-5]),
                 "name": sim.get("name", ""),
@@ -385,7 +403,8 @@ def _rebuild_sim_index():
                 "startingCapital": sim.get("config", {}).get("startingCapital", 0),
                 "currentCapital": sim.get("analytics", {}).get("currentCapital", 0),
                 "totalTrades": sim.get("analytics", {}).get("totalTrades", 0),
-                "isComplete": sim.get("playbackState", {}).get("isComplete", False),
+                "isComplete": is_complete,
+                "progress": round(progress, 1),
             })
         except Exception:
             continue
@@ -647,7 +666,13 @@ def api_simulations_import():
             sim["created"] = now
         with open(_sim_path(new_id), "w", encoding="utf-8") as wf:
             json.dump(sim, wf, ensure_ascii=False, indent=2)
-        imported.append({"id": new_id, "name": name})
+        imported.append({
+            "id": new_id, "name": name,
+            "ticker": sim.get("ticker", ""),
+            "secondarySymbol": (sim.get("tradePrefs") or {}).get("secondarySymbol", ""),
+            "startDate": (sim.get("config") or {}).get("startDate"),
+            "currentBarIndex": (sim.get("playbackState") or {}).get("currentBarIndex", 0),
+        })
 
     try:
         if fname.endswith(".zip"):
@@ -989,6 +1014,24 @@ def _download_and_save(symbol, start_iso, end_iso, mode="merge"):
         "last": final[-1]["time"],
         "written": True,
     }
+
+
+@app.route("/api/data/check", methods=["POST"])
+def api_data_check():
+    """Check local data availability for a list of symbols."""
+    body = request.get_json(silent=True) or {}
+    symbols = body.get("symbols") or []
+    results = {}
+    for sym in symbols:
+        sym = (sym or "").strip().upper()
+        if not sym or sym in results:
+            continue
+        bars = _read_ticker_bars(sym)
+        if bars:
+            results[sym] = {"exists": True, "first": bars[0]["time"], "last": bars[-1]["time"], "bars": len(bars)}
+        else:
+            results[sym] = {"exists": False}
+    return jsonify(results)
 
 
 # ---------- HTTP endpoints ----------

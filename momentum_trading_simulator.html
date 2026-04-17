@@ -1056,6 +1056,18 @@
   [data-theme="light"] .sim-modal input[type=date]{color-scheme:light;}
   .sim-btn.sim-btn-sm{padding:2px 8px;font-size:10px;}
 
+  /* Import data-check dialog */
+  #import-data-modal .sim-modal{width:480px;}
+  .idc-ticker{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;background:var(--bg3);margin-bottom:6px;font-size:12px;font-family:var(--mono);}
+  .idc-ticker .idc-sym{font-weight:600;color:var(--text);min-width:60px;}
+  .idc-ticker .idc-status{flex:1;color:var(--muted);font-size:11px;}
+  .idc-ticker .idc-status.ok{color:var(--green);}
+  .idc-ticker .idc-status.missing{color:var(--red);}
+  .idc-ticker .idc-status.partial{color:var(--yellow);}
+  .idc-range-choice{margin-top:12px;font-size:11px;color:var(--muted);}
+  .idc-range-choice label{display:flex;align-items:center;gap:6px;margin:4px 0;cursor:pointer;color:var(--text);}
+  .idc-progress{margin-top:10px;font-size:11px;color:var(--muted);min-height:16px;}
+
   /* Save-template dialog */
   #tpl-save-modal .sim-modal{width:380px;}
   .tpl-input-wrap{position:relative;}
@@ -1713,6 +1725,26 @@
     <div class="sim-actions">
       <button class="sim-btn" id="tpl-save-cancel">Cancel</button>
       <button class="sim-btn primary" id="tpl-save-ok" disabled>Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import Data Check Modal -->
+<div class="sim-modal-overlay hidden" id="import-data-modal">
+  <div class="sim-modal">
+    <h2>Import — Data Check</h2>
+    <div id="idc-intro" style="font-size:11px;color:var(--muted);margin-bottom:10px;"></div>
+    <div id="idc-tickers"></div>
+    <div class="idc-range-choice" id="idc-range-section" style="display:none;">
+      <div style="margin-bottom:4px;font-weight:500;color:var(--text);">Download range</div>
+      <label><input type="radio" name="idc-range" value="sim" checked> Simulation range only</label>
+      <label><input type="radio" name="idc-range" value="all"> All available data from Yahoo</label>
+    </div>
+    <div class="idc-progress" id="idc-progress"></div>
+    <div class="sim-actions">
+      <button class="sim-btn" id="idc-cancel">Cancel Import</button>
+      <button class="sim-btn primary" id="idc-download" style="display:none;">Download &amp; Import</button>
+      <button class="sim-btn primary" id="idc-done" style="display:none;">Done</button>
     </div>
   </div>
 </div>
@@ -4691,11 +4723,15 @@ function ensureEqPane(enabled){
       color:'rgba(138,143,152,0.45)',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,
       priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,
     });
-    eqSeries=eqChart.addLineSeries({
-      color:'#f5c842',lineWidth:2,priceLineVisible:false,lastValueVisible:true,crosshairMarkerVisible:false,
+    eqSeries=eqChart.addBaselineSeries({
+      baseValue:{price:100000,type:'price'},
+      topLineColor:'#26a69a',bottomLineColor:'#ef5350',
+      topFillColor1:'rgba(38,166,154,0.06)',topFillColor2:'rgba(38,166,154,0)',
+      bottomFillColor1:'rgba(239,83,80,0)',bottomFillColor2:'rgba(239,83,80,0.06)',
+      lineWidth:2,priceLineVisible:false,lastValueVisible:true,crosshairMarkerVisible:false,
     });
     eqUnrealizedSeries=eqChart.addLineSeries({
-      color:'#f5c842',lineWidth:2,lineStyle:LightweightCharts.LineStyle.Dashed,
+      color:'#26a69a',lineWidth:2,lineStyle:LightweightCharts.LineStyle.Dashed,
       priceLineVisible:false,lastValueVisible:true,crosshairMarkerVisible:false,
     });
     try{
@@ -4818,6 +4854,8 @@ function computeTradeIndexEquity(){
 
 function eqApplyBars(){
   if(!eqChart||!eqSeries)return;
+  const cap=simConfig?.startingCapital||100000;
+  try{eqSeries.applyOptions({baseValue:{price:cap,type:'price'}});}catch(e){}
   let allData;
   if(eqMode==='trades'){
     const{realized,unrealized}=computeTradeIndexEquity();
@@ -4840,6 +4878,11 @@ function eqApplyBars(){
       eqBaselineSeries.setData(allPts.length?allPts.map(p=>({time:p.time,value:cap})):[]);
     }
     allData=unrealized.length?unrealized:realized;
+  }
+  // Color the dashed unrealized line green/red to match current equity vs starting capital
+  if(eqUnrealizedSeries&&allData.length){
+    const lastVal=allData[allData.length-1].value;
+    try{eqUnrealizedSeries.applyOptions({color:lastVal>=cap?'#26a69a':'#ef5350'});}catch(e){}
   }
   const last=allData[allData.length-1];
   const el=document.getElementById('eq-pane-val');
@@ -5268,7 +5311,10 @@ function simUpdateStatsUI(){
   if(curDateEl){
     const b=simCurrentBar();
     const d=b?.time;
-    curDateEl.textContent=(d&&d.length>=10)?`${d.slice(5,7)}-${d.slice(8,10)}-${d.slice(0,4)}`:'—';
+    const dateStr=(d&&d.length>=10)?`${d.slice(5,7)}-${d.slice(8,10)}-${d.slice(0,4)}`:'—';
+    const total=simAllBars.length-1-simStartIdx;
+    const pct=total>0?((simIdx-simStartIdx)/total*100):0;
+    curDateEl.innerHTML=`${dateStr} <span style="color:var(--muted);font-weight:400;">(${pct.toFixed(0)}%)</span>`;
   }
   document.getElementById('sim-start-cap').textContent=fmt(simConfig?.startingCapital||0);
   const curEl=document.getElementById('sim-cur-cap');
@@ -6136,7 +6182,7 @@ async function loadSimsList(){
     el.innerHTML=toolbar+`<table style="width:100%;border-collapse:collapse;">
       <tr style="border-bottom:1px solid var(--border);color:var(--muted);font-size:10px;text-transform:uppercase;">
         <th style="width:22px;padding:6px;"><input type="checkbox" id="sims-head-check"></th>
-        <th style="text-align:left;padding:6px;">Name</th><th>Ticker</th><th>Capital</th><th>P/L</th><th>Trades</th><th>Modified</th><th style="width:180px">Actions</th>
+        <th style="text-align:left;padding:6px;">Name</th><th>Ticker</th><th>Capital</th><th>P/L</th><th>Trades</th><th>Progress</th><th>Modified</th><th style="width:180px">Actions</th>
       </tr>
       ${sims.map(s=>{
         const pl=s.currentCapital-s.startingCapital;
@@ -6148,6 +6194,7 @@ async function loadSimsList(){
           <td style="text-align:center;cursor:pointer;" class="sim-row-name">$${s.startingCapital?.toLocaleString()||'—'}</td>
           <td style="text-align:center;color:${pl>=0?'var(--green)':'var(--red)'};cursor:pointer;" class="sim-row-name">${plStr}</td>
           <td style="text-align:center;cursor:pointer;" class="sim-row-name">${s.totalTrades||0}</td>
+          <td style="text-align:center;cursor:pointer;color:${s.isComplete?'var(--green)':'var(--muted)'};" class="sim-row-name">${s.isComplete?'Done':(s.progress!=null?s.progress+'%':'—')}</td>
           <td style="text-align:center;color:var(--muted);font-size:10px;cursor:pointer;" class="sim-row-name">${(s.modified||'').slice(0,10)}</td>
           <td style="padding:4px;white-space:nowrap;">
             <button class="sim-btn sim-rename-btn sim-btn-sm" data-id="${s.id}">Rename</button>
@@ -6245,11 +6292,130 @@ function wireSimsListToolbar(sims){
     const resp=await fetch('/api/simulations/import',{method:'POST',body:fd});
     const data=await resp.json();
     if(data.error){flash('Import failed: '+data.error);return;}
+    impFile.value='';
+    const needs = await importDataCheck(data.imported||[]);
+    if(needs===false){
+      for(const s of (data.imported||[])) await fetch(`/api/simulations/${s.id}`,{method:'DELETE'}).catch(()=>{});
+      loadSimsList();
+      return;
+    }
     flash(`Imported ${data.count} simulation(s)`);
     loadSimsList();
-    impFile.value='';
   });
   refresh();
+}
+
+// Import data-check flow
+async function importDataCheck(imported){
+  if(!imported||!imported.length) return true;
+
+  const symbols = new Set();
+  const simRanges = {};
+  for(const s of imported){
+    const tk = (s.ticker||'').toUpperCase();
+    const sec = (s.secondarySymbol||'').toUpperCase();
+    if(tk){ symbols.add(tk); simRanges[tk] = s.startDate||null; }
+    if(sec) symbols.add(sec);
+  }
+  if(!symbols.size) return true;
+
+  const checkResp = await fetch('/api/data/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbols:[...symbols]})});
+  const localData = await checkResp.json();
+
+  const missing = [];
+  for(const sym of symbols){
+    const ld = localData[sym];
+    if(!ld||!ld.exists) missing.push({sym, status:'missing', local:null});
+    else {
+      const simStart = simRanges[sym];
+      if(simStart && ld.first > simStart) missing.push({sym, status:'partial', local:ld, reason:`local starts ${ld.first}, sim needs ${simStart}`});
+    }
+  }
+
+  if(!missing.length) return true;
+
+  return new Promise(resolve=>{
+    const modal    = document.getElementById('import-data-modal');
+    const intro    = document.getElementById('idc-intro');
+    const tickersEl= document.getElementById('idc-tickers');
+    const rangeSection = document.getElementById('idc-range-section');
+    const progress = document.getElementById('idc-progress');
+    const dlBtn    = document.getElementById('idc-download');
+    const doneBtn  = document.getElementById('idc-done');
+    const cancelBtn= document.getElementById('idc-cancel');
+    let resolved = false;
+
+    const simNames = imported.map(s=>s.name).join(', ');
+    intro.innerHTML = `Importing: <b>${simNames}</b><br>The following ticker data is needed but not available locally:`;
+
+    let html = '';
+    for(const m of missing){
+      const cls = m.status==='missing' ? 'missing' : 'partial';
+      const label = m.status==='missing' ? 'Not on disk' : m.reason;
+      html += `<div class="idc-ticker"><span class="idc-sym">${m.sym}</span><span class="idc-status ${cls}" id="idc-st-${m.sym}">${label}</span></div>`;
+    }
+    tickersEl.innerHTML = html;
+
+    rangeSection.style.display = '';
+    document.querySelector('input[name="idc-range"][value="sim"]').checked = true;
+    progress.textContent = '';
+    dlBtn.style.display = '';
+    dlBtn.textContent = 'Download & Import';
+    doneBtn.style.display = 'none';
+    doneBtn.textContent = 'Done';
+    cancelBtn.style.display = '';
+    dlBtn.disabled = false;
+    modal.classList.remove('hidden');
+
+    function close(val){ if(!resolved){ resolved=true; modal.classList.add('hidden'); resolve(val); } }
+
+    const onCancel = ()=>close(false);
+    cancelBtn.addEventListener('click', onCancel, {once:true});
+
+    dlBtn.addEventListener('click', async ()=>{
+      dlBtn.disabled = true;
+      cancelBtn.style.display = 'none';
+      rangeSection.style.display = 'none';
+      const rangeAll = document.querySelector('input[name="idc-range"][value="all"]')?.checked;
+
+      let allOk = true;
+      for(let i=0;i<missing.length;i++){
+        const m = missing[i];
+        const stEl = document.getElementById('idc-st-'+m.sym);
+        if(stEl){ stEl.className='idc-status'; stEl.textContent='Downloading…'; }
+        progress.textContent = `Downloading ${i+1}/${missing.length}: ${m.sym}…`;
+
+        const body = {symbol:m.sym, mode:'merge'};
+        if(!rangeAll && simRanges[m.sym]) body.start = simRanges[m.sym];
+        try{
+          const r = await fetch('/api/yahoo/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+          const j = await r.json();
+          if(j.error||j.written===false||!j.bars_total){
+            if(stEl){ stEl.className='idc-status missing'; stEl.textContent=j.error||'No data from Yahoo'; }
+            allOk = false;
+          } else {
+            if(stEl){ stEl.className='idc-status ok'; stEl.textContent=`${j.first} → ${j.last} (${j.bars_total} bars)`; }
+          }
+        }catch(e){
+          if(stEl){ stEl.className='idc-status missing'; stEl.textContent=e.message; }
+          allOk = false;
+        }
+      }
+
+      try { await loadTickers(); } catch(e) {}
+
+      if(allOk){
+        progress.innerHTML = '<span style="color:var(--green);">All data downloaded successfully.</span>';
+        doneBtn.style.display = '';
+        doneBtn.addEventListener('click',()=>close(true),{once:true});
+      } else {
+        progress.innerHTML = '<span style="color:var(--red);">Some downloads failed. The import has been cancelled.</span>';
+        doneBtn.style.display = '';
+        doneBtn.textContent = 'OK';
+        doneBtn.addEventListener('click',()=>close(false),{once:true});
+      }
+    },{once:true});
+  });
 }
 
 // Wire up UI events
