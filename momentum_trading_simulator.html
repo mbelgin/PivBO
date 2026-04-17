@@ -1055,6 +1055,8 @@
   .sim-modal input[type=date]{color-scheme:dark;}
   [data-theme="light"] .sim-modal input[type=date]{color-scheme:light;}
   .sim-btn.sim-btn-sm{padding:2px 8px;font-size:10px;}
+  .sim-btn.muted{opacity:0.65;}
+  .sim-analyze-btn{min-width:88px;text-align:center;}
 
   /* Import data-check dialog */
   #import-data-modal .sim-modal{width:480px;}
@@ -1067,6 +1069,51 @@
   .idc-range-choice{margin-top:12px;font-size:11px;color:var(--muted);}
   .idc-range-choice label{display:flex;align-items:center;gap:6px;margin:4px 0;cursor:pointer;color:var(--text);}
   .idc-progress{margin-top:10px;font-size:11px;color:var(--muted);min-height:16px;}
+
+  /* Analysis & Compare reports */
+  .rpt{font-family:var(--mono);color:var(--text);max-width:1200px;margin:0 auto;}
+  .rpt-header{display:flex;align-items:center;gap:12px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:12px;}
+  .rpt-title{font-size:18px;color:var(--accent);font-weight:600;flex:1;}
+  .rpt-subtitle{font-size:12px;color:var(--muted);margin-top:2px;font-weight:400;}
+  .rpt-banner{padding:8px 12px;border-radius:4px;margin-bottom:16px;font-size:12px;}
+  .rpt-banner.warning{background:rgba(245,200,66,0.1);border:1px solid var(--yellow);color:var(--yellow);}
+  .rpt-banner.info{background:rgba(0,212,170,0.08);border:1px solid var(--accent);color:var(--accent);}
+  .rpt-section{margin-bottom:20px;}
+  .rpt-section h3{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;font-weight:600;}
+  .rpt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:4px;overflow:hidden;}
+  .rpt-cell{background:var(--bg2);padding:10px 12px;}
+  .rpt-cell .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;}
+  .rpt-cell .val{font-size:15px;color:var(--text);font-weight:600;}
+  .rpt-cell .val.primary{color:var(--accent);font-size:18px;}
+  .rpt-cell .val.pos{color:var(--green);}
+  .rpt-cell .val.neg{color:var(--red);}
+  .rpt-cell .sub{font-size:10px;color:var(--muted);margin-top:2px;}
+  .rpt-chart{background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:10px;height:280px;}
+  .rpt-table{width:100%;border-collapse:collapse;font-size:11px;}
+  .rpt-table th{background:var(--bg3);color:var(--muted);padding:6px 8px;text-align:right;font-weight:500;border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;}
+  .rpt-table th:first-child,.rpt-table td:first-child{text-align:left;}
+  .rpt-table td{padding:5px 8px;text-align:right;border-bottom:1px solid var(--row-border);}
+  .rpt-table tr:hover td{background:var(--bg3);}
+  .rpt-actions{display:flex;gap:6px;}
+  .rpt-heatmap td{text-align:right;padding:6px 10px;font-variant-numeric:tabular-nums;}
+  .rpt-heatmap td.label{text-align:left;color:var(--muted);font-size:11px;}
+  .rpt-heatmap td.metric{font-weight:600;}
+  .rpt-heatmap .sim-hdr{text-align:center;font-size:11px;color:var(--text);padding:8px;background:var(--bg3);}
+  .rpt-heatmap .sim-hdr .ticker{color:var(--accent);font-size:11px;font-weight:500;}
+  .rpt-incomplete{color:var(--yellow);font-size:10px;}
+
+  @media print {
+    body * { visibility: hidden; }
+    #page-analysis, #page-analysis *, #page-compare, #page-compare * { visibility: visible; }
+    #page-analysis, #page-compare { position:absolute; left:0; top:0; inset:0 !important; overflow:visible !important; padding:0 !important; background:white !important; color:black !important; }
+    .rpt { max-width:100% !important; color:black !important; }
+    .rpt-title, .rpt-cell .val.primary { color:#008060 !important; }
+    .rpt-cell, .rpt-chart, .rpt-table th, .rpt-heatmap .sim-hdr { background:white !important; }
+    .rpt-cell .lbl, .rpt-cell .sub, .rpt-table th { color:#555 !important; }
+    .rpt-actions, .no-print { display:none !important; }
+    .rpt-grid, .rpt-table, .rpt-chart, .rpt-banner, .rpt-header { border-color:#ccc !important; }
+    .rpt-cell { border-right:1px solid #ccc; border-bottom:1px solid #ccc; }
+  }
 
   /* Save-template dialog */
   #tpl-save-modal .sim-modal{width:380px;}
@@ -1166,6 +1213,17 @@
   .open-trade-card .otc-pct:hover{border-color:var(--accent);color:var(--accent);}
   .open-trade-card .otc-pct.otc-pct-all{border-color:var(--red);color:var(--red);}
   .open-trade-card .otc-pct.otc-pct-all:hover{background:var(--red);color:#fff;}
+  /* SL Set button pulses while an SL edit (drag or manual typing) is pending
+     — i.e. the input value doesn't match the trade's committed t.stopLoss.
+     Clicking Set runs simModifySL which removes .pending after commit. */
+  .open-trade-card .otc-btn.pending{
+    border-color:var(--red);color:var(--red);
+    animation:slSetPulse 1s ease-in-out infinite;
+  }
+  @keyframes slSetPulse{
+    0%,100%{opacity:1;box-shadow:0 0 0 rgba(239,83,80,0);}
+    50%{opacity:0.55;box-shadow:0 0 8px rgba(239,83,80,0.6);}
+  }
 
   /* Nav tabs */
   .nav-tabs{display:flex;gap:2px;}
@@ -1807,6 +1865,16 @@
 <div class="hidden" id="page-simulations" style="position:absolute;inset:48px 0 0 0;background:var(--bg);z-index:50;overflow-y:auto;padding:20px;">
   <h2 style="font-family:var(--mono);font-size:15px;color:var(--accent);margin-bottom:16px;">Saved Simulations</h2>
   <div id="sims-list" style="font-family:var(--mono);font-size:12px;"></div>
+</div>
+
+<!-- Analysis Report Page -->
+<div class="hidden" id="page-analysis" style="position:absolute;inset:48px 0 0 0;background:var(--bg);z-index:50;overflow-y:auto;padding:20px;">
+  <div id="analysis-content"></div>
+</div>
+
+<!-- Compare Report Page -->
+<div class="hidden" id="page-compare" style="position:absolute;inset:48px 0 0 0;background:var(--bg);z-index:50;overflow-y:auto;padding:20px;">
+  <div id="compare-content"></div>
 </div>
 
 <script>
@@ -2783,6 +2851,11 @@ function time2p(t){
 
 function redrawAll(){
   ctx2.clearRect(0,0,canvas.width,canvas.height);
+  // Reset the shared handle registry at the start of each frame. Any indicator
+  // that wants to expose a draggable handle (pre-entry preview, open-trade SL)
+  // pushes into _simPreviewHandles here; the single simPreviewHitTest picks
+  // whichever is nearest the click.
+  _simPreviewHandles.length=0;
   if(currentSymbol&&drawings[currentSymbol])
     for(const d of drawings[currentSymbol])drawOne(d,d.id===selectedId);
   if(pendingP1)drawPreview();
@@ -3199,7 +3272,12 @@ function setupChartEvents(){
 function setupDrag(){
   const wrapEl=document.getElementById('chart-wrap');
 
-  // Preview level handle dragging (entry/SL/TP) — runs before drawing tool logic
+  // Unified level-handle dragging. _simDragHandle holds the whole hit object
+  // ({kind, tradeId?, ...}) so mousemove and mouseup can dispatch by kind
+  // without duplicating the generic "disable chart + capture Y + coord→price"
+  // machinery. Supported kinds:
+  //   - 'entry', 'sl'     → pre-entry trade form preview (writes DOM input)
+  //   - 'open-sl'         → open-trade SL (writes t.stopLoss on trade object)
   let _simDragHandle=null;
   wrapEl.addEventListener('mousedown',e=>{
     if(simState==='idle'||e.button!==0)return;
@@ -3207,7 +3285,7 @@ function setupDrag(){
     const x=e.clientX-rect.left, y=e.clientY-rect.top;
     const hit=simPreviewHitTest(x,y);
     if(!hit)return;
-    _simDragHandle=hit.kind;
+    _simDragHandle=hit;
     chart.applyOptions({handleScroll:false,handleScale:false});
     e.stopImmediatePropagation();
     e.preventDefault();
@@ -3218,15 +3296,31 @@ function setupDrag(){
     const y=e.clientY-rect.top;
     const price=priceSeries?.coordinateToPrice(y);
     if(price==null||!Number.isFinite(price))return;
-    const id=_simDragHandle==='entry'?'tf-entry':'tf-sl';
-    document.getElementById(id).value=price.toFixed(2);
-    simCalcShares();simUpdateATRLabel();redrawAll();
+    const h=_simDragHandle;
+    if(h.kind==='open-sl'){
+      // Drag writes to the sidebar SL input (same DOM field the user types
+      // into manually). This puts the edit in PENDING state — line renders
+      // at the new Y with a pulsating glow, Set button pulsates. Commit is
+      // explicit via the Set button (simModifySL); ESC or navigation reverts.
+      const t=simTrades.find(tr=>tr.id===h.tradeId);
+      if(!t||t.status!=='open')return;
+      const inp=document.getElementById(`sl-input-${h.tradeId}`);
+      if(!inp)return;
+      inp.value=price.toFixed(2);
+      simRefreshSLPendingUI(h.tradeId);
+    }else{
+      const id=h.kind==='entry'?'tf-entry':'tf-sl';
+      document.getElementById(id).value=price.toFixed(2);
+      simCalcShares();simUpdateATRLabel();redrawAll();
+    }
   });
   document.addEventListener('mouseup',()=>{
-    if(_simDragHandle){
-      _simDragHandle=null;
-      chart.applyOptions({handleScroll:true,handleScale:true});
-    }
+    if(!_simDragHandle)return;
+    _simDragHandle=null;
+    chart.applyOptions({handleScroll:true,handleScale:true});
+    // open-sl drag does NOT auto-commit — the edit stays pending (input differs
+    // from t.stopLoss). User clicks the Set button to commit, hits ESC to
+    // cancel, or advances/retreats (which also reverts pending edits).
   });
 
   let dragPart='whole';
@@ -3552,6 +3646,9 @@ document.addEventListener('keydown',e=>{
     }
   }
   if(e.key==='Escape'&&!inInput){
+    // Revert any pending SL edits back to committed values (drag-not-followed
+    // -by-Set should not persist if the user bails out).
+    try{if(typeof simRevertAllPendingSL==='function')simRevertAllPendingSL();}catch(_){}
     setTool('pan');
     chart.applyOptions({handleScroll:true,handleScale:true});
     return;
@@ -5001,6 +5098,7 @@ function simVisibleOpenTrades(){
 function simAdvance(){
   if(simState!=='playing'&&simState!=='paused')return false;
   if(simIdx>=simAllBars.length-1)return false;
+  try{simRevertAllPendingSL();}catch(_){}
   simIdx++;
   _simReviewId=null;
   simSetSelectedBar(null);
@@ -5019,6 +5117,7 @@ function simAdvance(){
 function simRetreat(){
   if(simState!=='playing'&&simState!=='paused')return false;
   if(simIdx<=simStartIdx)return false;
+  try{simRevertAllPendingSL();}catch(_){}
   simIdx--;
   _simReviewId=null;
   simSetSelectedBar(null);
@@ -5026,6 +5125,19 @@ function simRetreat(){
   simTrades=simTrades.filter(t=>t._createdAtIdx<=simIdx);
   for(const t of simTrades){
     t.exits=t.exits.filter(e=>e._atIdx<=simIdx);
+    // Discard SL changes that happened in the future; recompute effective SL.
+    if(Array.isArray(t.slHistory)){
+      t.slHistory=t.slHistory.filter(h=>h._atIdx<=simIdx);
+      const last=t.slHistory[t.slHistory.length-1];
+      t.stopLoss=last?last.price:null;
+      if(t.stopLoss!=null){
+        const totalShares=t.entries.reduce((s,e)=>s+e.shares,0);
+        const avgEntry=totalShares?t.entries.reduce((s,e)=>s+e.price*e.shares,0)/totalShares:0;
+        t.riskPerShare=Math.abs(avgEntry-t.stopLoss);
+      }else{
+        t.riskPerShare=null;
+      }
+    }
     t.currentShares=t.entries.reduce((s,e)=>s+e.shares,0)-t.exits.reduce((s,e)=>s+e.shares,0);
     t.status=t.currentShares<=0?'closed':'open';
   }
@@ -5159,6 +5271,10 @@ function simExecuteEntry(order,date){
     exits:[],stopLoss,
     riskPerShare:initialRisk||null,
     _initialRisk:initialRisk, // frozen at entry — used for R-multiple stats
+    // slHistory records every committed SL change with the bar index it was
+    // made at. Effective SL at any bar i = last entry with _atIdx<=i. This
+    // enables time-travel (retreat reveals the SL you had at that past bar).
+    slHistory:stopLoss!=null?[{_atIdx:simIdx,price:stopLoss}]:[],
     status:'open',currentShares:order.shares,_unrealizedPL:0,
     _createdAtIdx:simIdx
   };
@@ -5191,6 +5307,7 @@ function simOpenTradeNow(direction,entryPrice,sl,shares){
     stopLoss,
     riskPerShare:initialRisk||null,
     _initialRisk:initialRisk, // frozen at entry — used for R-multiple stats
+    slHistory:stopLoss!=null?[{_atIdx:simIdx,price:stopLoss}]:[],
     status:'open',currentShares:shares,_unrealizedPL:0,
     _createdAtIdx:simIdx
   };
@@ -5227,8 +5344,10 @@ function simModifySL(tradeId){
   const t=simTrades.find(tr=>tr.id===tradeId);
   if(!t||t.status!=='open')return;
   const raw=document.getElementById(`sl-input-${tradeId}`)?.value?.trim();
+  if(!t.slHistory)t.slHistory=[];
   if(raw===''){
     t.stopLoss=null;t.riskPerShare=null;
+    t.slHistory.push({_atIdx:simIdx,price:null});
     flash('SL removed');
   }else{
     const val=parseFloat(raw);
@@ -5236,8 +5355,10 @@ function simModifySL(tradeId){
     t.stopLoss=val;
     const avgEntry=t.entries.reduce((s,e)=>s+e.price*e.shares,0)/t.entries.reduce((s,e)=>s+e.shares,0);
     t.riskPerShare=Math.abs(avgEntry-val);
+    t.slHistory.push({_atIdx:simIdx,price:val});
     flash(`SL set to $${val.toFixed(2)}`);
   }
+  simRecalcAnalytics();
   simRenderTradesList();redrawAll();simAutoSave();
 }
 
@@ -5247,10 +5368,54 @@ function simSLBreakeven(tradeId){
   const avgEntry=t.entries.reduce((s,e)=>s+e.price*e.shares,0)/t.entries.reduce((s,e)=>s+e.shares,0);
   t.stopLoss=parseFloat(avgEntry.toFixed(2));
   t.riskPerShare=0;
+  if(!t.slHistory)t.slHistory=[];
+  t.slHistory.push({_atIdx:simIdx,price:t.stopLoss});
   const el=document.getElementById(`sl-input-${tradeId}`);
   if(el)el.value=t.stopLoss.toFixed(2);
   flash(`SL → breakeven $${t.stopLoss.toFixed(2)}`);
+  simRecalcAnalytics();
   simRenderTradesList();redrawAll();simAutoSave();
+}
+
+// Returns the pending SL price for a trade if the sidebar input differs from
+// the committed t.stopLoss, else null. Single source of truth for "is this
+// trade's SL edit uncommitted?" — used by the open-sl line rendering (pulse),
+// the handle hit-test (drag follows pending), and the Set-button class.
+function simGetPendingSL(t){
+  if(!t||t.status!=='open')return null;
+  const inp=document.getElementById(`sl-input-${t.id}`);
+  if(!inp)return null;
+  const raw=inp.value?.trim();
+  if(raw==='')return (t.stopLoss==null)?null:NaN; // empty input + committed value = pending-remove
+  const v=parseFloat(raw);
+  if(!Number.isFinite(v))return null;
+  if(t.stopLoss==null)return v;
+  return Math.abs(v-t.stopLoss)>1e-9 ? v : null;
+}
+
+// Toggle the pulsating .pending class on the Set button for a given trade.
+// Called from the SL input's oninput handler and from the drag mousemove.
+function simRefreshSLPendingUI(tradeId){
+  const t=simTrades.find(tr=>tr.id===tradeId);
+  if(!t)return;
+  const pending=simGetPendingSL(t)!==null;
+  const btn=document.querySelector(`button[onclick="simModifySL(${tradeId})"]`);
+  if(btn)btn.classList.toggle('pending',pending);
+  redrawAll();
+}
+
+// Revert any pending (uncommitted) SL edits across all open trades back to the
+// committed values. Called on ESC and when the user navigates away from the
+// current sim state (advance/retreat/exit).
+function simRevertAllPendingSL(){
+  for(const t of simTrades){
+    if(t.status!=='open')continue;
+    const inp=document.getElementById(`sl-input-${t.id}`);
+    if(inp){
+      inp.value=t.stopLoss?t.stopLoss.toFixed(2):'';
+      simRefreshSLPendingUI(t.id);
+    }
+  }
 }
 
 // Close a percentage of an open trade
@@ -5411,6 +5576,21 @@ function simRenderTradesList(){
     const iStyle='width:58px;padding:2px 4px;font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:2px;font-family:var(--mono);';
     const rStyle='display:flex;gap:3px;align-items:center;margin-bottom:3px;';
     const lStyle='font-size:9px;color:var(--muted);width:24px;flex-shrink:0;';
+    // Partial-exit history (only shown if there's at least one partial close).
+    let partialHistHtml='';
+    if(isOpen && visExits.length){
+      const pct=(n,d)=>d?(n/d*100).toFixed(1)+'%':'0.0%';
+      const _fmtShort=d=>(d&&d.length>=10)?`${d.slice(5,7)}-${d.slice(8,10)}-${d.slice(0,4)}`:'';
+      let sharesBefore=totalShares;
+      const lines=[];
+      for(const ex of visExits){
+        const off=pct(ex.shares,sharesBefore);
+        sharesBefore-=ex.shares;
+        const openFrac=pct(sharesBefore,totalShares);
+        lines.push(`<div style="font-size:9px;color:var(--muted);">${_fmtShort(ex.date)}: <span style="color:var(--green);">${off} off</span> (${openFrac} open)</div>`);
+      }
+      partialHistHtml=`<div style="margin-top:4px;border-top:1px solid var(--border);padding-top:4px;">${lines.join('')}</div>`;
+    }
     const mgmt=isOpen?`
       <div style="margin-top:4px;border-top:1px solid var(--border);padding-top:4px;">
         <div class="otc-pct-row">
@@ -5427,10 +5607,11 @@ function simRenderTradesList(){
         </div>
         <div style="${rStyle}">
           <span style="${lStyle}">SL</span>
-          <input type="number" id="sl-input-${t.id}" step="0.01" value="${t.stopLoss?t.stopLoss.toFixed(2):''}" placeholder="—" style="${iStyle}">
+          <input type="number" id="sl-input-${t.id}" step="0.01" value="${t.stopLoss?t.stopLoss.toFixed(2):''}" oninput="simRefreshSLPendingUI(${t.id})" placeholder="—" style="${iStyle}">
           <button class="otc-btn" onclick="simModifySL(${t.id})">Set</button>
           <button class="otc-btn" onclick="simSLBreakeven(${t.id})">B/E</button>
         </div>
+        ${partialHistHtml}
       </div>`:'';
 
     const reviewActive=!isOpen && _simReviewId===t.id;
@@ -5567,7 +5748,6 @@ function simStartPulse(){
 }
 
 function simDrawPreviewLevels(){
-  _simPreviewHandles.length=0;
   const form=document.getElementById('sim-trade-form');
   if(!form||form.classList.contains('hidden'))return;
   const entry=simGetFormPrice('tf-entry');
@@ -5615,11 +5795,15 @@ function simDrawPreviewLevels(){
 }
 
 function simPreviewHitTest(x,y){
+  // Nearest-handle wins (by squared distance) so overlapping handles at the
+  // same Y resolve deterministically.
+  let best=null, bestD=Infinity;
   for(const h of _simPreviewHandles){
-    const dx=x-h.x,dy=y-h.y;
-    if(dx*dx+dy*dy<=100)return h; // radius 10
+    const dx=x-h.x, dy=y-h.y;
+    const d=dx*dx+dy*dy;
+    if(d<=100 && d<bestD){best=h; bestD=d;} // radius 10
   }
-  return null;
+  return best;
 }
 
 // Active Trades Indicator (drawn on draw-canvas)
@@ -5644,14 +5828,46 @@ function simDrawActiveTradesIndicator(){
     const entryY=price2p(avgEntry);
 
     // SL line (red solid) — drawn first so Entry can sit on top when SL == entry (BE stop).
-    if(t.stopLoss){
-      const slY=price2p(t.stopLoss);
+    // If the sidebar SL input has been edited (by drag or typing) but not yet
+    // committed via Set, render the line at the pending price with a pulsating
+    // glow. simGetPendingSL returns null when input==committed.
+    const pendingSL=simGetPendingSL(t);
+    const slPrice=pendingSL!=null && Number.isFinite(pendingSL) ? pendingSL : t.stopLoss;
+    if(slPrice){
+      const slY=price2p(slPrice);
       if(slY!=null){
-        ctx2.save();ctx2.strokeStyle='#ef5350';ctx2.lineWidth=1.5;ctx2.globalAlpha=0.9;
+        const isPending=pendingSL!=null;
+        let pulse=1, blur=0;
+        if(isPending){
+          simStartPulse();
+          pulse=0.55+0.45*Math.abs(Math.sin(_simPulsePhase));
+          blur=6+10*Math.abs(Math.sin(_simPulsePhase));
+        }
+        ctx2.save();
+        ctx2.strokeStyle='#ef5350';ctx2.lineWidth=1.5;
+        if(isPending){ctx2.shadowColor='#ef5350';ctx2.shadowBlur=blur;ctx2.globalAlpha=pulse;}
+        else{ctx2.globalAlpha=0.9;}
         ctx2.beginPath();ctx2.moveTo(0,slY);ctx2.lineTo(canvas.width,slY);ctx2.stroke();
-        ctx2.font='10px var(--mono)';ctx2.fillStyle='#ef5350';
-        ctx2.fillText(`SL $${t.stopLoss.toFixed(2)}`,canvas.width-110,slY-4);
         ctx2.restore();
+        ctx2.save();
+        ctx2.font='10px var(--mono)';ctx2.fillStyle='#ef5350';
+        ctx2.fillText(`SL $${slPrice.toFixed(2)}${isPending?' (pending)':''}`,canvas.width-140,slY-4);
+        ctx2.restore();
+        // Draggable handle on the right edge — same position/size as the
+        // pre-entry preview SL handle. Pulsates only while there's a pending
+        // edit (matches the line state).
+        const hx=canvas.width-28, hy=slY;
+        ctx2.save();
+        ctx2.fillStyle='#ef5350';
+        if(isPending){ctx2.shadowColor='#ef5350';ctx2.shadowBlur=blur;ctx2.globalAlpha=pulse;}
+        ctx2.beginPath();ctx2.arc(hx,hy,6,0,Math.PI*2);ctx2.fill();
+        ctx2.shadowBlur=0;ctx2.globalAlpha=1;
+        ctx2.fillStyle='#fff';
+        ctx2.font='bold 9px var(--mono)';
+        ctx2.textAlign='center';ctx2.textBaseline='middle';
+        ctx2.fillText('⇅',hx,hy);
+        ctx2.restore();
+        _simPreviewHandles.push({kind:'open-sl',tradeId:t.id,x:hx,y:hy,price:slPrice});
       }
     }
 
@@ -6019,6 +6235,8 @@ async function simLoadFromServer(id){
     // If a previous sim is still in memory with pending writes, flush first
     // so its secondarySymbol/tradePrefs don't get lost to a race with this GET.
     if(simId&&simId!==id)await simFlushSave();
+    // Mark as opened — invalidates cached analysis.
+    fetch(`/api/simulations/${id}/touch`,{method:'POST'}).catch(()=>{});
     const resp=await fetch(`/api/simulations/${id}`);
     const sim=await resp.json();
     if(sim.error)throw new Error(sim.error);
@@ -6051,7 +6269,19 @@ async function simLoadFromServer(id){
           initRisk=Math.abs(t.entries[0].price-t.stopLoss);
         }
       }
-      return {...t,_createdAtIdx:typeof ci==='number'?ci:0,exits,_initialRisk:initRisk||0};
+      // Backfill slHistory for old sims that predate time-travel support.
+      // We only know the *current* stopLoss, not the history of changes, so
+      // assume the SL was set at entry and never changed. This is correct for
+      // trades whose SL was never modified; lossy for trades where it was.
+      let slHist=Array.isArray(t.slHistory)?t.slHistory:null;
+      if(!slHist){
+        if(t.stopLoss!=null){
+          slHist=[{_atIdx:(typeof ci==='number'?ci:0),price:t.stopLoss}];
+        }else{
+          slHist=[];
+        }
+      }
+      return {...t,_createdAtIdx:typeof ci==='number'?ci:0,exits,_initialRisk:initRisk||0,slHistory:slHist};
     });
     // After bars are loaded, fix _createdAtIdx=0 for old trades by matching entry date
     // (done after simAllBars is set, see below)
@@ -6152,8 +6382,10 @@ async function simLoadFromServer(id){
 // Page navigation
 function showPage(page){
   document.getElementById('page-simulations').classList.toggle('hidden',page!=='simulations');
+  document.getElementById('page-analysis').classList.toggle('hidden',page!=='analysis');
+  document.getElementById('page-compare').classList.toggle('hidden',page!=='compare');
   document.querySelector('.main').style.display=page==='chart'?'':'none';
-  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.toggle('active',t.dataset.page===page));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.toggle('active',t.dataset.page==='simulations'&&(page==='simulations'||page==='analysis'||page==='compare')?true:t.dataset.page===page));
   if(page==='simulations')loadSimsList();
   if(page==='chart'){
     const simActive=simState!=='idle';
@@ -6173,6 +6405,7 @@ async function loadSimsList(){
       <button class="sim-btn" id="sims-select-all">Select all</button>
       <button class="sim-btn danger" id="sims-bulk-delete" disabled>Delete selected</button>
       <button class="sim-btn" id="sims-bulk-export" disabled>Export selected</button>
+      <button class="sim-btn" id="sims-bulk-compare" disabled title="Compare 2-5 simulations">Compare</button>
       <span style="flex:1"></span>
       <label class="sim-btn" style="display:inline-flex;align-items:center;">
         Import <input type="file" id="sims-import-file" accept=".json,.zip" style="display:none;">
@@ -6182,11 +6415,17 @@ async function loadSimsList(){
     el.innerHTML=toolbar+`<table style="width:100%;border-collapse:collapse;">
       <tr style="border-bottom:1px solid var(--border);color:var(--muted);font-size:10px;text-transform:uppercase;">
         <th style="width:22px;padding:6px;"><input type="checkbox" id="sims-head-check"></th>
-        <th style="text-align:left;padding:6px;">Name</th><th>Ticker</th><th>Capital</th><th>P/L</th><th>Trades</th><th>Progress</th><th>Modified</th><th style="width:180px">Actions</th>
+        <th style="text-align:left;padding:6px;">Name</th><th>Ticker</th><th>Capital</th><th>P/L</th><th>Trades</th><th>Range</th><th>Progress</th><th>Modified</th><th style="width:180px">Actions</th>
       </tr>
       ${sims.map(s=>{
         const pl=s.currentCapital-s.startingCapital;
         const plStr=pl>=0?`+$${pl.toFixed(0)}`:`-$${Math.abs(pl).toFixed(0)}`;
+        const sd=(s.startDate||'').slice(0,10);
+        const ed=(s.endDate||'').slice(0,10);
+        const cd=(s.currentBarDate||'').slice(0,10);
+        const rangeStr=sd&&ed
+          ? `${sd} → ${ed}${!s.isComplete&&cd&&cd!==ed?`<div style="font-size:9px;color:#ff9800;">at ${cd}</div>`:''}`
+          : '—';
         return `<tr style="border-bottom:1px solid var(--row-border);" class="sim-list-row" data-id="${s.id}" data-name="${(s.name||'').replace(/"/g,'&quot;')}">
           <td style="padding:6px;text-align:center;"><input type="checkbox" class="sim-row-check" data-id="${s.id}"></td>
           <td style="padding:6px;color:var(--text);font-weight:500;cursor:pointer;" class="sim-row-name">${s.name}</td>
@@ -6194,9 +6433,11 @@ async function loadSimsList(){
           <td style="text-align:center;cursor:pointer;" class="sim-row-name">$${s.startingCapital?.toLocaleString()||'—'}</td>
           <td style="text-align:center;color:${pl>=0?'var(--green)':'var(--red)'};cursor:pointer;" class="sim-row-name">${plStr}</td>
           <td style="text-align:center;cursor:pointer;" class="sim-row-name">${s.totalTrades||0}</td>
-          <td style="text-align:center;cursor:pointer;color:${s.isComplete?'var(--green)':'var(--muted)'};" class="sim-row-name">${s.isComplete?'Done':(s.progress!=null?s.progress+'%':'—')}</td>
+          <td style="text-align:center;cursor:pointer;color:var(--muted);font-size:10px;white-space:nowrap;" class="sim-row-name">${rangeStr}</td>
+          <td style="text-align:center;cursor:pointer;color:${(s.isComplete||(s.progress!=null&&s.progress>=100))?'var(--green)':'#ff9800'};" class="sim-row-name">${s.isComplete?'Done':(s.progress!=null?s.progress+'%':'—')}</td>
           <td style="text-align:center;color:var(--muted);font-size:10px;cursor:pointer;" class="sim-row-name">${(s.modified||'').slice(0,10)}</td>
           <td style="padding:4px;white-space:nowrap;">
+            <button class="sim-btn sim-analyze-btn sim-btn-sm${s.hasAnalysis&&!s.analysisStale?' muted':''}" data-id="${s.id}" title="${s.hasAnalysis?(s.analysisStale?'Re-analyze (stale)':'View cached analysis'):'Analyze'}">${s.hasAnalysis?(s.analysisStale?'Re-analyze':'View Analysis'):'Analyze'}</button>
             <button class="sim-btn sim-rename-btn sim-btn-sm" data-id="${s.id}">Rename</button>
             <button class="sim-btn sim-dup-btn sim-btn-sm" data-id="${s.id}">Save As</button>
             <button class="sim-btn danger sim-del-btn sim-btn-sm" data-id="${s.id}">Del</button>
@@ -6244,6 +6485,7 @@ function wireSimsListToolbar(sims){
   const head=document.getElementById('sims-head-check');
   const delBtn=document.getElementById('sims-bulk-delete');
   const expBtn=document.getElementById('sims-bulk-export');
+  const cmpBtn=document.getElementById('sims-bulk-compare');
   const allBtn=document.getElementById('sims-select-all');
   const impFile=document.getElementById('sims-import-file');
   const newBtn=document.getElementById('new-sim-btn');
@@ -6254,6 +6496,7 @@ function wireSimsListToolbar(sims){
     const n=selected().length;
     if(delBtn)delBtn.disabled=n===0;
     if(expBtn)expBtn.disabled=n===0;
+    if(cmpBtn){cmpBtn.disabled=n<2||n>5;cmpBtn.textContent=n>=2&&n<=5?`Compare (${n})`:'Compare';}
   };
   boxes().forEach(b=>b.addEventListener('change',refresh));
   if(head)head.addEventListener('change',e=>{
@@ -6286,6 +6529,16 @@ function wireSimsListToolbar(sims){
     const a=document.createElement('a');a.href=url;a.download=fname;document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
   });
+  if(cmpBtn)cmpBtn.addEventListener('click',()=>{
+    const ids=selected();
+    if(ids.length<2||ids.length>5)return;
+    openCompareReport(ids);
+  });
+  // Analyze action
+  document.querySelectorAll('.sim-analyze-btn').forEach(b=>b.addEventListener('click',e=>{
+    e.stopPropagation();
+    openAnalysisReport(b.dataset.id);
+  }));
   if(impFile)impFile.addEventListener('change',async e=>{
     const f=e.target.files[0];if(!f)return;
     const fd=new FormData();fd.append('file',f);
@@ -6303,6 +6556,541 @@ function wireSimsListToolbar(sims){
     loadSimsList();
   });
   refresh();
+}
+
+// ==============================================
+// ANALYSIS & COMPARE REPORTS
+// ==============================================
+
+function _fmtMoney(v){
+  if(v==null||!Number.isFinite(v))return '—';
+  const neg=v<0;const a=Math.abs(v);
+  const s=a>=1000?a.toLocaleString('en-US',{maximumFractionDigits:2,minimumFractionDigits:2}):a.toFixed(2);
+  return (neg?'-$':'$')+s;
+}
+function _fmtR(v){return v==null||!Number.isFinite(v)?'—':(v>=0?'+':'')+v.toFixed(2)+'R';}
+function _fmtPct(v,digits){return v==null||!Number.isFinite(v)?'—':v.toFixed(digits||2)+'%';}
+function _fmtNum(v,digits){return v==null||!Number.isFinite(v)?'—':v.toFixed(digits||2);}
+function _safeTxt(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+let _analysisEquityChart=null;
+
+async function openAnalysisReport(simId){
+  showPage('analysis');
+  const el=document.getElementById('analysis-content');
+  el.innerHTML='<div style="color:var(--muted);padding:20px;">Analyzing…</div>';
+  try{
+    const r=await fetch(`/api/simulations/${simId}/analyze`);
+    const j=await r.json();
+    if(!r.ok){
+      el.innerHTML=`<div class="rpt"><div class="rpt-header"><div class="rpt-title">Analysis unavailable</div><div class="rpt-actions"><button class="sim-btn" id="rpt-back">← Back</button></div></div><div class="rpt-banner warning">${_safeTxt(j.error||'Unable to analyze')}${j.insufficient?' — this simulation does not have enough closed trades or telemetry data.':''}</div></div>`;
+      document.getElementById('rpt-back').addEventListener('click',()=>showPage('simulations'));
+      return;
+    }
+    renderAnalysisReport(j);
+  }catch(e){
+    el.innerHTML=`<div class="rpt"><div class="rpt-header"><div class="rpt-title">Analysis failed</div><div class="rpt-actions"><button class="sim-btn" id="rpt-back">← Back</button></div></div><div class="rpt-banner warning">${_safeTxt(e.message)}</div></div>`;
+    document.getElementById('rpt-back').addEventListener('click',()=>showPage('simulations'));
+  }
+}
+
+function renderAnalysisReport(a){
+  const el=document.getElementById('analysis-content');
+  const progressNote=(a.isComplete||(a.progress||0)>=100)?'':`<div class="rpt-banner warning">⚠ Simulation is incomplete (${a.progress||0}%). Metrics reflect closed trades only; open positions are excluded.</div>`;
+  const cacheNote=a._fromCache?'<div class="rpt-banner info" style="font-size:10px;padding:4px 8px;">Showing cached analysis from '+_safeTxt((a.generatedAt||'').slice(0,19).replace('T',' '))+' UTC.</div>':'';
+
+  const plClass=(a.totalNetProfit||0)>=0?'pos':'neg';
+  const rClass=(a.totalR||0)>=0?'pos':'neg';
+
+  el.innerHTML=`
+    <div class="rpt">
+      <div class="rpt-header">
+        <div style="flex:1;">
+          <div class="rpt-title">${_safeTxt(a.simName)||'Analysis Report'}</div>
+          <div class="rpt-subtitle">${_safeTxt(a.ticker)} · ${a.simStartDate||'?'} → ${a.simCurrentDate||'?'} · ${a.barsInTest||0} bars · ${a.totalTrades||0} closed trades</div>
+        </div>
+        <div class="rpt-actions no-print">
+          <button class="sim-btn" id="rpt-back">← Back</button>
+          <button class="sim-btn" id="rpt-refresh" title="Force re-analysis">↻ Refresh</button>
+          <button class="sim-btn" id="rpt-export-csv">CSV</button>
+          <button class="sim-btn" id="rpt-export-txt">Text</button>
+          <button class="sim-btn primary" id="rpt-print">Download PDF</button>
+        </div>
+      </div>
+      ${progressNote}
+      ${cacheNote}
+
+      <div class="rpt-section">
+        <h3>Headline (R-based — compounding-neutral)</h3>
+        <div class="rpt-grid">
+          <div class="rpt-cell"><div class="lbl">Total R</div><div class="val primary ${rClass}">${_fmtR(a.totalR)}</div><div class="sub">sum of R multiples</div></div>
+          <div class="rpt-cell"><div class="lbl">Expectancy</div><div class="val primary ${(a.expectancyR||0)>=0?'pos':'neg'}">${_fmtR(a.expectancyR)}</div><div class="sub">per trade</div></div>
+          <div class="rpt-cell"><div class="lbl">Profit Factor (R)</div><div class="val primary">${_fmtNum(a.profitFactorR,2)}</div><div class="sub">|Σ win R| / |Σ loss R|</div></div>
+          <div class="rpt-cell"><div class="lbl">Max Drawdown (R)</div><div class="val primary neg">-${_fmtNum(a.maxDrawdownR,2)}R</div><div class="sub">peak-to-trough</div></div>
+          <div class="rpt-cell"><div class="lbl">Sharpe (trade R)</div><div class="val">${_fmtNum(a.sharpeTradesR,2)}</div><div class="sub">mean/stdev × √(trades/yr)</div></div>
+          <div class="rpt-cell"><div class="lbl">Max R win / loss</div><div class="val">${_fmtR(a.maxR)} / ${_fmtR(a.minR)}</div></div>
+        </div>
+      </div>
+
+      <div class="rpt-section">
+        <h3>Dollar-based (MT4 parity)</h3>
+        <div class="rpt-grid">
+          <div class="rpt-cell"><div class="lbl">Starting Capital</div><div class="val">${_fmtMoney(a.startingCapital)}</div></div>
+          <div class="rpt-cell"><div class="lbl">Final Balance</div><div class="val ${plClass}">${_fmtMoney(a.finalBalance)}</div></div>
+          <div class="rpt-cell"><div class="lbl">Total Net Profit</div><div class="val ${plClass}">${_fmtMoney(a.totalNetProfit)}</div></div>
+          <div class="rpt-cell"><div class="lbl">Gross Profit</div><div class="val pos">${_fmtMoney(a.grossProfit)}</div></div>
+          <div class="rpt-cell"><div class="lbl">Gross Loss</div><div class="val neg">${_fmtMoney(a.grossLoss)}</div></div>
+          <div class="rpt-cell"><div class="lbl">Profit Factor ($)</div><div class="val">${_fmtNum(a.profitFactor,2)}</div></div>
+          <div class="rpt-cell"><div class="lbl">Expected Payoff</div><div class="val">${_fmtMoney(a.expectedPayoff)}</div></div>
+          <div class="rpt-cell"><div class="lbl">Absolute Drawdown</div><div class="val neg">${_fmtMoney(a.absoluteDrawdown)}</div><div class="sub">start − lowest</div></div>
+          <div class="rpt-cell"><div class="lbl">Maximal Drawdown</div><div class="val neg">${_fmtMoney(a.maximalDrawdown)} <span style="font-size:11px;color:var(--muted);">(${_fmtPct(a.maximalDrawdownPct)})</span></div><div class="sub">largest $ drop peak→trough</div></div>
+          <div class="rpt-cell"><div class="lbl">Relative Drawdown</div><div class="val neg">${_fmtPct(a.relativeDrawdownPct)} <span style="font-size:11px;color:var(--muted);">(${_fmtMoney(a.relativeDrawdownAbs)})</span></div><div class="sub">largest % drop peak→trough</div></div>
+          <div class="rpt-cell"><div class="lbl">CAGR</div><div class="val">${_fmtPct(a.cagrPct,2)}</div></div>
+          <div class="rpt-cell"><div class="lbl">Sharpe (daily, √252)</div><div class="val">${_fmtNum(a.sharpeDaily,2)}</div><div class="sub">all-days, rf=0</div></div>
+          <div class="rpt-cell"><div class="lbl">Sharpe (exit-days)</div><div class="val">${_fmtNum(a.sharpeDailyTradeDays,2)}</div><div class="sub">exit-day basis</div></div>
+        </div>
+      </div>
+
+      <div class="rpt-section">
+        <h3>Trade Counts</h3>
+        <div class="rpt-grid">
+          <div class="rpt-cell"><div class="lbl">Total Trades</div><div class="val">${a.totalTrades}</div></div>
+          <div class="rpt-cell"><div class="lbl">Profit Trades</div><div class="val pos">${a.wins} <span style="font-size:11px;color:var(--muted);">(${_fmtPct(a.winRatePct)})</span></div></div>
+          <div class="rpt-cell"><div class="lbl">Loss Trades</div><div class="val neg">${a.losses} <span style="font-size:11px;color:var(--muted);">(${_fmtPct(a.totalTrades?a.losses/a.totalTrades*100:0)})</span></div></div>
+          <div class="rpt-cell"><div class="lbl">Breakeven</div><div class="val">${a.breakeven||0}</div></div>
+          <div class="rpt-cell"><div class="lbl">Long positions (won %)</div><div class="val">${a.longs} <span style="font-size:11px;color:var(--muted);">(${_fmtPct(a.longWinRatePct)})</span></div></div>
+          <div class="rpt-cell"><div class="lbl">Short positions (won %)</div><div class="val">${a.shorts} <span style="font-size:11px;color:var(--muted);">(${_fmtPct(a.shortWinRatePct)})</span></div></div>
+          <div class="rpt-cell"><div class="lbl">Avg hold</div><div class="val">${_fmtNum(a.avgHoldDays,1)}d</div></div>
+          <div class="rpt-cell"><div class="lbl">Largest profit trade</div><div class="val pos">${_fmtMoney(a.largestWin)}</div></div>
+          <div class="rpt-cell"><div class="lbl">Largest loss trade</div><div class="val neg">${_fmtMoney(a.largestLoss)}</div></div>
+          <div class="rpt-cell"><div class="lbl">Average profit trade</div><div class="val pos">${_fmtMoney(a.avgWin)}</div></div>
+          <div class="rpt-cell"><div class="lbl">Average loss trade</div><div class="val neg">${_fmtMoney(a.avgLoss)}</div></div>
+        </div>
+      </div>
+
+      <div class="rpt-section">
+        <h3>Streaks</h3>
+        <div class="rpt-grid">
+          <div class="rpt-cell"><div class="lbl">Max consec wins</div><div class="val pos">${a.streaksDollar?.maxConsecWins||0}</div><div class="sub">${_fmtMoney(a.streaksDollar?.maxConsecWinsProfit)}</div></div>
+          <div class="rpt-cell"><div class="lbl">Max consec losses</div><div class="val neg">${a.streaksDollar?.maxConsecLosses||0}</div><div class="sub">${_fmtMoney(a.streaksDollar?.maxConsecLossesLoss)}</div></div>
+          <div class="rpt-cell"><div class="lbl">Largest consec profit</div><div class="val pos">${_fmtMoney(a.streaksDollar?.largestConsecProfit)}</div></div>
+          <div class="rpt-cell"><div class="lbl">Largest consec loss</div><div class="val neg">${_fmtMoney(a.streaksDollar?.largestConsecLoss)}</div></div>
+          <div class="rpt-cell"><div class="lbl">Avg consec wins / losses</div><div class="val">${a.streaksDollar?.avgConsecWins||'—'} / ${a.streaksDollar?.avgConsecLosses||'—'}</div></div>
+        </div>
+      </div>
+
+      <div class="rpt-section">
+        <h3>Equity Curve</h3>
+        <div class="rpt-chart" id="rpt-equity-chart"></div>
+      </div>
+
+      <div class="rpt-section">
+        <h3>Trade Log</h3>
+        <div style="overflow-x:auto;">
+          <table class="rpt-table">
+            <thead><tr><th>#</th><th>Dir</th><th>Entry Date</th><th>Exit Date</th><th>Hold</th><th>Shares</th><th>Avg Entry</th><th>P/L</th><th>R</th></tr></thead>
+            <tbody>
+              ${(a.trades||[]).map((t,i)=>`<tr>
+                <td>${i+1}</td>
+                <td style="color:${t.direction==='long'?'var(--green)':'var(--red)'};">${t.direction.toUpperCase()}</td>
+                <td>${t.entryDate||''}</td>
+                <td>${t.exitDate||''}</td>
+                <td>${t.holdDays}d</td>
+                <td>${t.shares}</td>
+                <td>$${_fmtNum(t.avgEntry,2)}</td>
+                <td style="color:${(t.pl||0)>=0?'var(--green)':'var(--red)'};">${_fmtMoney(t.pl)}</td>
+                <td style="color:${(t.r||0)>=0?'var(--green)':'var(--red)'};">${t.r==null?'—':_fmtR(t.r)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Wire buttons
+  document.getElementById('rpt-back').addEventListener('click',()=>showPage('simulations'));
+  document.getElementById('rpt-refresh').addEventListener('click',async()=>{
+    el.innerHTML='<div style="color:var(--muted);padding:20px;">Re-analyzing…</div>';
+    const r=await fetch(`/api/simulations/${a.simId}/analyze`,{method:'POST'});
+    const j=await r.json();
+    if(!r.ok){el.innerHTML=`<div class="rpt-banner warning">${_safeTxt(j.error||'Failed')}</div>`;return;}
+    renderAnalysisReport(j);
+  });
+  document.getElementById('rpt-export-csv').addEventListener('click',()=>exportAnalysisCSV(a));
+  document.getElementById('rpt-export-txt').addEventListener('click',()=>exportAnalysisText(a));
+  document.getElementById('rpt-print').addEventListener('click',async()=>{
+    const btn=document.getElementById('rpt-print');
+    const origLabel=btn.textContent;
+    btn.disabled=true;btn.textContent='Generating PDF…';
+    try{
+      const r=await fetch(`/api/simulations/${a.simId}/analyze/pdf`);
+      if(!r.ok){const j=await r.json().catch(()=>({}));flash('PDF failed: '+(j.error||r.status));return;}
+      const blob=await r.blob();
+      const url=URL.createObjectURL(blob);
+      const link=document.createElement('a');link.href=url;link.download=`${(a.simName||'analysis').replace(/[^\w\-]/g,'_')}_analysis.pdf`;document.body.appendChild(link);link.click();link.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }catch(e){flash('PDF failed: '+e.message);}
+    finally{btn.disabled=false;btn.textContent=origLabel;}
+  });
+
+  // Equity curve chart
+  renderEquityChart(a);
+}
+
+function _dedupByDate(pts){
+  // Lightweight-charts requires strictly increasing, unique time values.
+  // When multiple trades exit on the same date, keep only the last (final)
+  // balance for that date — it's the end-of-day running balance anyway.
+  const map=new Map();
+  for(const p of pts)map.set(p.time,p.value);
+  return [...map.entries()].sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:0).map(([time,value])=>({time,value}));
+}
+
+function renderEquityChart(a){
+  const host=document.getElementById('rpt-equity-chart');
+  if(!host)return;
+  host.innerHTML='';
+  if(_analysisEquityChart){try{_analysisEquityChart.remove();}catch(e){}_analysisEquityChart=null;}
+  const rawPts=(a.equityCurve||[]).filter(p=>p.date).map(p=>({time:p.date,value:p.balance}));
+  const pts=_dedupByDate(rawPts);
+  if(!pts.length){host.innerHTML='<div style="color:var(--muted);padding:20px;">No closed trades to plot.</div>';return;}
+  const cap=a.startingCapital;
+  _analysisEquityChart=LightweightCharts.createChart(host,{
+    width:host.clientWidth,height:host.clientHeight,
+    layout:{background:{color:'#111418'},textColor:'#e8f0f8'},
+    grid:{vertLines:{visible:false},horzLines:{color:'rgba(255,255,255,0.05)'}},
+    rightPriceScale:{borderColor:'#1f2833',scaleMargins:{top:0.15,bottom:0.10}},
+    timeScale:{borderColor:'#1f2833',timeVisible:false},
+    crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
+    handleScroll:false,handleScale:false,
+  });
+  // Dashed reference line at starting capital — same pattern as the in-sim equity pane.
+  const ref=_analysisEquityChart.addLineSeries({
+    color:'rgba(138,143,152,0.45)',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,
+    priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,
+  });
+  ref.setData(pts.map(p=>({time:p.time,value:cap})));
+  // Baseline series with red/green fills relative to starting capital.
+  const baseline=_analysisEquityChart.addBaselineSeries({
+    baseValue:{price:cap,type:'price'},
+    topLineColor:'#26a69a',bottomLineColor:'#ef5350',
+    topFillColor1:'rgba(38,166,154,0.35)',topFillColor2:'rgba(38,166,154,0.05)',
+    bottomFillColor1:'rgba(239,83,80,0.05)',bottomFillColor2:'rgba(239,83,80,0.35)',
+    lineWidth:2,priceLineVisible:false,lastValueVisible:true,crosshairMarkerVisible:false,
+  });
+  baseline.setData(pts);
+  try{_analysisEquityChart.timeScale().fitContent();}catch(e){}
+}
+
+function exportAnalysisCSV(a){
+  const rows=[];
+  rows.push(['Metric','Value']);
+  const metrics={
+    'Simulation':a.simName,'Ticker':a.ticker,'Start Date':a.simStartDate,'Current Date':a.simCurrentDate,
+    'Progress %':a.progress,'Bars in test':a.barsInTest,'Total Trades':a.totalTrades,'Win Rate %':a.winRatePct,
+    'Starting Capital':a.startingCapital,'Final Balance':a.finalBalance,
+    'Total R':a.totalR,'Expectancy (R)':a.expectancyR,'Profit Factor (R)':a.profitFactorR,
+    'Max Drawdown (R)':a.maxDrawdownR,'Sharpe (trade R)':a.sharpeTradesR,
+    'Total Net Profit':a.totalNetProfit,'Gross Profit':a.grossProfit,'Gross Loss':a.grossLoss,
+    'Profit Factor ($)':a.profitFactor,'Expected Payoff':a.expectedPayoff,
+    'Absolute Drawdown':a.absoluteDrawdown,'Maximal Drawdown':a.maximalDrawdown,'Maximal Drawdown %':a.maximalDrawdownPct,
+    'Relative Drawdown %':a.relativeDrawdownPct,'Relative Drawdown $':a.relativeDrawdownAbs,
+    'CAGR %':a.cagrPct,'Sharpe (daily, all days)':a.sharpeDaily,'Sharpe (daily, exit days)':a.sharpeDailyTradeDays,
+    'Longs':a.longs,'Long Wins':a.longWins,'Long Win Rate %':a.longWinRatePct,
+    'Shorts':a.shorts,'Short Wins':a.shortWins,'Short Win Rate %':a.shortWinRatePct,
+    'Largest Win':a.largestWin,'Largest Loss':a.largestLoss,'Avg Win':a.avgWin,'Avg Loss':a.avgLoss,
+    'Avg Hold Days':a.avgHoldDays,
+    'Max Consec Wins':a.streaksDollar?.maxConsecWins,'Max Consec Losses':a.streaksDollar?.maxConsecLosses,
+    'Largest Consec Profit':a.streaksDollar?.largestConsecProfit,'Largest Consec Loss':a.streaksDollar?.largestConsecLoss,
+  };
+  for(const[k,v]of Object.entries(metrics))rows.push([k,v==null?'':String(v)]);
+  rows.push([]);
+  rows.push(['Trade #','Direction','Entry Date','Exit Date','Hold Days','Shares','Avg Entry','P/L ($)','R']);
+  (a.trades||[]).forEach((t,i)=>rows.push([i+1,t.direction,t.entryDate||'',t.exitDate||'',t.holdDays,t.shares,t.avgEntry,t.pl,t.r==null?'':t.r]));
+  const csv=rows.map(r=>r.map(c=>{const s=String(c==null?'':c);return s.includes(',')||s.includes('"')?'"'+s.replace(/"/g,'""')+'"':s;}).join(',')).join('\n');
+  _download(csv,`${(a.simName||'analysis').replace(/[^\w\-]/g,'_')}_analysis.csv`,'text/csv');
+}
+
+function exportAnalysisText(a){
+  const lines=[];
+  lines.push('═══════════════════════════════════════════════════════════════');
+  lines.push(`  ANALYSIS REPORT — ${a.simName||''}`);
+  lines.push('═══════════════════════════════════════════════════════════════');
+  lines.push(`  Ticker:           ${a.ticker}`);
+  lines.push(`  Sim Range:        ${a.simStartDate||'?'} → ${a.simCurrentDate||'?'} (${a.barsInTest||0} bars, ${a.yearsElapsed||'?'} yr)`);
+  lines.push(`  Progress:         ${a.isComplete?'COMPLETE':a.progress+'%'}`);
+  lines.push(`  Generated:        ${(a.generatedAt||'').slice(0,19).replace('T',' ')} UTC`);
+  lines.push('');
+  lines.push('── HEADLINE (R-based) ─────────────────────────────────────────');
+  lines.push(`  Total R:          ${_fmtR(a.totalR)}`);
+  lines.push(`  Expectancy:       ${_fmtR(a.expectancyR)} per trade`);
+  lines.push(`  Profit Factor:    ${_fmtNum(a.profitFactorR,2)}`);
+  lines.push(`  Max Drawdown:     -${_fmtNum(a.maxDrawdownR,2)}R`);
+  lines.push(`  Max R win/loss:   ${_fmtR(a.maxR)} / ${_fmtR(a.minR)}`);
+  lines.push(`  Sharpe (trade R): ${_fmtNum(a.sharpeTradesR,2)}`);
+  lines.push('');
+  lines.push('── DOLLAR-BASED ───────────────────────────────────────────────');
+  lines.push(`  Starting:         ${_fmtMoney(a.startingCapital)}`);
+  lines.push(`  Final:            ${_fmtMoney(a.finalBalance)}`);
+  lines.push(`  Total Net Profit: ${_fmtMoney(a.totalNetProfit)}`);
+  lines.push(`  Gross Profit:     ${_fmtMoney(a.grossProfit)}`);
+  lines.push(`  Gross Loss:       ${_fmtMoney(a.grossLoss)}`);
+  lines.push(`  Profit Factor:    ${_fmtNum(a.profitFactor,2)}`);
+  lines.push(`  Expected Payoff:  ${_fmtMoney(a.expectedPayoff)}`);
+  lines.push(`  Absolute DD:      ${_fmtMoney(a.absoluteDrawdown)}`);
+  lines.push(`  Maximal DD:       ${_fmtMoney(a.maximalDrawdown)} (${_fmtPct(a.maximalDrawdownPct)})`);
+  lines.push(`  Relative DD:      ${_fmtPct(a.relativeDrawdownPct)} (${_fmtMoney(a.relativeDrawdownAbs)})`);
+  lines.push(`  CAGR:             ${_fmtPct(a.cagrPct,2)}`);
+  lines.push(`  Sharpe (daily):   ${_fmtNum(a.sharpeDaily,2)}   [all days, rf=0, √252]`);
+  lines.push(`  Sharpe (exit-d):  ${_fmtNum(a.sharpeDailyTradeDays,2)}   [exit-day only]`);
+  lines.push('');
+  lines.push('── TRADE COUNTS ───────────────────────────────────────────────');
+  lines.push(`  Total:            ${a.totalTrades}   (${a.wins}W ${a.losses}L${a.breakeven?' '+a.breakeven+'B':''})`);
+  lines.push(`  Win Rate:         ${_fmtPct(a.winRatePct)}`);
+  lines.push(`  Longs:            ${a.longs} (${_fmtPct(a.longWinRatePct)} won)`);
+  lines.push(`  Shorts:           ${a.shorts} (${_fmtPct(a.shortWinRatePct)} won)`);
+  lines.push(`  Avg hold:         ${_fmtNum(a.avgHoldDays,1)}d`);
+  lines.push(`  Largest win:      ${_fmtMoney(a.largestWin)}`);
+  lines.push(`  Largest loss:     ${_fmtMoney(a.largestLoss)}`);
+  lines.push('');
+  lines.push('── STREAKS ────────────────────────────────────────────────────');
+  lines.push(`  Max consec wins:  ${a.streaksDollar?.maxConsecWins||0} (${_fmtMoney(a.streaksDollar?.maxConsecWinsProfit)})`);
+  lines.push(`  Max consec losses:${a.streaksDollar?.maxConsecLosses||0} (${_fmtMoney(a.streaksDollar?.maxConsecLossesLoss)})`);
+  lines.push('');
+  lines.push('── TRADE LOG ──────────────────────────────────────────────────');
+  lines.push('  #   Dir   Entry Date    Exit Date     Hold  Shares     P/L        R');
+  (a.trades||[]).forEach((t,i)=>{
+    const n=String(i+1).padStart(3);
+    const dir=(t.direction||'').toUpperCase().padEnd(5);
+    const ed=(t.entryDate||'').padEnd(12);
+    const xd=(t.exitDate||'').padEnd(12);
+    const hd=String(t.holdDays||0).padStart(4)+'d';
+    const sh=String(t.shares||0).padStart(6);
+    const pl=_fmtMoney(t.pl).padStart(11);
+    const r=(t.r==null?'—':_fmtR(t.r)).padStart(8);
+    lines.push(`  ${n} ${dir} ${ed} ${xd} ${hd} ${sh} ${pl} ${r}`);
+  });
+  const txt=lines.join('\n');
+  _download(txt,`${(a.simName||'analysis').replace(/[^\w\-]/g,'_')}_analysis.txt`,'text/plain');
+}
+
+function _download(content,filename,mime){
+  const blob=new Blob([content],{type:mime||'text/plain'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+async function openCompareReport(ids){
+  showPage('compare');
+  const el=document.getElementById('compare-content');
+  el.innerHTML='<div style="color:var(--muted);padding:20px;">Computing analyses for '+ids.length+' simulations…</div>';
+  try{
+    const r=await fetch('/api/simulations/compare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});
+    const j=await r.json();
+    if(!r.ok){el.innerHTML=`<div class="rpt-banner warning">${_safeTxt(j.error||'Compare failed')}</div>`;return;}
+    renderCompareReport(j);
+  }catch(e){
+    el.innerHTML=`<div class="rpt-banner warning">${_safeTxt(e.message)}</div>`;
+  }
+}
+
+function renderCompareReport(j){
+  const el=document.getElementById('compare-content');
+  const analyses=j.analyses||[];
+  const errors=j.errors||[];
+  if(analyses.length<2){
+    el.innerHTML=`<div class="rpt"><div class="rpt-header"><div class="rpt-title">Compare</div><div class="rpt-actions"><button class="sim-btn" id="cmp-back">← Back</button></div></div><div class="rpt-banner warning">Need at least 2 analyzable simulations. Errors: ${errors.map(e=>_safeTxt(e.id+': '+e.error)).join('; ')||'none'}</div></div>`;
+    document.getElementById('cmp-back').addEventListener('click',()=>showPage('simulations'));
+    return;
+  }
+
+  // Metric definitions: key, label, higherIsBetter, formatter
+  // section:'r'|'dollar'|'counts'|'streaks' drives optional section headers.
+  const metrics=[
+    // R-BASED (PRIMARY)
+    {k:'totalR',label:'Total R',hb:true,f:_fmtR,primary:true,section:'r'},
+    {k:'expectancyR',label:'Expectancy (R)',hb:true,f:_fmtR,primary:true,section:'r'},
+    {k:'profitFactorR',label:'Profit Factor (R)',hb:true,f:v=>_fmtNum(v,2),primary:true,section:'r'},
+    {k:'maxDrawdownR',label:'Max Drawdown (R)',hb:false,f:v=>'-'+_fmtNum(v,2)+'R',primary:true,section:'r'},
+    {k:'sharpeTradesR',label:'Sharpe (trade R)',hb:true,f:v=>_fmtNum(v,2),primary:true,section:'r'},
+    {k:'maxR',label:'Max R win',hb:true,f:_fmtR,section:'r'},
+    {k:'minR',label:'Max R loss',hb:true,f:_fmtR,section:'r'},
+    // DOLLAR-BASED
+    {k:'startingCapital',label:'Starting Capital',hb:null,f:_fmtMoney,section:'dollar'},
+    {k:'finalBalance',label:'Final Balance',hb:true,f:_fmtMoney,section:'dollar'},
+    {k:'totalNetProfit',label:'Total Net Profit',hb:true,f:_fmtMoney,section:'dollar'},
+    {k:'grossProfit',label:'Gross Profit',hb:true,f:_fmtMoney,section:'dollar'},
+    {k:'grossLoss',label:'Gross Loss',hb:true,f:_fmtMoney,section:'dollar'},
+    {k:'profitFactor',label:'Profit Factor ($)',hb:true,f:v=>_fmtNum(v,2),section:'dollar'},
+    {k:'expectedPayoff',label:'Expected Payoff',hb:true,f:_fmtMoney,section:'dollar'},
+    {k:'absoluteDrawdown',label:'Absolute Drawdown',hb:false,f:_fmtMoney,section:'dollar'},
+    {k:'maximalDrawdown',label:'Maximal Drawdown ($)',hb:false,f:_fmtMoney,section:'dollar'},
+    {k:'maximalDrawdownPct',label:'Maximal Drawdown %',hb:false,f:v=>_fmtPct(v,2),section:'dollar'},
+    {k:'relativeDrawdownPct',label:'Relative Drawdown %',hb:false,f:v=>_fmtPct(v,2),section:'dollar'},
+    {k:'relativeDrawdownAbs',label:'Relative Drawdown $',hb:false,f:_fmtMoney,section:'dollar'},
+    {k:'cagrPct',label:'CAGR %',hb:true,f:v=>_fmtPct(v,2),section:'dollar'},
+    {k:'sharpeDaily',label:'Sharpe (daily, all)',hb:true,f:v=>_fmtNum(v,2),section:'dollar'},
+    {k:'sharpeDailyTradeDays',label:'Sharpe (exit-days)',hb:true,f:v=>_fmtNum(v,2),section:'dollar'},
+    // COUNTS
+    {k:'totalTrades',label:'Total Trades',hb:null,f:v=>String(v),section:'counts'},
+    {k:'wins',label:'Profit Trades',hb:true,f:v=>String(v),section:'counts'},
+    {k:'losses',label:'Loss Trades',hb:false,f:v=>String(v),section:'counts'},
+    {k:'winRatePct',label:'Win Rate %',hb:true,f:v=>_fmtPct(v,2),section:'counts'},
+    {k:'longs',label:'Long Positions',hb:null,f:v=>String(v),section:'counts'},
+    {k:'longWinRatePct',label:'Long Win %',hb:true,f:v=>_fmtPct(v,2),section:'counts'},
+    {k:'shorts',label:'Short Positions',hb:null,f:v=>String(v),section:'counts'},
+    {k:'shortWinRatePct',label:'Short Win %',hb:true,f:v=>_fmtPct(v,2),section:'counts'},
+    {k:'avgHoldDays',label:'Avg Hold (d)',hb:null,f:v=>_fmtNum(v,1),section:'counts'},
+    {k:'largestWin',label:'Largest Profit Trade',hb:true,f:_fmtMoney,section:'counts'},
+    {k:'largestLoss',label:'Largest Loss Trade',hb:true,f:_fmtMoney,section:'counts'},
+    {k:'avgWin',label:'Average Profit Trade',hb:true,f:_fmtMoney,section:'counts'},
+    {k:'avgLoss',label:'Average Loss Trade',hb:true,f:_fmtMoney,section:'counts'},
+    {k:'barsInTest',label:'Bars in Test',hb:null,f:v=>String(v),section:'counts'},
+    // STREAKS (nested under streaksDollar)
+    {k:'__maxConsecWins',label:'Max Consec Wins',hb:true,f:v=>String(v),section:'streaks',extract:a=>a.streaksDollar?.maxConsecWins},
+    {k:'__maxConsecWinsProfit',label:'  → profit ($)',hb:true,f:_fmtMoney,section:'streaks',extract:a=>a.streaksDollar?.maxConsecWinsProfit},
+    {k:'__maxConsecLosses',label:'Max Consec Losses',hb:false,f:v=>String(v),section:'streaks',extract:a=>a.streaksDollar?.maxConsecLosses},
+    {k:'__maxConsecLossesLoss',label:'  → loss ($)',hb:true,f:_fmtMoney,section:'streaks',extract:a=>a.streaksDollar?.maxConsecLossesLoss},
+    {k:'__largestConsecProfit',label:'Largest Consec Profit',hb:true,f:_fmtMoney,section:'streaks',extract:a=>a.streaksDollar?.largestConsecProfit},
+    {k:'__largestConsecLoss',label:'Largest Consec Loss',hb:true,f:_fmtMoney,section:'streaks',extract:a=>a.streaksDollar?.largestConsecLoss},
+    {k:'__avgConsecWins',label:'Avg Consec Wins',hb:true,f:v=>_fmtNum(v,2),section:'streaks',extract:a=>a.streaksDollar?.avgConsecWins},
+    {k:'__avgConsecLosses',label:'Avg Consec Losses',hb:false,f:v=>_fmtNum(v,2),section:'streaks',extract:a=>a.streaksDollar?.avgConsecLosses},
+  ];
+
+  // Compute cell colors via heatmap
+  function cellStyle(vals,idx,hb){
+    if(hb===null)return '';
+    const finite=vals.map(v=>Number.isFinite(v)?v:null).filter(v=>v!==null);
+    if(finite.length<2)return '';
+    const mn=Math.min(...finite),mx=Math.max(...finite);
+    if(mn===mx)return '';
+    const v=vals[idx];
+    if(!Number.isFinite(v))return 'color:var(--muted);';
+    // Normalize: 0 is worst, 1 is best (inverted if hb=false)
+    let t=(v-mn)/(mx-mn);
+    if(!hb)t=1-t;
+    // Color: interpolate from red (t=0) → neutral (t=0.5) → green (t=1)
+    const r=t<0.5?239:Math.round(239-(239-38)*(t-0.5)*2);
+    const g=t<0.5?Math.round(83+(166-83)*t*2):166;
+    const b=t<0.5?Math.round(80+(154-80)*t*2):154;
+    const alpha=Math.abs(t-0.5)*2; // stronger tint at extremes
+    return `background:rgba(${r},${g},${b},${(alpha*0.25).toFixed(3)});color:rgb(${r},${g},${b});font-weight:600;`;
+  }
+
+  const sectionTitles={r:'R-based (primary)',dollar:'Dollar-based',counts:'Trade Counts',streaks:'Streaks'};
+  let lastSection=null;
+  const rows=metrics.map(m=>{
+    const vals=analyses.map(a=>m.extract?m.extract(a):a[m.k]);
+    const numericVals=vals.map(v=>(typeof v==='number'&&Number.isFinite(v))?v:null);
+    const cells=vals.map((v,i)=>`<td class="metric" style="${cellStyle(numericVals,i,m.hb)}">${v==null||(typeof v==='number'&&!Number.isFinite(v))?'—':m.f(v)}</td>`).join('');
+    let header='';
+    if(m.section&&m.section!==lastSection){
+      const span=analyses.length+1;
+      header=`<tr><td colspan="${span}" style="background:var(--bg2);color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;padding:10px 8px 4px 8px;border-top:1px solid var(--border);">${sectionTitles[m.section]||m.section}</td></tr>`;
+      lastSection=m.section;
+    }
+    return header+`<tr><td class="label" style="${m.primary?'color:var(--accent);font-weight:500;':''}">${m.label}${m.primary?' ★':''}</td>${cells}</tr>`;
+  }).join('');
+
+  const headers=analyses.map(a=>{
+    const complete=a.isComplete||(a.progress||0)>=100;
+    return `<td class="sim-hdr">${_safeTxt(a.simName)} <span class="ticker">[${_safeTxt(a.ticker)}]</span>${complete?'':`<span class="rpt-incomplete">(${a.progress||0}%)</span>`}</td>`;
+  }).join('');
+
+  el.innerHTML=`
+    <div class="rpt">
+      <div class="rpt-header">
+        <div style="flex:1;">
+          <div class="rpt-title">Compare — ${analyses.length} Simulations</div>
+          <div class="rpt-subtitle">Side-by-side with heatmap (★ = primary R-based)</div>
+        </div>
+        <div class="rpt-actions no-print">
+          <button class="sim-btn" id="cmp-back">← Back</button>
+          <button class="sim-btn" id="cmp-export-csv">CSV</button>
+          <button class="sim-btn primary" id="cmp-print">Download PDF</button>
+        </div>
+      </div>
+      ${errors.length?`<div class="rpt-banner warning">Skipped: ${errors.map(e=>_safeTxt(e.id+' ('+e.error+')')).join(', ')}</div>`:''}
+      <div class="rpt-section">
+        <table class="rpt-table rpt-heatmap" style="width:100%;">
+          <thead><tr><td class="label"></td>${headers}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="rpt-section">
+        <h3>Equity Curves (Normalized, starting = 100)</h3>
+        <div class="rpt-chart" id="cmp-equity-chart"></div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('cmp-back').addEventListener('click',()=>showPage('simulations'));
+  document.getElementById('cmp-export-csv').addEventListener('click',()=>exportCompareCSV(analyses,metrics));
+  document.getElementById('cmp-print').addEventListener('click',async()=>{
+    const btn=document.getElementById('cmp-print');
+    const origLabel=btn.textContent;
+    btn.disabled=true;btn.textContent='Generating PDF…';
+    try{
+      const ids=analyses.map(a=>a.simId);
+      const r=await fetch('/api/simulations/compare/pdf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});
+      if(!r.ok){const j=await r.json().catch(()=>({}));flash('PDF failed: '+(j.error||r.status));return;}
+      const blob=await r.blob();
+      const url=URL.createObjectURL(blob);
+      const link=document.createElement('a');link.href=url;link.download='comparison.pdf';document.body.appendChild(link);link.click();link.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }catch(e){flash('PDF failed: '+e.message);}
+    finally{btn.disabled=false;btn.textContent=origLabel;}
+  });
+
+  // Render normalized equity curves on one chart
+  renderCompareEquityChart(analyses);
+}
+
+let _compareEquityChart=null;
+function renderCompareEquityChart(analyses){
+  const host=document.getElementById('cmp-equity-chart');
+  if(!host)return;
+  host.innerHTML='';
+  if(_compareEquityChart){try{_compareEquityChart.remove();}catch(e){}_compareEquityChart=null;}
+  _compareEquityChart=LightweightCharts.createChart(host,{
+    width:host.clientWidth,height:host.clientHeight,
+    layout:{background:{color:'#111418'},textColor:'#e8f0f8'},
+    grid:{vertLines:{visible:false},horzLines:{color:'rgba(255,255,255,0.05)'}},
+    rightPriceScale:{borderColor:'#1f2833'},
+    timeScale:{borderColor:'#1f2833',timeVisible:false},
+    crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
+    handleScroll:false,handleScale:false,
+  });
+  const palette=['#00d4aa','#f5c842','#ff6b35','#60a5fa','#c084fc'];
+  analyses.forEach((a,i)=>{
+    const cap=a.startingCapital||100000;
+    const rawPts=(a.equityCurve||[]).filter(p=>p.date).map(p=>({time:p.date,value:p.balance/cap*100}));
+    const pts=_dedupByDate(rawPts);
+    if(!pts.length)return;
+    const s=_compareEquityChart.addLineSeries({color:palette[i%palette.length],lineWidth:2,priceLineVisible:false,lastValueVisible:true,title:a.simName});
+    s.setData(pts);
+  });
+  const baseline=_compareEquityChart.addLineSeries({color:'rgba(255,255,255,0.25)',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,priceLineVisible:false,lastValueVisible:false});
+  // Find full date range
+  let minD=null,maxD=null;
+  analyses.forEach(a=>{(a.equityCurve||[]).forEach(p=>{if(p.date){if(!minD||p.date<minD)minD=p.date;if(!maxD||p.date>maxD)maxD=p.date;}});});
+  if(minD&&maxD)baseline.setData([{time:minD,value:100},{time:maxD,value:100}]);
+  try{_compareEquityChart.timeScale().fitContent();}catch(e){}
+}
+
+function exportCompareCSV(analyses,metrics){
+  const rows=[];
+  rows.push(['Metric',...analyses.map(a=>a.simName)]);
+  rows.push(['Ticker',...analyses.map(a=>a.ticker)]);
+  rows.push(['Progress',...analyses.map(a=>a.isComplete||(a.progress||0)>=100?'Complete':(a.progress+'%'))]);
+  rows.push([]);
+  metrics.forEach(m=>{
+    rows.push([m.label,...analyses.map(a=>{const v=m.extract?m.extract(a):a[m.k];return v==null?'':String(v);})]);
+  });
+  const csv=rows.map(r=>r.map(c=>{const s=String(c==null?'':c);return s.includes(',')||s.includes('"')?'"'+s.replace(/"/g,'""')+'"':s;}).join(',')).join('\n');
+  _download(csv,'comparison.csv','text/csv');
 }
 
 // Import data-check flow

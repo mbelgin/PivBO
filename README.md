@@ -15,22 +15,23 @@ subscribing to data, or sending any activity to the cloud.
 - ADR(x) and ATR(x) indicators in the crosshair info bar (editable periods)
 - Log / linear price scale
 - Drawing tools: h-line, line, ray, segment, text, measure, note
-- Drawings persist per-simulation (not leaked to global state)
 - Optional secondary chart above the main chart, date-synced (e.g. overlay
-  SPY on your trade ticker for market context)
+  QQQ on your trade ticker for market context)
 
 **Simulation engine**
 - Bar-by-bar playback with arrow keys (`←` / `→`)
 - Jump to start / end
 - Retreating past a trade's creation bar permanently undoes it
-- Configurable stop-loss fill mode per simulation:
-  - Strict (default) — any intrabar touch of SL triggers stop
-  - Wick-forgiving — only stops if open or close crosses SL
-  - Close-only — stops only if the bar closes past SL
+- Stop-loss fill: strict touch of the bar's low/high (long/short) triggers
+  the stop, filling at SL or at the open if the bar gapped past SL
+- Optional "Flexed opening-bar SL" toggle: on the bar a trade enters,
+  only the bar's close is used to check SL and any fill is capped at SL —
+  prevents impossible fills when the bar opens past SL, rallies to trigger
+  your entry, dips back, then closes above SL
 
 **Trade management**
 - Market + limit orders (limit orders can have a max gap%; stop-limit behavior)
-- Stop loss with drag-to-adjust on the chart
+- Stop loss with drag-to-adjust on the chart (pre-entry)
 - Partial close via quick fractions (1/4, 1/3, 1/2, 3/4, ALL) or manual shares
 - Reverse position, flatten all (`F`)
 - Position sizing from risk% of current equity (auto-computes shares)
@@ -50,7 +51,6 @@ subscribing to data, or sending any activity to the cloud.
 **Data**
 - Local daily CSVs in `collected_stocks/`
 - Optional Yahoo Finance download integration for fetching / updating tickers
-- SPY benchmark overlay
 
 ## Quickstart
 

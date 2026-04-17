@@ -9,14 +9,17 @@ __pycache__/
 *.swp
 *.swo
 
-# Claude Code / agent tooling
+# Local tooling / agent state (never shipped)
 .claude/
 .graphify_*
 graphify-out/
+CLAUDE.md
+PLAN_*.md
 
 # Local user state (generated at runtime, not shipped)
 simulations/
 templates/
+analyses/
 drawings.json
 sandbox/
 

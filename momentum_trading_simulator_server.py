@@ -36,6 +36,7 @@ _SPY_BARS_CACHE = None
 # Simulation storage
 SIMULATIONS_DIR = os.path.join(SCRIPT_DIR, "simulations")
 TEMPLATES_DIR = os.path.join(SCRIPT_DIR, "templates")
+ANALYSES_DIR = os.path.join(SCRIPT_DIR, "analyses")
 _TICKER_RANGES_CACHE = None
 
 def _normalize_date_maybe(raw):
@@ -394,17 +395,44 @@ def _rebuild_sim_index():
             sim_len = max(1, total - start_idx)
             progress = 100.0 if is_complete else min(100.0, max(0.0, (cur_idx - start_idx) / (sim_len - 1) * 100)) if sim_len > 1 else 100.0
 
+            # Resolved bar dates for display — start bar is what the user
+            # actually picked (or the first available bar); end is the last
+            # bar in the ticker's data; currentBarDate is where an in-progress
+            # sim is currently paused.
+            start_date_resolved = bars[start_idx].get("time", "") if bars and 0 <= start_idx < total else ""
+            end_date_resolved = bars[-1].get("time", "") if bars else ""
+            cur_date_resolved = bars[cur_idx].get("time", "") if bars and 0 <= cur_idx < total else ""
+
+            # Check analysis cache status
+            cache_path = os.path.join(ANALYSES_DIR, f"{sim.get('id', fname[:-5])}.json")
+            has_cache = os.path.exists(cache_path)
+            cache_gen = None
+            if has_cache:
+                try:
+                    with open(cache_path, "r", encoding="utf-8") as cf:
+                        cache_gen = json.load(cf).get("generatedAt")
+                except Exception:
+                    pass
+            last_opened = sim.get("lastOpenedAt", "")
+            is_stale = bool(has_cache) and bool(last_opened) and cache_gen and cache_gen < last_opened
+
             index.append({
                 "id": sim.get("id", fname[:-5]),
                 "name": sim.get("name", ""),
                 "ticker": sim.get("ticker", ""),
                 "created": sim.get("created", ""),
                 "modified": sim.get("modified", ""),
+                "lastOpenedAt": last_opened,
                 "startingCapital": sim.get("config", {}).get("startingCapital", 0),
                 "currentCapital": sim.get("analytics", {}).get("currentCapital", 0),
                 "totalTrades": sim.get("analytics", {}).get("totalTrades", 0),
                 "isComplete": is_complete,
                 "progress": round(progress, 1),
+                "startDate": start_date_resolved,
+                "endDate": end_date_resolved,
+                "currentBarDate": cur_date_resolved,
+                "hasAnalysis": has_cache,
+                "analysisStale": is_stale,
             })
         except Exception:
             continue
@@ -417,8 +445,25 @@ def _rebuild_sim_index():
 def api_simulations_list():
     _ensure_sim_dir()
     index = _load_sim_index()
-    if not index:
+    if not index or any("hasAnalysis" not in e or "startDate" not in e for e in index):
         index = _rebuild_sim_index()
+    # Refresh analysis-cache status on every read (cheap file-stat check).
+    # Without this the list stays stale until the next sim write.
+    for entry in index:
+        sid = entry.get("id")
+        if not sid:
+            continue
+        cache_path = os.path.join(ANALYSES_DIR, f"{sid}.json")
+        has_cache = os.path.exists(cache_path)
+        cache_gen = None
+        if has_cache:
+            try:
+                with open(cache_path, "r", encoding="utf-8") as cf:
+                    cache_gen = json.load(cf).get("generatedAt")
+            except Exception:
+                pass
+        entry["hasAnalysis"] = has_cache
+        entry["analysisStale"] = bool(has_cache and entry.get("lastOpenedAt") and cache_gen and cache_gen < entry["lastOpenedAt"])
     return jsonify(index)
 
 
@@ -505,6 +550,13 @@ def api_simulation_delete(sim_id):
         return jsonify({"error": "Simulation not found"}), 404
     try:
         os.remove(path)
+        # Clean up any cached analysis
+        apath = _analysis_path(sim_id)
+        if os.path.exists(apath):
+            try:
+                os.remove(apath)
+            except Exception:
+                pass
         _rebuild_sim_index()
         return jsonify({"ok": True})
     except Exception as e:
@@ -560,6 +612,1311 @@ def api_simulation_export(sim_id):
                         headers={"Content-Disposition": f"attachment; filename={sim.get('name', sim_id)}.csv"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ==============================================
+# ANALYSIS ENGINE
+# ==============================================
+
+def _ensure_analyses_dir():
+    os.makedirs(ANALYSES_DIR, exist_ok=True)
+
+
+def _analysis_path(sim_id):
+    return os.path.join(ANALYSES_DIR, f"{sim_id}.json")
+
+
+def _iso_now():
+    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+
+def _safe_div(a, b):
+    try:
+        if b == 0 or b is None:
+            return None
+        return a / b
+    except Exception:
+        return None
+
+
+def _stdev(xs):
+    n = len(xs)
+    if n < 2:
+        return 0.0
+    m = sum(xs) / n
+    var = sum((x - m) ** 2 for x in xs) / (n - 1)
+    return var ** 0.5
+
+
+def _days_between(iso_a, iso_b):
+    try:
+        a = datetime.strptime((iso_a or "")[:10], "%Y-%m-%d")
+        b = datetime.strptime((iso_b or "")[:10], "%Y-%m-%d")
+        return (b - a).days
+    except Exception:
+        return 0
+
+
+def _analyze_trade(trade):
+    """Extract closed-trade summary. Returns None for open/partial trades."""
+    entries = trade.get("entries") or []
+    exits = trade.get("exits") or []
+    if not entries or not exits:
+        return None
+    total_shares = sum(e.get("shares", 0) for e in entries)
+    exit_shares = sum(e.get("shares", 0) for e in exits)
+    if total_shares <= 0:
+        return None
+    if exit_shares < total_shares - 1e-9:
+        return None  # Not fully closed
+    avg_entry = sum(e["price"] * e["shares"] for e in entries) / total_shares
+    direction = trade.get("direction", "long")
+    sign = 1 if direction == "long" else -1
+
+    pl = 0.0
+    for ex in exits:
+        pl += sign * (ex["price"] - avg_entry) * ex["shares"]
+
+    init_risk = trade.get("_initialRisk") or trade.get("riskPerShare") or 0
+    dollar_risk = abs(init_risk) * total_shares if init_risk else 0
+    r_mult = (pl / dollar_risk) if dollar_risk > 0 else None
+
+    entry_date = entries[0]["date"]
+    exit_date = exits[-1]["date"]
+    exit_idx = max((e.get("_atIdx") or 0) for e in exits)
+    entry_idx = trade.get("_createdAtIdx") or 0
+
+    return {
+        "id": trade.get("id"),
+        "direction": direction,
+        "entryDate": entry_date,
+        "exitDate": exit_date,
+        "avgEntry": avg_entry,
+        "shares": total_shares,
+        "pl": pl,
+        "r": r_mult,
+        "dollarRisk": dollar_risk,
+        "holdDays": _days_between(entry_date, exit_date),
+        "holdBars": max(0, exit_idx - entry_idx),
+        "barExitIdx": exit_idx,
+    }
+
+
+def _compute_equity_curve(closed, starting_capital):
+    """Build per-exit-event running balance. Events are ordered by exit _atIdx, then date."""
+    events = []
+    for tr in closed:
+        events.append({"date": tr["exitDate"], "pl": tr["pl"], "r": tr["r"] or 0, "barIdx": tr["barExitIdx"]})
+    events.sort(key=lambda e: (e["barIdx"], e["date"]))
+    curve = [{"date": None, "balance": starting_capital, "pl": 0, "r": 0, "cumR": 0}]
+    bal = starting_capital
+    cum_r = 0.0
+    for ev in events:
+        bal += ev["pl"]
+        cum_r += ev["r"]
+        curve.append({"date": ev["date"], "balance": bal, "pl": ev["pl"], "r": ev["r"], "cumR": cum_r})
+    return curve, events
+
+
+def _drawdown(balances):
+    """Return dict with maximal (largest $) and relative (largest %) drawdown.
+    Per MT4: these may differ — the largest $ drop need not occur at the
+    peak where the largest % drop occurs (that depends on peak magnitude).
+    """
+    if not balances:
+        return {"maxAbs": 0.0, "maxAbsAtPeak": 0.0, "maxAbsPct": 0.0,
+                "maxPct": 0.0, "maxPctAtPeak": 0.0, "maxPctAbs": 0.0}
+    peak = balances[0]
+    max_abs = 0.0
+    peak_at_max_abs = peak
+    max_pct = 0.0
+    peak_at_max_pct = peak
+    abs_at_max_pct = 0.0
+    for b in balances:
+        if b > peak:
+            peak = b
+        dd_abs = peak - b
+        dd_pct = (dd_abs / peak) if peak > 0 else 0
+        if dd_abs > max_abs:
+            max_abs = dd_abs
+            peak_at_max_abs = peak
+        if dd_pct > max_pct:
+            max_pct = dd_pct
+            peak_at_max_pct = peak
+            abs_at_max_pct = dd_abs
+    return {
+        "maxAbs": max_abs, "maxAbsAtPeak": peak_at_max_abs,
+        "maxAbsPct": (max_abs / peak_at_max_abs * 100) if peak_at_max_abs > 0 else 0,
+        "maxPct": max_pct * 100, "maxPctAtPeak": peak_at_max_pct, "maxPctAbs": abs_at_max_pct,
+    }
+
+
+def _consec_streaks(values_signed):
+    """From a list of signed numbers (positive=win, negative=loss), compute streak stats."""
+    max_win_len = 0
+    max_loss_len = 0
+    max_win_sum = 0.0
+    max_win_sum_len = 0
+    max_loss_sum = 0.0
+    max_loss_sum_len = 0
+    win_streaks = []
+    loss_streaks = []
+
+    cur_sign = 0
+    cur_len = 0
+    cur_sum = 0.0
+    for v in values_signed:
+        sgn = 1 if v > 0 else (-1 if v < 0 else 0)
+        if sgn == cur_sign and sgn != 0:
+            cur_len += 1
+            cur_sum += v
+        else:
+            # Close previous streak
+            if cur_sign > 0:
+                win_streaks.append((cur_len, cur_sum))
+            elif cur_sign < 0:
+                loss_streaks.append((cur_len, cur_sum))
+            cur_sign = sgn
+            cur_len = 1 if sgn != 0 else 0
+            cur_sum = v if sgn != 0 else 0
+    # Flush
+    if cur_sign > 0:
+        win_streaks.append((cur_len, cur_sum))
+    elif cur_sign < 0:
+        loss_streaks.append((cur_len, cur_sum))
+
+    for ln, s in win_streaks:
+        if ln > max_win_len:
+            max_win_len = ln
+            max_win_sum_len = s
+        if s > max_win_sum:
+            max_win_sum = s
+    for ln, s in loss_streaks:
+        if ln > max_loss_len:
+            max_loss_len = ln
+            max_loss_sum_len = s
+        if s < max_loss_sum:
+            max_loss_sum = s
+
+    avg_win_len = sum(ln for ln, _ in win_streaks) / len(win_streaks) if win_streaks else 0
+    avg_loss_len = sum(ln for ln, _ in loss_streaks) / len(loss_streaks) if loss_streaks else 0
+    return {
+        "maxConsecWins": max_win_len,
+        "maxConsecWinsProfit": max_win_sum_len,
+        "maxConsecLosses": max_loss_len,
+        "maxConsecLossesLoss": max_loss_sum_len,
+        "largestConsecProfit": max_win_sum,
+        "largestConsecLoss": max_loss_sum,
+        "avgConsecWins": round(avg_win_len, 2),
+        "avgConsecLosses": round(avg_loss_len, 2),
+    }
+
+
+def _daily_sharpe_trade_days(events, starting_capital, periods=252):
+    """Sharpe over exit-days only (biased, high): group PL by date, return per day, annualized."""
+    if not events:
+        return None
+    by_date = {}
+    for e in events:
+        d = (e["date"] or "")[:10]
+        if not d:
+            continue
+        by_date.setdefault(d, 0.0)
+        by_date[d] += e["pl"]
+    if not by_date:
+        return None
+    dates = sorted(by_date.keys())
+    returns = []
+    bal = starting_capital
+    for d in dates:
+        pl = by_date[d]
+        ret = pl / bal if bal > 0 else 0
+        returns.append(ret)
+        bal += pl
+    sd = _stdev(returns)
+    if sd == 0:
+        return None
+    mean = sum(returns) / len(returns)
+    return (mean / sd) * (periods ** 0.5)
+
+
+def _daily_sharpe_all_days(events, bars, start_idx, cur_idx, starting_capital, periods=252):
+    """Canonical time-based Sharpe: return is 0 on days without exits. Annualized by √252."""
+    if not events or not bars or start_idx is None or cur_idx is None:
+        return None
+    by_date = {}
+    for e in events:
+        d = (e["date"] or "")[:10]
+        if not d:
+            continue
+        by_date.setdefault(d, 0.0)
+        by_date[d] += e["pl"]
+    returns = []
+    bal = starting_capital
+    for i in range(start_idx, min(cur_idx + 1, len(bars))):
+        d = (bars[i].get("time") or "")[:10]
+        pl = by_date.get(d, 0.0)
+        ret = pl / bal if bal > 0 else 0
+        returns.append(ret)
+        bal += pl
+    if not returns:
+        return None
+    sd = _stdev(returns)
+    if sd == 0:
+        return None
+    mean = sum(returns) / len(returns)
+    return (mean / sd) * (periods ** 0.5)
+
+
+def _per_trade_sharpe(r_values, years):
+    """Per-trade Sharpe in R: mean(R)/stdev(R), annualized by sqrt(trades_per_year)."""
+    if not r_values or years is None or years <= 0:
+        return None
+    sd = _stdev(r_values)
+    if sd == 0:
+        return None
+    mean = sum(r_values) / len(r_values)
+    trades_per_year = len(r_values) / years
+    return (mean / sd) * (trades_per_year ** 0.5)
+
+
+def compute_analysis(sim):
+    """Compute full analysis from sim JSON. Returns dict. Raises ValueError if insufficient."""
+    trades = sim.get("trades") or []
+    closed = []
+    for t in trades:
+        a = _analyze_trade(t)
+        if a is not None:
+            closed.append(a)
+    if not closed:
+        raise ValueError("No closed trades to analyze")
+
+    # Sort by exit bar/date
+    closed.sort(key=lambda c: (c["barExitIdx"], c["exitDate"]))
+
+    starting_capital = float((sim.get("config") or {}).get("startingCapital") or 100000)
+    curve, events = _compute_equity_curve(closed, starting_capital)
+
+    balances = [pt["balance"] for pt in curve]
+    final_balance = balances[-1]
+    total_pl = final_balance - starting_capital
+
+    wins = [c for c in closed if c["pl"] > 0]
+    losses = [c for c in closed if c["pl"] < 0]
+    breakeven = [c for c in closed if c["pl"] == 0]
+    longs = [c for c in closed if c["direction"] == "long"]
+    shorts = [c for c in closed if c["direction"] == "short"]
+    long_wins = [c for c in longs if c["pl"] > 0]
+    short_wins = [c for c in shorts if c["pl"] > 0]
+
+    gross_profit = sum(c["pl"] for c in wins)
+    gross_loss = sum(c["pl"] for c in losses)  # negative
+    profit_factor = _safe_div(gross_profit, abs(gross_loss)) if gross_loss < 0 else None
+    expected_payoff = total_pl / len(closed) if closed else 0
+
+    # $ drawdown
+    dd = _drawdown(balances)
+    # "Absolute drawdown" (MT4 definition): initial - lowest-ever below initial
+    lowest = min(balances) if balances else starting_capital
+    abs_dd = starting_capital - lowest if lowest < starting_capital else 0
+
+    # R-based drawdown: compute peak-to-trough of cumulative R series.
+    cum_r_series = [pt["cumR"] for pt in curve]
+    peak_r = cum_r_series[0] if cum_r_series else 0
+    max_dd_r = 0
+    for r in cum_r_series:
+        if r > peak_r:
+            peak_r = r
+        r_dd = peak_r - r
+        if r_dd > max_dd_r:
+            max_dd_r = r_dd
+
+    # Consecutive streaks ($ and R)
+    streaks_dollar = _consec_streaks([c["pl"] for c in closed])
+    r_series = [c["r"] for c in closed if c["r"] is not None]
+    streaks_r = _consec_streaks(r_series) if r_series else None
+
+    # R-based metrics
+    total_r = sum(r_series) if r_series else 0
+    expectancy_r = (total_r / len(r_series)) if r_series else None
+    wins_r = [r for r in r_series if r > 0]
+    losses_r = [r for r in r_series if r < 0]
+    gross_r_wins = sum(wins_r) if wins_r else 0
+    gross_r_losses = sum(losses_r) if losses_r else 0
+    profit_factor_r = _safe_div(gross_r_wins, abs(gross_r_losses)) if gross_r_losses < 0 else None
+
+    # Time/CAGR
+    bars = _read_ticker_bars(sim.get("ticker", ""))
+    config = sim.get("config") or {}
+    playback = sim.get("playbackState") or {}
+    start_idx = 0
+    if bars and not config.get("useFirstBar", True) and config.get("startDate"):
+        for i, b in enumerate(bars):
+            if b.get("time", "") >= config.get("startDate"):
+                start_idx = i
+                break
+    cur_idx = min(playback.get("currentBarIndex", 0), len(bars) - 1 if bars else 0)
+    start_date_iso = (bars[start_idx]["time"] if bars and start_idx < len(bars) else None)
+    cur_date_iso = (bars[cur_idx]["time"] if bars and cur_idx < len(bars) else None)
+    years = _days_between(start_date_iso, cur_date_iso) / 365.25 if (start_date_iso and cur_date_iso) else None
+    cagr = None
+    if years and years > 0 and starting_capital > 0 and final_balance > 0:
+        cagr = ((final_balance / starting_capital) ** (1 / years) - 1) * 100
+
+    # Sharpe variants
+    sharpe_daily_all = _daily_sharpe_all_days(events, bars, start_idx, cur_idx, starting_capital)
+    sharpe_daily_trade_days = _daily_sharpe_trade_days(events, starting_capital)
+    sharpe_trades = _per_trade_sharpe(r_series, years) if r_series else None
+
+    progress = None
+    total_bars = len(bars) - start_idx if bars else 0
+    if total_bars > 0:
+        progress = round(min(100.0, (cur_idx - start_idx) / max(1, total_bars - 1) * 100), 1)
+    is_complete = bool(playback.get("isComplete"))
+
+    return {
+        "simId": sim.get("id"),
+        "simName": sim.get("name", ""),
+        "ticker": sim.get("ticker", ""),
+        "generatedAt": _iso_now(),
+        "progress": 100.0 if is_complete else progress,
+        "isComplete": is_complete,
+        "simStartDate": start_date_iso,
+        "simCurrentDate": cur_date_iso,
+        "yearsElapsed": round(years, 3) if years is not None else None,
+        "barsInTest": total_bars,
+        "startingCapital": starting_capital,
+        "finalBalance": round(final_balance, 2),
+
+        # R-based (PRIMARY)
+        "totalR": round(total_r, 2),
+        "expectancyR": round(expectancy_r, 3) if expectancy_r is not None else None,
+        "profitFactorR": round(profit_factor_r, 3) if profit_factor_r is not None else None,
+        "maxR": max(r_series) if r_series else None,
+        "minR": min(r_series) if r_series else None,
+        "maxDrawdownR": round(max_dd_r, 2),
+        "sharpeTradesR": round(sharpe_trades, 3) if sharpe_trades is not None else None,
+
+        # $-based
+        "totalNetProfit": round(total_pl, 2),
+        "grossProfit": round(gross_profit, 2),
+        "grossLoss": round(gross_loss, 2),
+        "profitFactor": round(profit_factor, 3) if profit_factor is not None else None,
+        "expectedPayoff": round(expected_payoff, 2),
+        "absoluteDrawdown": round(abs_dd, 2),
+        "maximalDrawdown": round(dd["maxAbs"], 2),
+        "maximalDrawdownPct": round(dd["maxAbsPct"], 2),
+        "relativeDrawdownPct": round(dd["maxPct"], 2),
+        "relativeDrawdownAbs": round(dd["maxPctAbs"], 2),
+        "cagrPct": round(cagr, 3) if cagr is not None else None,
+        "sharpeDaily": round(sharpe_daily_all, 3) if sharpe_daily_all is not None else None,
+        "sharpeDailyTradeDays": round(sharpe_daily_trade_days, 3) if sharpe_daily_trade_days is not None else None,
+
+        # Counts
+        "totalTrades": len(closed),
+        "wins": len(wins),
+        "losses": len(losses),
+        "breakeven": len(breakeven),
+        "winRatePct": round(len(wins) / len(closed) * 100, 2) if closed else 0,
+        "longs": len(longs),
+        "longWins": len(long_wins),
+        "longWinRatePct": round(len(long_wins) / len(longs) * 100, 2) if longs else 0,
+        "shorts": len(shorts),
+        "shortWins": len(short_wins),
+        "shortWinRatePct": round(len(short_wins) / len(shorts) * 100, 2) if shorts else 0,
+
+        # Extremes
+        "largestWin": round(max((c["pl"] for c in wins), default=0), 2),
+        "largestLoss": round(min((c["pl"] for c in losses), default=0), 2),
+        "avgWin": round(sum(c["pl"] for c in wins) / len(wins), 2) if wins else 0,
+        "avgLoss": round(sum(c["pl"] for c in losses) / len(losses), 2) if losses else 0,
+        "avgHoldDays": round(sum(c["holdDays"] for c in closed) / len(closed), 1) if closed else 0,
+
+        # Streaks
+        "streaksDollar": streaks_dollar,
+        "streaksR": streaks_r,
+
+        # Equity curve and trade table
+        "equityCurve": [{"date": pt["date"], "balance": round(pt["balance"], 2), "pl": round(pt["pl"], 2), "r": round(pt["r"], 3) if pt["r"] else 0, "cumR": round(pt["cumR"], 2)} for pt in curve],
+        "trades": [{
+            "id": c["id"], "direction": c["direction"],
+            "entryDate": c["entryDate"], "exitDate": c["exitDate"],
+            "shares": c["shares"], "avgEntry": round(c["avgEntry"], 4),
+            "pl": round(c["pl"], 2), "r": round(c["r"], 3) if c["r"] is not None else None,
+            "holdDays": c["holdDays"], "holdBars": c["holdBars"],
+        } for c in closed],
+    }
+
+
+def _get_analysis_cache(sim_id):
+    p = _analysis_path(sim_id)
+    if not os.path.exists(p):
+        return None
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _save_analysis_cache(sim_id, analysis):
+    _ensure_analyses_dir()
+    with open(_analysis_path(sim_id), "w", encoding="utf-8") as f:
+        json.dump(analysis, f, ensure_ascii=False, indent=2)
+
+
+@app.route("/api/simulations/<sim_id>/touch", methods=["POST"])
+def api_simulation_touch(sim_id):
+    """Record that the user opened this simulation — invalidates stale analysis cache."""
+    path = _sim_path(sim_id)
+    if not os.path.exists(path):
+        return jsonify({"error": "Simulation not found"}), 404
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            sim = json.load(f)
+        sim["lastOpenedAt"] = _iso_now()
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(sim, f, ensure_ascii=False, indent=2)
+        _rebuild_sim_index()
+        return jsonify({"ok": True, "lastOpenedAt": sim["lastOpenedAt"]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/simulations/<sim_id>/analyze", methods=["GET", "POST"])
+def api_simulation_analyze(sim_id):
+    """Get analysis for a sim. Uses cache if fresh. Force recompute on POST."""
+    path = _sim_path(sim_id)
+    if not os.path.exists(path):
+        return jsonify({"error": "Simulation not found"}), 404
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            sim = json.load(f)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    last_opened = sim.get("lastOpenedAt", "")
+    cache = _get_analysis_cache(sim_id)
+    force = request.method == "POST" or request.args.get("force") == "1"
+    is_fresh = cache and cache.get("generatedAt", "") >= last_opened
+
+    if cache and is_fresh and not force:
+        # Overlay current display metadata — name/ticker can change after rename
+        # without invalidating the (deterministic) computed stats.
+        cache["simName"] = sim.get("name", cache.get("simName", ""))
+        cache["ticker"] = sim.get("ticker", cache.get("ticker", ""))
+        cache["_fromCache"] = True
+        return jsonify(cache)
+
+    try:
+        analysis = compute_analysis(sim)
+    except ValueError as e:
+        return jsonify({"error": str(e), "insufficient": True}), 422
+
+    _save_analysis_cache(sim_id, analysis)
+    _rebuild_sim_index()
+    analysis["_fromCache"] = False
+    return jsonify(analysis)
+
+
+@app.route("/api/simulations/<sim_id>/analysis-status")
+def api_analysis_status(sim_id):
+    path = _sim_path(sim_id)
+    if not os.path.exists(path):
+        return jsonify({"error": "Simulation not found"}), 404
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            sim = json.load(f)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    last_opened = sim.get("lastOpenedAt", "")
+    cache = _get_analysis_cache(sim_id)
+    return jsonify({
+        "hasCache": bool(cache),
+        "generatedAt": cache.get("generatedAt") if cache else None,
+        "lastOpenedAt": last_opened,
+        "isStale": bool(cache) and cache.get("generatedAt", "") < last_opened,
+    })
+
+
+@app.route("/api/simulations/compare", methods=["POST"])
+def api_simulations_compare():
+    body = request.get_json(silent=True) or {}
+    ids = body.get("ids") or []
+    if not ids or len(ids) < 2:
+        return jsonify({"error": "need at least 2 simulation ids"}), 400
+    if len(ids) > 5:
+        return jsonify({"error": "maximum 5 simulations"}), 400
+    analyses = []
+    errors = []
+    for sid in ids:
+        path = _sim_path(sid)
+        if not os.path.exists(path):
+            errors.append({"id": sid, "error": "not found"})
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                sim = json.load(f)
+            last_opened = sim.get("lastOpenedAt", "")
+            cache = _get_analysis_cache(sid)
+            if cache and cache.get("generatedAt", "") >= last_opened:
+                # Overlay current display metadata on cached analysis
+                cache["simName"] = sim.get("name", cache.get("simName", ""))
+                cache["ticker"] = sim.get("ticker", cache.get("ticker", ""))
+                analyses.append(cache)
+            else:
+                a = compute_analysis(sim)
+                _save_analysis_cache(sid, a)
+                _rebuild_sim_index()
+                analyses.append(a)
+        except ValueError as e:
+            errors.append({"id": sid, "error": str(e), "insufficient": True})
+        except Exception as e:
+            errors.append({"id": sid, "error": str(e)})
+    return jsonify({"analyses": analyses, "errors": errors})
+
+
+# ==============================================
+# PDF REPORT GENERATION
+# ==============================================
+
+# Dark-theme palette for equity charts (matches the UI).
+_PDF_COLORS = {
+    "bg":      "#0d1117",
+    "panel":   "#161b22",
+    "border":  "#30363d",
+    "text":    "#e8f0f8",
+    "muted":   "#8899aa",
+    "accent":  "#00d4aa",
+    "accent2": "#ff6b35",
+    "green":   "#26a69a",
+    "red":     "#ef5350",
+    "yellow":  "#f5c842",
+    "grid":    "#1f2933",
+}
+
+
+def _fmt_money(v):
+    if v is None:
+        return "—"
+    sign = "-" if v < 0 else ""
+    a = abs(v)
+    if a >= 1000:
+        return f"{sign}${a:,.2f}"
+    return f"{sign}${a:.2f}"
+
+
+def _fmt_r(v):
+    if v is None:
+        return "—"
+    return f"{'+' if v >= 0 else ''}{v:.2f}R"
+
+
+def _fmt_pct(v, digits=2):
+    if v is None:
+        return "—"
+    return f"{v:.{digits}f}%"
+
+
+def _fmt_num(v, digits=2):
+    if v is None:
+        return "—"
+    return f"{v:.{digits}f}"
+
+
+def _render_equity_png(analysis, width_in=7.5, height_in=2.6):
+    """Render the equity curve to a PNG (BytesIO) using matplotlib."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.dates import DateFormatter, AutoDateLocator
+    import matplotlib.dates as mdates
+    from datetime import datetime as _dt
+
+    raw = [(p.get("date"), p.get("balance")) for p in (analysis.get("equityCurve") or []) if p.get("date")]
+    # dedup by date: keep last balance for each date
+    seen = {}
+    for d, b in raw:
+        seen[d] = b
+    pts = sorted(seen.items())
+    if not pts:
+        return None
+
+    dates = [_dt.strptime(d[:10], "%Y-%m-%d") for d, _ in pts]
+    bals = [b for _, b in pts]
+    cap = analysis.get("startingCapital") or bals[0]
+
+    fig, ax = plt.subplots(figsize=(width_in, height_in), dpi=150)
+    fig.patch.set_facecolor(_PDF_COLORS["bg"])
+    ax.set_facecolor(_PDF_COLORS["bg"])
+
+    # Fill green above / red below starting capital
+    ax.fill_between(dates, bals, cap, where=[b >= cap for b in bals],
+                    facecolor=_PDF_COLORS["green"], alpha=0.25, interpolate=True)
+    ax.fill_between(dates, bals, cap, where=[b < cap for b in bals],
+                    facecolor=_PDF_COLORS["red"], alpha=0.25, interpolate=True)
+    # Curve line with color by segment
+    for i in range(1, len(dates)):
+        c = _PDF_COLORS["green"] if bals[i] >= cap else _PDF_COLORS["red"]
+        ax.plot(dates[i - 1:i + 1], bals[i - 1:i + 1], color=c, linewidth=1.8, solid_capstyle="round")
+
+    # Dashed baseline at starting capital
+    ax.axhline(cap, color=_PDF_COLORS["muted"], linestyle="--", linewidth=0.8, alpha=0.6)
+
+    # Style
+    for spine in ax.spines.values():
+        spine.set_edgecolor(_PDF_COLORS["border"])
+        spine.set_linewidth(0.6)
+    ax.tick_params(colors=_PDF_COLORS["muted"], labelsize=7)
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"${x:,.0f}"))
+    ax.xaxis.set_major_locator(AutoDateLocator(maxticks=8))
+    ax.xaxis.set_major_formatter(DateFormatter("%b %Y"))
+    ax.grid(True, axis="y", color=_PDF_COLORS["grid"], linestyle="-", linewidth=0.5, alpha=0.7)
+    ax.set_axisbelow(True)
+
+    # Last-value annotation
+    last_val = bals[-1]
+    color = _PDF_COLORS["green"] if last_val >= cap else _PDF_COLORS["red"]
+    ax.annotate(f"${last_val:,.2f}", xy=(dates[-1], last_val),
+                xytext=(6, 0), textcoords="offset points",
+                color=color, fontsize=8, fontweight="bold",
+                va="center", ha="left")
+
+    fig.tight_layout(pad=0.5)
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150, facecolor=_PDF_COLORS["bg"])
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _render_compare_equity_png(analyses, width_in=7.5, height_in=3.0):
+    """Overlay equity curves (normalized to 100) for comparison."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.dates import AutoDateLocator, DateFormatter
+    from datetime import datetime as _dt
+
+    palette = ["#00d4aa", "#f5c842", "#ff6b35", "#60a5fa", "#c084fc"]
+    fig, ax = plt.subplots(figsize=(width_in, height_in), dpi=150)
+    fig.patch.set_facecolor(_PDF_COLORS["bg"])
+    ax.set_facecolor(_PDF_COLORS["bg"])
+
+    any_drawn = False
+    for i, a in enumerate(analyses):
+        raw = [(p.get("date"), p.get("balance")) for p in (a.get("equityCurve") or []) if p.get("date")]
+        cap = a.get("startingCapital") or (raw[0][1] if raw else 100000)
+        seen = {}
+        for d, b in raw:
+            seen[d] = b
+        pts = sorted(seen.items())
+        if not pts:
+            continue
+        any_drawn = True
+        dates = [_dt.strptime(d[:10], "%Y-%m-%d") for d, _ in pts]
+        norm = [(b / cap * 100) for _, b in pts]
+        ax.plot(dates, norm, color=palette[i % len(palette)], linewidth=1.6,
+                label=a.get("simName") or f"Sim {i + 1}")
+
+    if not any_drawn:
+        plt.close(fig)
+        return None
+
+    # 100 baseline
+    ax.axhline(100, color=_PDF_COLORS["muted"], linestyle="--", linewidth=0.7, alpha=0.6)
+    for spine in ax.spines.values():
+        spine.set_edgecolor(_PDF_COLORS["border"])
+        spine.set_linewidth(0.6)
+    ax.tick_params(colors=_PDF_COLORS["muted"], labelsize=7)
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.0f}"))
+    ax.xaxis.set_major_locator(AutoDateLocator(maxticks=8))
+    ax.xaxis.set_major_formatter(DateFormatter("%b %Y"))
+    ax.grid(True, axis="y", color=_PDF_COLORS["grid"], linestyle="-", linewidth=0.5, alpha=0.7)
+    ax.set_axisbelow(True)
+    leg = ax.legend(loc="upper left", fontsize=7, frameon=True, facecolor=_PDF_COLORS["panel"],
+                    edgecolor=_PDF_COLORS["border"], labelcolor=_PDF_COLORS["text"])
+    for text in leg.get_texts():
+        text.set_color(_PDF_COLORS["text"])
+
+    fig.tight_layout(pad=0.5)
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150, facecolor=_PDF_COLORS["bg"])
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _pdf_styles():
+    """Centralized styles for the PDF reports."""
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.colors import HexColor
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+
+    base = getSampleStyleSheet()
+    styles = {
+        "title": ParagraphStyle("title", parent=base["Title"], fontName="Helvetica-Bold",
+                                fontSize=18, textColor=HexColor("#0d1117"), spaceAfter=2, alignment=TA_LEFT),
+        "subtitle": ParagraphStyle("subtitle", parent=base["Normal"], fontName="Helvetica",
+                                   fontSize=9, textColor=HexColor("#555555"), spaceAfter=10, alignment=TA_LEFT),
+        "h3": ParagraphStyle("h3", parent=base["Heading3"], fontName="Helvetica-Bold",
+                             fontSize=10, textColor=HexColor("#00a684"), spaceBefore=12, spaceAfter=4,
+                             alignment=TA_LEFT, textTransform="uppercase"),
+        "cell_label": ParagraphStyle("cell_label", parent=base["Normal"], fontName="Helvetica",
+                                     fontSize=7, textColor=HexColor("#555555"), alignment=TA_LEFT),
+        "cell_value": ParagraphStyle("cell_value", parent=base["Normal"], fontName="Helvetica-Bold",
+                                     fontSize=11, textColor=HexColor("#0d1117"), alignment=TA_LEFT, leading=13),
+        "cell_value_primary": ParagraphStyle("cell_value_primary", parent=base["Normal"], fontName="Helvetica-Bold",
+                                             fontSize=12, textColor=HexColor("#00a684"), alignment=TA_LEFT, leading=14),
+        "cell_value_pos": ParagraphStyle("cell_value_pos", parent=base["Normal"], fontName="Helvetica-Bold",
+                                         fontSize=11, textColor=HexColor("#0a8f7a"), alignment=TA_LEFT, leading=13),
+        "cell_value_neg": ParagraphStyle("cell_value_neg", parent=base["Normal"], fontName="Helvetica-Bold",
+                                         fontSize=11, textColor=HexColor("#c0413e"), alignment=TA_LEFT, leading=13),
+        "banner": ParagraphStyle("banner", parent=base["Normal"], fontName="Helvetica",
+                                 fontSize=9, textColor=HexColor("#8a6d00"), leading=12),
+        "small": ParagraphStyle("small", parent=base["Normal"], fontName="Helvetica",
+                                fontSize=7, textColor=HexColor("#777777"), leading=9),
+        "footer": ParagraphStyle("footer", parent=base["Normal"], fontName="Helvetica",
+                                 fontSize=7, textColor=HexColor("#888888"), alignment=TA_CENTER),
+        "trade_cell": ParagraphStyle("trade_cell", parent=base["Normal"], fontName="Helvetica",
+                                     fontSize=7.5, textColor=HexColor("#222222"), alignment=TA_RIGHT, leading=9),
+        "trade_cell_left": ParagraphStyle("trade_cell_left", parent=base["Normal"], fontName="Helvetica",
+                                          fontSize=7.5, textColor=HexColor("#222222"), alignment=TA_LEFT, leading=9),
+        "trade_header": ParagraphStyle("trade_header", parent=base["Normal"], fontName="Helvetica-Bold",
+                                       fontSize=7, textColor=HexColor("#ffffff"), alignment=TA_RIGHT, leading=9),
+    }
+    return styles
+
+
+def _pdf_metric_grid(cells, cols=3, col_widths=None):
+    """Build a grid of metric cells. Each cell = (label, value, value_style_name).
+    Returns a reportlab Table.
+    """
+    from reportlab.platypus import Table, TableStyle, Paragraph
+    from reportlab.lib.colors import HexColor
+    from reportlab.lib.units import inch
+    st = _pdf_styles()
+
+    # Pad cells to complete grid
+    while len(cells) % cols != 0:
+        cells.append(("", "", "cell_value"))
+
+    rows = []
+    for i in range(0, len(cells), cols):
+        row = []
+        for j in range(cols):
+            lbl, val, style = cells[i + j]
+            style_obj = st.get(style) or st["cell_value"]
+            inner = Table(
+                [[Paragraph(lbl, st["cell_label"])], [Paragraph(str(val), style_obj)]],
+                colWidths=[(col_widths[j] if col_widths else 2.3 * inch) - 0.1 * inch],
+            )
+            inner.setStyle(TableStyle([
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]))
+            row.append(inner)
+        rows.append(row)
+
+    t = Table(rows, colWidths=col_widths or [2.3 * inch] * cols)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), HexColor("#f7f7f8")),
+        ("BOX", (0, 0), (-1, -1), 0.5, HexColor("#d0d0d5")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, HexColor("#e2e2e7")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    return t
+
+
+def _build_analysis_pdf(a):
+    """Generate a professional PDF report for a single analysis. Returns BytesIO."""
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+    from reportlab.lib.colors import HexColor
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Image,
+                                    Table, TableStyle, PageBreak, KeepTogether)
+    from reportlab.lib.styles import ParagraphStyle
+
+    st = _pdf_styles()
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter,
+                            leftMargin=0.55 * inch, rightMargin=0.55 * inch,
+                            topMargin=0.5 * inch, bottomMargin=0.5 * inch,
+                            title=f"Analysis — {a.get('simName','')}")
+
+    pos = (a.get("totalNetProfit") or 0) >= 0
+    r_pos = (a.get("totalR") or 0) >= 0
+
+    elements = []
+
+    # ----- Header block -----
+    progress_note = ""
+    is_complete = a.get("isComplete") or (a.get("progress") or 0) >= 100
+    if not is_complete:
+        progress_note = f' <font color="#cc7700">(incomplete — {a.get("progress") or 0}%)</font>'
+
+    title_bar = Table(
+        [[Paragraph(f"<b>Analysis Report</b> — {a.get('simName','')}", st["title"]),
+          Paragraph(f"<b>{a.get('ticker','')}</b>", ParagraphStyle('tk', parent=st['title'], textColor=HexColor('#00a684'), alignment=2, fontSize=16))]],
+        colWidths=[5.5 * inch, 1.9 * inch])
+    title_bar.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LINEBELOW", (0, 0), (-1, -1), 1, HexColor("#00a684")),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(title_bar)
+    elements.append(Spacer(1, 4))
+
+    subtitle = (f"Period: {a.get('simStartDate','?')} → {a.get('simCurrentDate','?')}  ·  "
+                f"{a.get('barsInTest',0)} bars"
+                f"{(', '+_fmt_num(a.get('yearsElapsed'),2)+' yr') if a.get('yearsElapsed') else ''}  ·  "
+                f"{a.get('totalTrades',0)} closed trades"
+                f"{progress_note}")
+    elements.append(Paragraph(subtitle, st["subtitle"]))
+
+    if not is_complete:
+        banner = Table([[Paragraph(f"⚠ Simulation is incomplete ({a.get('progress') or 0}%). Metrics reflect closed trades only; open positions are excluded.", st["banner"])]],
+                       colWidths=[7.4 * inch])
+        banner.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), HexColor("#fff7d6")),
+            ("BOX", (0, 0), (-1, -1), 0.5, HexColor("#e0c460")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(banner)
+        elements.append(Spacer(1, 6))
+
+    # ----- R-based (primary) -----
+    elements.append(Paragraph("HEADLINE (R-BASED)", st["h3"]))
+    r_cells = [
+        ("Total R", _fmt_r(a.get("totalR")), "cell_value_primary"),
+        ("Expectancy", f"{_fmt_r(a.get('expectancyR'))}/trade", "cell_value_primary"),
+        ("Profit Factor (R)", _fmt_num(a.get("profitFactorR"), 2), "cell_value_primary"),
+        ("Max Drawdown (R)", f"-{_fmt_num(a.get('maxDrawdownR'), 2)}R", "cell_value_neg"),
+        ("Sharpe (trade R)", _fmt_num(a.get("sharpeTradesR"), 2), "cell_value"),
+        ("Max R Win / Loss", f"{_fmt_r(a.get('maxR'))} / {_fmt_r(a.get('minR'))}", "cell_value"),
+    ]
+    elements.append(_pdf_metric_grid(r_cells, cols=3, col_widths=[2.47 * inch] * 3))
+
+    # ----- Dollar-based -----
+    elements.append(Paragraph("DOLLAR-BASED (MT4 PARITY)", st["h3"]))
+    d_cells = [
+        ("Starting Capital", _fmt_money(a.get("startingCapital")), "cell_value"),
+        ("Final Balance", _fmt_money(a.get("finalBalance")), "cell_value_pos" if pos else "cell_value_neg"),
+        ("Total Net Profit", _fmt_money(a.get("totalNetProfit")), "cell_value_pos" if pos else "cell_value_neg"),
+        ("Gross Profit", _fmt_money(a.get("grossProfit")), "cell_value_pos"),
+        ("Gross Loss", _fmt_money(a.get("grossLoss")), "cell_value_neg"),
+        ("Profit Factor ($)", _fmt_num(a.get("profitFactor"), 2), "cell_value"),
+        ("Expected Payoff", _fmt_money(a.get("expectedPayoff")), "cell_value"),
+        ("Absolute Drawdown", _fmt_money(a.get("absoluteDrawdown")), "cell_value_neg"),
+        ("Maximal Drawdown", f"{_fmt_money(a.get('maximalDrawdown'))} ({_fmt_pct(a.get('maximalDrawdownPct'))})", "cell_value_neg"),
+        ("Relative Drawdown", f"{_fmt_pct(a.get('relativeDrawdownPct'))} ({_fmt_money(a.get('relativeDrawdownAbs'))})", "cell_value_neg"),
+        ("CAGR", _fmt_pct(a.get("cagrPct"), 2), "cell_value"),
+        ("Sharpe (daily, √252)", _fmt_num(a.get("sharpeDaily"), 2), "cell_value"),
+    ]
+    elements.append(_pdf_metric_grid(d_cells, cols=3, col_widths=[2.47 * inch] * 3))
+
+    # ----- Trade Counts -----
+    elements.append(Paragraph("TRADE COUNTS", st["h3"]))
+    wr = a.get("winRatePct") or 0
+    lr = (100 - wr) if a.get("totalTrades") else 0
+    c_cells = [
+        ("Total Trades", str(a.get("totalTrades") or 0), "cell_value"),
+        ("Profit Trades", f"{a.get('wins',0)} ({_fmt_pct(wr)})", "cell_value_pos"),
+        ("Loss Trades", f"{a.get('losses',0)} ({_fmt_pct(lr)})", "cell_value_neg"),
+        ("Long Positions (won %)", f"{a.get('longs',0)} ({_fmt_pct(a.get('longWinRatePct'))})", "cell_value"),
+        ("Short Positions (won %)", f"{a.get('shorts',0)} ({_fmt_pct(a.get('shortWinRatePct'))})", "cell_value"),
+        ("Avg Hold (days)", _fmt_num(a.get("avgHoldDays"), 1), "cell_value"),
+        ("Largest Profit Trade", _fmt_money(a.get("largestWin")), "cell_value_pos"),
+        ("Largest Loss Trade", _fmt_money(a.get("largestLoss")), "cell_value_neg"),
+        ("Avg Profit Trade", _fmt_money(a.get("avgWin")), "cell_value_pos"),
+        ("Avg Loss Trade", _fmt_money(a.get("avgLoss")), "cell_value_neg"),
+        ("Breakeven", str(a.get("breakeven") or 0), "cell_value"),
+        ("Bars in Test", str(a.get("barsInTest") or 0), "cell_value"),
+    ]
+    elements.append(_pdf_metric_grid(c_cells, cols=3, col_widths=[2.47 * inch] * 3))
+
+    # ----- Streaks -----
+    sd = a.get("streaksDollar") or {}
+    elements.append(Paragraph("STREAKS", st["h3"]))
+    s_cells = [
+        ("Max Consec Wins", f"{sd.get('maxConsecWins',0)} ({_fmt_money(sd.get('maxConsecWinsProfit'))})", "cell_value_pos"),
+        ("Max Consec Losses", f"{sd.get('maxConsecLosses',0)} ({_fmt_money(sd.get('maxConsecLossesLoss'))})", "cell_value_neg"),
+        ("Largest Consec Profit", _fmt_money(sd.get("largestConsecProfit")), "cell_value_pos"),
+        ("Largest Consec Loss", _fmt_money(sd.get("largestConsecLoss")), "cell_value_neg"),
+        ("Avg Consec Wins", _fmt_num(sd.get("avgConsecWins"), 2), "cell_value"),
+        ("Avg Consec Losses", _fmt_num(sd.get("avgConsecLosses"), 2), "cell_value"),
+    ]
+    elements.append(_pdf_metric_grid(s_cells, cols=3, col_widths=[2.47 * inch] * 3))
+
+    # ----- Equity Curve -----
+    elements.append(Paragraph("EQUITY CURVE", st["h3"]))
+    eq_buf = _render_equity_png(a, width_in=7.4, height_in=2.6)
+    if eq_buf:
+        elements.append(Image(eq_buf, width=7.4 * inch, height=2.6 * inch))
+    else:
+        elements.append(Paragraph("No closed trades to plot.", st["small"]))
+
+    # ----- Trade Log -----
+    elements.append(PageBreak())
+    elements.append(Paragraph("TRADE LOG", st["h3"]))
+
+    trades = a.get("trades") or []
+    if not trades:
+        elements.append(Paragraph("No closed trades.", st["small"]))
+    else:
+        headers = ["#", "Dir", "Entry Date", "Exit Date", "Hold", "Shares", "Avg Entry", "P/L", "R"]
+        data = [[Paragraph(h, st["trade_header"]) for h in headers]]
+        for i, t in enumerate(trades, 1):
+            pl = t.get("pl") or 0
+            r = t.get("r")
+            pos_t = pl >= 0
+            pl_color = "#0a8f7a" if pos_t else "#c0413e"
+            r_color = pl_color if r is not None and r >= 0 else "#c0413e" if r is not None else "#777777"
+            dir_color = "#0a8f7a" if t.get("direction") == "long" else "#c0413e"
+            row = [
+                Paragraph(str(i), st["trade_cell"]),
+                Paragraph(f'<font color="{dir_color}">{(t.get("direction") or "").upper()}</font>', st["trade_cell_left"]),
+                Paragraph(t.get("entryDate") or "", st["trade_cell_left"]),
+                Paragraph(t.get("exitDate") or "", st["trade_cell_left"]),
+                Paragraph(f"{t.get('holdDays',0)}d", st["trade_cell"]),
+                Paragraph(str(t.get("shares", 0)), st["trade_cell"]),
+                Paragraph(f"${_fmt_num(t.get('avgEntry'), 2)}", st["trade_cell"]),
+                Paragraph(f'<font color="{pl_color}"><b>{_fmt_money(pl)}</b></font>', st["trade_cell"]),
+                Paragraph(f'<font color="{r_color}">{_fmt_r(r) if r is not None else "—"}</font>', st["trade_cell"]),
+            ]
+            data.append(row)
+
+        col_widths = [0.35, 0.45, 0.95, 0.95, 0.5, 0.6, 0.8, 1.0, 0.7]
+        col_widths = [c * inch for c in col_widths]
+        tbl = Table(data, colWidths=col_widths, repeatRows=1)
+        style_cmds = [
+            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#0d1117")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#ffffff")),
+            ("BOX", (0, 0), (-1, -1), 0.5, HexColor("#d0d0d5")),
+            ("INNERGRID", (0, 0), (-1, -1), 0.25, HexColor("#e2e2e7")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]
+        # Alternating row backgrounds
+        for i in range(1, len(data)):
+            if i % 2 == 0:
+                style_cmds.append(("BACKGROUND", (0, i), (-1, i), HexColor("#fafafb")))
+        tbl.setStyle(TableStyle(style_cmds))
+        elements.append(tbl)
+
+    # Build PDF (with footer)
+    def _page_footer(canvas, doc_):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(HexColor("#888888"))
+        canvas.drawString(0.55 * inch, 0.3 * inch,
+                          f"Analysis generated {(a.get('generatedAt') or '').replace('T',' ').replace('Z',' UTC')}")
+        canvas.drawRightString(letter[0] - 0.55 * inch, 0.3 * inch, f"Page {doc_.page}")
+        canvas.restoreState()
+
+    doc.build(elements, onFirstPage=_page_footer, onLaterPages=_page_footer)
+    buf.seek(0)
+    return buf
+
+
+def _build_compare_pdf(analyses):
+    """Generate a professional comparison PDF for 2-5 analyses."""
+    from reportlab.lib.pagesizes import letter, landscape
+    from reportlab.lib.units import inch
+    from reportlab.lib.colors import HexColor
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Image,
+                                    Table, TableStyle, PageBreak)
+
+    st = _pdf_styles()
+    buf = io.BytesIO()
+    pagesize = landscape(letter) if len(analyses) >= 4 else letter
+    doc = SimpleDocTemplate(buf, pagesize=pagesize,
+                            leftMargin=0.45 * inch, rightMargin=0.45 * inch,
+                            topMargin=0.45 * inch, bottomMargin=0.45 * inch,
+                            title=f"Compare — {len(analyses)} simulations")
+
+    elements = []
+
+    # ----- Header -----
+    title_bar = Table([[Paragraph(f"<b>Comparison Report</b> — {len(analyses)} Simulations", st["title"])]],
+                      colWidths=[pagesize[0] - 0.9 * inch])
+    title_bar.setStyle(TableStyle([
+        ("LINEBELOW", (0, 0), (-1, -1), 1, HexColor("#00a684")),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    elements.append(title_bar)
+    elements.append(Spacer(1, 4))
+    elements.append(Paragraph(
+        "Side-by-side with heatmap coloring (★ = primary R-based; green = best, red = worst)", st["subtitle"]))
+
+    # ----- Metrics table with heatmap -----
+    metrics = [
+        # R-based
+        ("r", "Total R", True, lambda a: a.get("totalR"), _fmt_r, True),
+        ("r", "Expectancy (R)", True, lambda a: a.get("expectancyR"), _fmt_r, True),
+        ("r", "Profit Factor (R)", True, lambda a: a.get("profitFactorR"), lambda v: _fmt_num(v, 2), True),
+        ("r", "Max Drawdown (R)", False, lambda a: a.get("maxDrawdownR"), lambda v: f"-{_fmt_num(v, 2)}R", True),
+        ("r", "Sharpe (trade R)", True, lambda a: a.get("sharpeTradesR"), lambda v: _fmt_num(v, 2), True),
+        ("r", "Max R Win", True, lambda a: a.get("maxR"), _fmt_r, False),
+        ("r", "Max R Loss", True, lambda a: a.get("minR"), _fmt_r, False),
+        # Dollar
+        ("d", "Starting Capital", None, lambda a: a.get("startingCapital"), _fmt_money, False),
+        ("d", "Final Balance", True, lambda a: a.get("finalBalance"), _fmt_money, False),
+        ("d", "Total Net Profit", True, lambda a: a.get("totalNetProfit"), _fmt_money, False),
+        ("d", "Gross Profit", True, lambda a: a.get("grossProfit"), _fmt_money, False),
+        ("d", "Gross Loss", True, lambda a: a.get("grossLoss"), _fmt_money, False),
+        ("d", "Profit Factor ($)", True, lambda a: a.get("profitFactor"), lambda v: _fmt_num(v, 2), False),
+        ("d", "Expected Payoff", True, lambda a: a.get("expectedPayoff"), _fmt_money, False),
+        ("d", "Absolute Drawdown", False, lambda a: a.get("absoluteDrawdown"), _fmt_money, False),
+        ("d", "Maximal Drawdown ($)", False, lambda a: a.get("maximalDrawdown"), _fmt_money, False),
+        ("d", "Maximal Drawdown %", False, lambda a: a.get("maximalDrawdownPct"), lambda v: _fmt_pct(v, 2), False),
+        ("d", "Relative Drawdown %", False, lambda a: a.get("relativeDrawdownPct"), lambda v: _fmt_pct(v, 2), False),
+        ("d", "CAGR %", True, lambda a: a.get("cagrPct"), lambda v: _fmt_pct(v, 2), False),
+        ("d", "Sharpe (daily, all)", True, lambda a: a.get("sharpeDaily"), lambda v: _fmt_num(v, 2), False),
+        # Counts
+        ("c", "Total Trades", None, lambda a: a.get("totalTrades"), str, False),
+        ("c", "Profit Trades", True, lambda a: a.get("wins"), str, False),
+        ("c", "Loss Trades", False, lambda a: a.get("losses"), str, False),
+        ("c", "Win Rate %", True, lambda a: a.get("winRatePct"), lambda v: _fmt_pct(v, 2), False),
+        ("c", "Long Positions", None, lambda a: a.get("longs"), str, False),
+        ("c", "Long Win %", True, lambda a: a.get("longWinRatePct"), lambda v: _fmt_pct(v, 2), False),
+        ("c", "Short Positions", None, lambda a: a.get("shorts"), str, False),
+        ("c", "Short Win %", True, lambda a: a.get("shortWinRatePct"), lambda v: _fmt_pct(v, 2), False),
+        ("c", "Avg Hold (d)", None, lambda a: a.get("avgHoldDays"), lambda v: _fmt_num(v, 1), False),
+        ("c", "Largest Profit", True, lambda a: a.get("largestWin"), _fmt_money, False),
+        ("c", "Largest Loss", True, lambda a: a.get("largestLoss"), _fmt_money, False),
+        ("c", "Avg Profit", True, lambda a: a.get("avgWin"), _fmt_money, False),
+        ("c", "Avg Loss", True, lambda a: a.get("avgLoss"), _fmt_money, False),
+        # Streaks
+        ("s", "Max Consec Wins", True, lambda a: (a.get("streaksDollar") or {}).get("maxConsecWins"), str, False),
+        ("s", "Max Consec Losses", False, lambda a: (a.get("streaksDollar") or {}).get("maxConsecLosses"), str, False),
+        ("s", "Largest Consec Profit", True, lambda a: (a.get("streaksDollar") or {}).get("largestConsecProfit"), _fmt_money, False),
+        ("s", "Largest Consec Loss", True, lambda a: (a.get("streaksDollar") or {}).get("largestConsecLoss"), _fmt_money, False),
+        ("s", "Avg Consec Wins", True, lambda a: (a.get("streaksDollar") or {}).get("avgConsecWins"), lambda v: _fmt_num(v, 2), False),
+        ("s", "Avg Consec Losses", False, lambda a: (a.get("streaksDollar") or {}).get("avgConsecLosses"), lambda v: _fmt_num(v, 2), False),
+    ]
+
+    section_titles = {"r": "R-BASED (PRIMARY)", "d": "DOLLAR-BASED", "c": "TRADE COUNTS", "s": "STREAKS"}
+
+    # Header row: ticker names
+    headers = ["Metric"]
+    for a in analyses:
+        name = a.get("simName", "")
+        ticker = a.get("ticker", "")
+        complete = a.get("isComplete") or (a.get("progress") or 0) >= 100
+        suffix = "" if complete else f" ({a.get('progress') or 0}%)"
+        headers.append(f"{name} [{ticker}]{suffix}")
+
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
+    hdr_style = ParagraphStyle("hdr", fontName="Helvetica-Bold", fontSize=8,
+                               textColor=HexColor("#ffffff"), alignment=TA_CENTER, leading=10)
+    metric_label_style = ParagraphStyle("ml", fontName="Helvetica", fontSize=8,
+                                        textColor=HexColor("#333333"), leading=10)
+    metric_label_primary = ParagraphStyle("mlp", fontName="Helvetica-Bold", fontSize=8,
+                                          textColor=HexColor("#00a684"), leading=10)
+    cell_style = ParagraphStyle("c", fontName="Helvetica-Bold", fontSize=8,
+                                textColor=HexColor("#111111"), alignment=TA_CENTER, leading=10)
+
+    rows = [[Paragraph(h, hdr_style) for h in headers]]
+
+    # For cell color gradients
+    def color_for(vals, idx, higher_better):
+        if higher_better is None:
+            return None
+        finite = [v for v in vals if isinstance(v, (int, float))]
+        if len(finite) < 2:
+            return None
+        mn, mx = min(finite), max(finite)
+        if mn == mx:
+            return None
+        v = vals[idx]
+        if not isinstance(v, (int, float)):
+            return None
+        t = (v - mn) / (mx - mn)
+        if not higher_better:
+            t = 1 - t
+        # t=0 red, t=0.5 neutral, t=1 green
+        if t >= 0.5:
+            # green
+            k = (t - 0.5) * 2  # 0..1
+            r = int(247 - k * (247 - 200))
+            g = int(247 - k * (247 - 230))
+            b = int(248 - k * (248 - 200))
+        else:
+            k = (0.5 - t) * 2  # 0..1
+            r = int(247 + k * (255 - 247))
+            g = int(247 - k * (247 - 215))
+            b = int(248 - k * (248 - 215))
+        return HexColor(f"#{r:02x}{g:02x}{b:02x}")
+
+    style_cmds = [
+        ("BACKGROUND", (0, 0), (-1, 0), HexColor("#0d1117")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#ffffff")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("BOX", (0, 0), (-1, -1), 0.5, HexColor("#d0d0d5")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, HexColor("#e2e2e7")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]
+
+    last_section = None
+    row_idx = 1
+    for sec, label, hb, extractor, fmt, primary in metrics:
+        if sec != last_section:
+            # Insert section header row
+            title = section_titles.get(sec, sec)
+            section_row = [Paragraph(f"<b>{title}</b>", ParagraphStyle("sec", fontName="Helvetica-Bold", fontSize=8, textColor=HexColor("#555555"), leading=10))]
+            section_row.extend([Paragraph("", cell_style) for _ in analyses])
+            rows.append(section_row)
+            style_cmds.append(("BACKGROUND", (0, row_idx), (-1, row_idx), HexColor("#ececef")))
+            style_cmds.append(("SPAN", (0, row_idx), (-1, row_idx)))
+            row_idx += 1
+            last_section = sec
+
+        vals_raw = [extractor(a) for a in analyses]
+        vals_for_heat = [v if isinstance(v, (int, float)) else None for v in vals_raw]
+        cells_out = []
+        for i, v in enumerate(vals_raw):
+            if v is None or (isinstance(v, float) and (v != v)):  # None or NaN
+                cell_txt = "—"
+            else:
+                try:
+                    cell_txt = fmt(v)
+                except Exception:
+                    cell_txt = str(v)
+            cells_out.append(Paragraph(cell_txt, cell_style))
+            color = color_for(vals_for_heat, i, hb)
+            if color is not None:
+                style_cmds.append(("BACKGROUND", (1 + i, row_idx), (1 + i, row_idx), color))
+
+        label_para = Paragraph(("★ " + label) if primary else label, metric_label_primary if primary else metric_label_style)
+        rows.append([label_para] + cells_out)
+        row_idx += 1
+
+    # Column widths: first col wider for labels
+    total_w = pagesize[0] - 0.9 * inch
+    label_w = 1.7 * inch
+    per_sim = (total_w - label_w) / len(analyses)
+    col_widths = [label_w] + [per_sim] * len(analyses)
+
+    tbl = Table(rows, colWidths=col_widths, repeatRows=1)
+    tbl.setStyle(TableStyle(style_cmds))
+    elements.append(tbl)
+    elements.append(Spacer(1, 10))
+
+    # ----- Overlay equity curves -----
+    elements.append(Paragraph("EQUITY CURVES (NORMALIZED, START = 100)", st["h3"]))
+    eq_buf = _render_compare_equity_png(analyses, width_in=min(9.5, (pagesize[0] - 0.9 * inch) / 72), height_in=3.0)
+    if eq_buf:
+        img_w = pagesize[0] - 0.9 * inch
+        img_h = img_w / 9.5 * 3.0  # maintain aspect
+        elements.append(Image(eq_buf, width=img_w, height=img_h))
+
+    def _page_footer(canvas, doc_):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(HexColor("#888888"))
+        canvas.drawString(0.55 * inch, 0.3 * inch,
+                          f"Comparison across {len(analyses)} simulations")
+        canvas.drawRightString(pagesize[0] - 0.55 * inch, 0.3 * inch, f"Page {doc_.page}")
+        canvas.restoreState()
+
+    doc.build(elements, onFirstPage=_page_footer, onLaterPages=_page_footer)
+    buf.seek(0)
+    return buf
+
+
+@app.route("/api/simulations/<sim_id>/analyze/pdf")
+def api_analysis_pdf(sim_id):
+    """Generate a PDF of the analysis for a single sim."""
+    path = _sim_path(sim_id)
+    if not os.path.exists(path):
+        return jsonify({"error": "Simulation not found"}), 404
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            sim = json.load(f)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    last_opened = sim.get("lastOpenedAt", "")
+    cache = _get_analysis_cache(sim_id)
+    if cache and cache.get("generatedAt", "") >= last_opened:
+        cache["simName"] = sim.get("name", cache.get("simName", ""))
+        cache["ticker"] = sim.get("ticker", cache.get("ticker", ""))
+        analysis = cache
+    else:
+        try:
+            analysis = compute_analysis(sim)
+            _save_analysis_cache(sim_id, analysis)
+            _rebuild_sim_index()
+        except ValueError as e:
+            return jsonify({"error": str(e), "insufficient": True}), 422
+
+    try:
+        buf = _build_analysis_pdf(analysis)
+    except Exception as e:
+        return jsonify({"error": f"PDF generation failed: {e}"}), 500
+    safe_name = _safe_filename(analysis.get("simName") or sim_id)
+    return send_file(buf, mimetype="application/pdf", as_attachment=True,
+                     download_name=f"{safe_name}_analysis.pdf")
+
+
+@app.route("/api/simulations/compare/pdf", methods=["POST"])
+def api_compare_pdf():
+    """Generate a PDF comparison of 2-5 sims."""
+    body = request.get_json(silent=True) or {}
+    ids = body.get("ids") or []
+    if not ids or len(ids) < 2:
+        return jsonify({"error": "need at least 2 simulation ids"}), 400
+    if len(ids) > 5:
+        return jsonify({"error": "maximum 5 simulations"}), 400
+    analyses = []
+    for sid in ids:
+        path = _sim_path(sid)
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                sim = json.load(f)
+            last_opened = sim.get("lastOpenedAt", "")
+            cache = _get_analysis_cache(sid)
+            if cache and cache.get("generatedAt", "") >= last_opened:
+                cache["simName"] = sim.get("name", cache.get("simName", ""))
+                cache["ticker"] = sim.get("ticker", cache.get("ticker", ""))
+                analyses.append(cache)
+            else:
+                a = compute_analysis(sim)
+                _save_analysis_cache(sid, a)
+                _rebuild_sim_index()
+                analyses.append(a)
+        except Exception:
+            continue
+    if len(analyses) < 2:
+        return jsonify({"error": "need at least 2 analyzable simulations"}), 400
+    try:
+        buf = _build_compare_pdf(analyses)
+    except Exception as e:
+        return jsonify({"error": f"PDF generation failed: {e}"}), 500
+    return send_file(buf, mimetype="application/pdf", as_attachment=True,
+                     download_name="comparison.pdf")
 
 
 # ==============================================
@@ -664,6 +2021,8 @@ def api_simulations_import():
         sim["modified"] = now
         if not sim.get("created"):
             sim["created"] = now
+        # Treat an import as an open — friend's first view should compute a fresh analysis
+        sim["lastOpenedAt"] = now
         with open(_sim_path(new_id), "w", encoding="utf-8") as wf:
             json.dump(sim, wf, ensure_ascii=False, indent=2)
         imported.append({
