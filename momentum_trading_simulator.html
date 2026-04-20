@@ -1666,6 +1666,10 @@
             <span class="sim-stat-label">Avg Loss</span><span class="sim-stat-value" id="sim-avg-loss">—</span>
           </div>
         </div>
+        <div class="sim-panel-section">
+          <h3 style="display:flex;align-items:center;gap:6px;">Notes <span id="sim-notes-status" style="font-size:8px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;"></span></h3>
+          <textarea id="sim-notes" placeholder="Rules, observations, lessons learned — saved automatically and appears in analysis/compare reports." style="width:100%;min-height:70px;max-height:200px;resize:vertical;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;line-height:1.4;padding:6px 8px;border-radius:3px;box-sizing:border-box;outline:none;"></textarea>
+        </div>
         <!-- Trade form -->
         <div class="sim-trade-form" id="sim-trade-form">
           <div class="tf-dir-row">
@@ -1739,6 +1743,19 @@
     <div class="sim-check">
       <input type="checkbox" id="sim-use-first" checked>
       <span>Use first available bar</span>
+    </div>
+    <div class="sim-check" style="margin-top:6px;align-items:center;gap:6px;flex-wrap:wrap;">
+      <input type="checkbox" id="sim-skip-to-ma">
+      <span>Skip to first bar with</span>
+      <input type="number" id="sim-skip-ma-period" value="50" min="1" max="999" style="width:50px;padding:2px 4px;font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:2px;font-family:var(--mono);">
+      <select id="sim-skip-ma-type" style="padding:2px 4px;font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:2px;font-family:var(--mono);">
+        <option value="SMA">SMA</option>
+        <option value="EMA">EMA</option>
+      </select>
+      <span>data available</span>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:2px;padding-left:20px;line-height:1.4;">
+      Shifts the start bar forward so the MA line is visible from bar 1. Previous bars still show as context. No-op if your chosen start date is already past the MA's warmup.
     </div>
     <div style="margin-top:10px;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;">
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:11px;">
@@ -2388,6 +2405,12 @@ function updateCrosshairInfo(param) {
       : `<span style="color:var(--yellow);font-weight:600">${v.toFixed(2)}</span>`;
   };
 
+  const fmtVolNum = v =>
+    v >= 1e9 ? (v / 1e9).toFixed(2) + 'B' :
+    v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' :
+    v >= 1e3 ? (v / 1e3).toFixed(2) + 'K' :
+    (v||0).toString();
+
   const clear = () => {
     infoDate.textContent = '—';
     infoChange.textContent = '—';
@@ -2398,8 +2421,23 @@ function updateCrosshairInfo(param) {
     infoClose.textContent = '—';
     infoVol.textContent = '—';
     infoDVol.textContent = '—';
-    if (volPaneVol) volPaneVol.textContent = '—';
-    if (volPaneDVol) volPaneDVol.textContent = '—';
+    // Fall back to the current visible bar (sim mode) or last bar (non-sim) so
+    // the vol-pane header always shows something useful when the crosshair leaves.
+    let fallbackBar = null;
+    if (simId && simAllBars && simAllBars.length && simIdx < simAllBars.length) {
+      fallbackBar = simAllBars[simIdx];
+    } else if (currentBars && currentBars.length) {
+      fallbackBar = currentBars[currentBars.length - 1];
+    }
+    if (fallbackBar) {
+      const v = fallbackBar.volume !== undefined ? fallbackBar.volume : (fallbackBar.value || 0);
+      const dv = v * (typeof fallbackBar.close === 'number' ? fallbackBar.close : 0);
+      if (volPaneVol) volPaneVol.textContent = fmtVolNum(v);
+      if (volPaneDVol) volPaneDVol.textContent = fmtVolNum(dv);
+    } else {
+      if (volPaneVol) volPaneVol.textContent = '—';
+      if (volPaneDVol) volPaneDVol.textContent = '—';
+    }
     if (infoMA) infoMA.textContent = '—';
     renderADR(undefined);
     renderATR(undefined);
@@ -3980,7 +4018,9 @@ function initChart(){
             vertLine:{visible:false,color:'rgba(0,0,0,0)',width:1,style:LightweightCharts.LineStyle.Solid},
             horzLine:{visible:false,color:'rgba(0,0,0,0)',width:1,style:LightweightCharts.LineStyle.Dashed},
           },
-          rightPriceScale:{borderColor:borderColor, visible:true, borderVisible:true},
+          // Leave ~12% margin at bottom so the last-value price tag on the
+          // vol axis doesn't spill into the equity pane directly below.
+          rightPriceScale:{borderColor:borderColor, visible:true, borderVisible:true, scaleMargins:{top:0.15, bottom:0.12}},
           // Vol pane sits below the main chart and owns the authoritative
           // timeline while enabled. The main chart's time axis is hidden
           // (see above) to avoid two stacked rows of date labels.
@@ -3998,12 +4038,19 @@ function initChart(){
           },
         });
 
-        // Update crosshair overlay while hovering the volume pane.
+        // Update crosshair overlay AND vol-pane header values while hovering the volume pane.
         try{
           const monthNames2 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+          const _tToIso = t => {
+            if(!t) return null;
+            if(typeof t === 'string') return t.slice(0,10);
+            if(typeof t === 'number') return new Date(t*1000).toISOString().slice(0,10);
+            if(typeof t === 'object' && t.year) return `${t.year}-${String(t.month).padStart(2,'0')}-${String(t.day).padStart(2,'0')}`;
+            return null;
+          };
+          const _fmtVolN = x => x>=1e9?(x/1e9).toFixed(2)+'B':x>=1e6?(x/1e6).toFixed(2)+'M':x>=1e3?(x/1e3).toFixed(2)+'K':(x||0).toString();
           volChart.subscribeCrosshairMove(param=>{
             if(!param || !param.point){
-              // window._setCrosshairX?.(null);
               return;
             }
             try{
@@ -4035,6 +4082,37 @@ function initChart(){
               const yOverlay = param.point.y + overlayVolOffsetY;
               if (xCoord != null && Number.isFinite(xCoord)) window._setCrosshairX?.(xCoord, label, yOverlay);
               else window._setCrosshairX?.(param.point.x, label, yOverlay);
+
+              // Also update Vol/$Vol header values from the hovered bar.
+              const iso = _tToIso(t);
+              if(iso){
+                const bars = resampleBars(currentBars, currentTF);
+                const b = bars.find(x => x.time === iso);
+                if(b){
+                  const v = b.volume !== undefined ? b.volume : (b.value || 0);
+                  const dv = v * (typeof b.close === 'number' ? b.close : 0);
+                  const volEl = document.getElementById('vol-pane-vol');
+                  const dvolEl = document.getElementById('vol-pane-dvol');
+                  if(volEl) volEl.textContent = _fmtVolN(v);
+                  if(dvolEl) dvolEl.textContent = _fmtVolN(dv);
+                  // Also the main info-bar Vol/$Vol and bar-detail fields so it
+                  // stays coherent with the main chart's crosshair behavior.
+                  const infoVol = document.getElementById('info-vol');
+                  const infoDVol = document.getElementById('info-dvol');
+                  if(infoVol) infoVol.textContent = _fmtVolN(v);
+                  if(infoDVol) infoDVol.textContent = _fmtVolN(dv);
+                  const infoDate = document.getElementById('info-date');
+                  if(infoDate) infoDate.textContent = b.time || iso;
+                  const infoOpen = document.getElementById('info-open');
+                  const infoHigh = document.getElementById('info-high');
+                  const infoLow = document.getElementById('info-low');
+                  const infoClose = document.getElementById('info-close');
+                  if(infoOpen && typeof b.open==='number') infoOpen.textContent = b.open.toFixed(2);
+                  if(infoHigh && typeof b.high==='number') infoHigh.textContent = b.high.toFixed(2);
+                  if(infoLow && typeof b.low==='number') infoLow.textContent = b.low.toFixed(2);
+                  if(infoClose && typeof b.close==='number') infoClose.textContent = b.close.toFixed(2);
+                }
+              }
             }catch(e){}
           });
         }catch(e){}
@@ -5471,6 +5549,21 @@ function simUpdateStatsUI(){
   const a=simAnalytics;
   const fmt=v=>v>=0?`$${v.toFixed(0)}`:`-$${Math.abs(v).toFixed(0)}`;
   const cap0=simConfig?.startingCapital||1;
+  // Refresh vol-pane header values to reflect the current sim bar — the crosshair
+  // handler only updates on hover/leave events, so without this the displayed
+  // Vol/$Vol go stale as the sim advances.
+  {
+    const b=simCurrentBar();
+    const volEl=document.getElementById('vol-pane-vol');
+    const dvolEl=document.getElementById('vol-pane-dvol');
+    if(b&&(volEl||dvolEl)){
+      const v=b.volume!==undefined?b.volume:(b.value||0);
+      const dv=v*(typeof b.close==='number'?b.close:0);
+      const fmtV=x=>x>=1e9?(x/1e9).toFixed(2)+'B':x>=1e6?(x/1e6).toFixed(2)+'M':x>=1e3?(x/1e3).toFixed(2)+'K':(x||0).toString();
+      if(volEl)volEl.textContent=fmtV(v);
+      if(dvolEl)dvolEl.textContent=fmtV(dv);
+    }
+  }
   // Current bar date — reflects the bar the sim is currently on; updates on every advance/retreat.
   const curDateEl=document.getElementById('sim-cur-date');
   if(curDateEl){
@@ -5670,7 +5763,8 @@ function simBuildSavePayload(){
     drawings:currentSymbol&&drawings[currentSymbol]?drawings[currentSymbol]:[],
     indicators:{maList:maList.map(m=>({type:m.type,period:m.period,color:m.color,enabled:m.enabled})),adrEnabled,adrPeriod,atrEnabled,atrPeriod},
     chartState:{chartType,priceColors,isLogScale,timeframe:currentTF,rightOffset:persistedRightOffset},
-    tradePrefs:simGetTradePrefs()
+    tradePrefs:simGetTradePrefs(),
+    notes:document.getElementById('sim-notes')?.value||''
   };
   // Include config so slMode (and other config changes) persist.
   if(simConfig){
@@ -6090,6 +6184,9 @@ async function simStart(config){
   // New sim starts with empty drawings — don't inherit global per-symbol drawings
   drawings[config.ticker]=[];
   simAnalytics={currentCapital:config.startingCapital,totalPL:0,totalTrades:0,wins:0,losses:0,totalWinPL:0,totalLossPL:0,totalWinDays:0,totalLossDays:0,totalWinR:0,totalLossR:0};
+  // Reset notes for new sim
+  const _notesEl=document.getElementById('sim-notes');
+  if(_notesEl)_notesEl.value='';
 
   document.getElementById('loading').classList.remove('hidden');
   try{
@@ -6111,6 +6208,15 @@ async function simStart(config){
   }else{
     simStartIdx=simAllBars.findIndex(b=>b.time>=config.startDate);
     if(simStartIdx<0)simStartIdx=0;
+  }
+  // Optional: shift the start forward so an MA of the requested period is
+  // already defined at bar 1 (N-1 warmup bars consumed before sim start).
+  if(config.skipToMa && config.skipMaPeriod>0){
+    const warmup=config.skipMaPeriod-1;
+    if(warmup > simStartIdx){
+      simStartIdx=Math.min(warmup, simAllBars.length-1);
+      flash(`Skipped to first bar with ${config.skipMaPeriod}-${(config.skipMaType||'SMA').toUpperCase()} data`);
+    }
   }
   simIdx=simStartIdx;
 
@@ -6290,6 +6396,9 @@ async function simLoadFromServer(id){
     drawings[sim.ticker]=Array.isArray(sim.drawings)?sim.drawings:[];
     drawIdCtr=Math.max(drawIdCtr,...(drawings[sim.ticker].map(d=>d.id||0)),0);
     simTradePrefs=sim.tradePrefs||null;
+    // Restore notes
+    const notesEl=document.getElementById('sim-notes');
+    if(notesEl)notesEl.value=sim.notes||'';
     // NOTE: secondary chart restoration moved to AFTER simAllBars and simIdx
     // are set (see below). Restoring it here would trigger secondaryApplyBars
     // before there's a valid cutoff date, letting future bars leak through.
@@ -6619,6 +6728,7 @@ function renderAnalysisReport(a){
       </div>
       ${progressNote}
       ${cacheNote}
+      ${a.notes?`<div class="rpt-section"><h3>Notes</h3><div style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;font-size:11px;line-height:1.5;color:var(--text);white-space:pre-wrap;">${_safeTxt(a.notes)}</div></div>`:''}
 
       <div class="rpt-section">
         <h3>Headline (R-based — compounding-neutral)</h3>
@@ -7023,6 +7133,7 @@ function renderCompareReport(j){
         <h3>Equity Curves (Normalized, starting = 100)</h3>
         <div class="rpt-chart" id="cmp-equity-chart"></div>
       </div>
+      ${analyses.some(a=>a.notes)?`<div class="rpt-section"><h3>Notes</h3>${analyses.filter(a=>a.notes).map(a=>`<div style="margin-bottom:10px;"><div style="font-size:11px;color:var(--accent);font-weight:500;margin-bottom:4px;">${_safeTxt(a.simName)} <span style="color:var(--muted);font-weight:400;">[${_safeTxt(a.ticker)}]</span></div><div style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;font-size:11px;line-height:1.5;color:var(--text);white-space:pre-wrap;">${_safeTxt(a.notes)}</div></div>`).join('')}</div>`:''}
     </div>
   `;
 
@@ -7267,6 +7378,9 @@ document.getElementById('sim-modal-start').addEventListener('click',async()=>{
   const useFirst=document.getElementById('sim-use-first').checked;
   const startDate=useFirst?null:document.getElementById('sim-start-date').value;
   const entryBarSLProtection=document.getElementById('sim-entry-bar-protect')?.checked!==false;
+  const skipToMa=document.getElementById('sim-skip-to-ma')?.checked||false;
+  const skipMaPeriod=Math.max(1,parseInt(document.getElementById('sim-skip-ma-period')?.value,10)||0);
+  const skipMaType=(document.getElementById('sim-skip-ma-type')?.value||'SMA').toUpperCase();
   const templateId=document.getElementById('sim-template-picker').value;
   let tpl=null;
   if(templateId){
@@ -7275,7 +7389,7 @@ document.getElementById('sim-modal-start').addEventListener('click',async()=>{
   document.getElementById('sim-modal').classList.add('hidden');
   showPage('chart');
   try {
-    await simStart({name,ticker,startingCapital:capital,startDate,useFirstBar:useFirst,entryBarSLProtection,template:tpl});
+    await simStart({name,ticker,startingCapital:capital,startDate,useFirstBar:useFirst,entryBarSLProtection,template:tpl,skipToMa,skipMaPeriod,skipMaType});
   } catch(e) {
     flash(`Simulation failed: ${e.message}`);
   }
@@ -7653,6 +7767,23 @@ document.getElementById('sim-flatten').addEventListener('click',simFlattenAll);
 document.getElementById('sim-save').addEventListener('click',()=>{
   simAutoSave();flash('Saved');
 });
+
+// Notes autosave — uses the existing debounced autosave, with transient status indicator
+(function(){
+  const notesEl=document.getElementById('sim-notes');
+  const statusEl=document.getElementById('sim-notes-status');
+  if(!notesEl)return;
+  let _notesStatusTimer=null;
+  notesEl.addEventListener('input',()=>{
+    if(!simId)return;
+    if(statusEl){
+      statusEl.textContent='· saving…';
+      clearTimeout(_notesStatusTimer);
+      _notesStatusTimer=setTimeout(()=>{ if(statusEl)statusEl.textContent='· saved'; setTimeout(()=>{ if(statusEl)statusEl.textContent=''; },800); },600);
+    }
+    simAutoSave();
+  });
+})();
 document.getElementById('sim-entry-bar-protect-live').addEventListener('change',e=>{
   if(!simConfig)return;
   simConfig.entryBarSLProtection=!!e.target.checked;

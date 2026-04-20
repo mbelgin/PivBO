@@ -531,7 +531,7 @@ def api_simulation_update(sim_id):
             sim = json.load(f)
         for key in ("name", "ticker", "config", "chartState", "indicators",
                      "drawings", "playbackState", "pendingOrders", "trades", "analytics",
-                     "tradePrefs"):
+                     "tradePrefs", "notes"):
             if key in data:
                 sim[key] = data[key]
         sim["modified"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
@@ -978,6 +978,7 @@ def compute_analysis(sim):
         "simId": sim.get("id"),
         "simName": sim.get("name", ""),
         "ticker": sim.get("ticker", ""),
+        "notes": sim.get("notes", "") or "",
         "generatedAt": _iso_now(),
         "progress": 100.0 if is_complete else progress,
         "isComplete": is_complete,
@@ -1105,6 +1106,8 @@ def api_simulation_analyze(sim_id):
         # without invalidating the (deterministic) computed stats.
         cache["simName"] = sim.get("name", cache.get("simName", ""))
         cache["ticker"] = sim.get("ticker", cache.get("ticker", ""))
+
+        cache["notes"] = sim.get("notes", cache.get("notes", "")) or ""
         cache["_fromCache"] = True
         return jsonify(cache)
 
@@ -1163,6 +1166,8 @@ def api_simulations_compare():
                 # Overlay current display metadata on cached analysis
                 cache["simName"] = sim.get("name", cache.get("simName", ""))
                 cache["ticker"] = sim.get("ticker", cache.get("ticker", ""))
+
+                cache["notes"] = sim.get("notes", cache.get("notes", "")) or ""
                 analyses.append(cache)
             else:
                 a = compute_analysis(sim)
@@ -1494,6 +1499,25 @@ def _build_analysis_pdf(a):
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ]))
         elements.append(banner)
+        elements.append(Spacer(1, 6))
+
+    # ----- Notes (if any) -----
+    notes = (a.get("notes") or "").strip()
+    if notes:
+        elements.append(Paragraph("NOTES", st["h3"]))
+        notes_style = ParagraphStyle("notes", fontName="Helvetica", fontSize=9,
+                                     textColor=HexColor("#222222"), leading=12, leftIndent=0)
+        notes_box = Table([[Paragraph(notes.replace("\n", "<br/>"), notes_style)]],
+                          colWidths=[7.4 * inch])
+        notes_box.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), HexColor("#f7f7f8")),
+            ("BOX", (0, 0), (-1, -1), 0.5, HexColor("#d0d0d5")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(notes_box)
         elements.append(Spacer(1, 6))
 
     # ----- R-based (primary) -----
@@ -1830,6 +1854,33 @@ def _build_compare_pdf(analyses):
         img_h = img_w / 9.5 * 3.0  # maintain aspect
         elements.append(Image(eq_buf, width=img_w, height=img_h))
 
+    # ----- Per-sim notes -----
+    noted = [a for a in analyses if (a.get("notes") or "").strip()]
+    if noted:
+        elements.append(Paragraph("NOTES", st["h3"]))
+        notes_body_style = ParagraphStyle("notes_body", fontName="Helvetica", fontSize=9,
+                                          textColor=HexColor("#222222"), leading=12)
+        notes_hdr_style = ParagraphStyle("notes_hdr", fontName="Helvetica-Bold", fontSize=10,
+                                         textColor=HexColor("#00a684"), leading=12)
+        for a in noted:
+            hdr = f"{a.get('simName','')} [{a.get('ticker','')}]"
+            notes_tbl = Table(
+                [[Paragraph(hdr, notes_hdr_style)],
+                 [Paragraph((a.get("notes") or "").strip().replace("\n", "<br/>"), notes_body_style)]],
+                colWidths=[pagesize[0] - 0.9 * inch]
+            )
+            notes_tbl.setStyle(TableStyle([
+                ("BACKGROUND", (0, 1), (-1, 1), HexColor("#f7f7f8")),
+                ("BOX", (0, 0), (-1, -1), 0.5, HexColor("#d0d0d5")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("LINEABOVE", (0, 1), (-1, 1), 0.25, HexColor("#e2e2e7")),
+            ]))
+            elements.append(notes_tbl)
+            elements.append(Spacer(1, 6))
+
     def _page_footer(canvas, doc_):
         canvas.saveState()
         canvas.setFont("Helvetica", 7)
@@ -1861,6 +1912,8 @@ def api_analysis_pdf(sim_id):
     if cache and cache.get("generatedAt", "") >= last_opened:
         cache["simName"] = sim.get("name", cache.get("simName", ""))
         cache["ticker"] = sim.get("ticker", cache.get("ticker", ""))
+
+        cache["notes"] = sim.get("notes", cache.get("notes", "")) or ""
         analysis = cache
     else:
         try:
@@ -1901,6 +1954,8 @@ def api_compare_pdf():
             if cache and cache.get("generatedAt", "") >= last_opened:
                 cache["simName"] = sim.get("name", cache.get("simName", ""))
                 cache["ticker"] = sim.get("ticker", cache.get("ticker", ""))
+
+                cache["notes"] = sim.get("notes", cache.get("notes", "")) or ""
                 analyses.append(cache)
             else:
                 a = compute_analysis(sim)
