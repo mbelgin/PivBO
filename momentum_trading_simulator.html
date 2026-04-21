@@ -6,8 +6,9 @@
 <title>Momentum Trading Simulator</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230a0c0f'/><path d='M4 24 L12 16 L18 20 L27 9' stroke='%2300d4aa' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/><path d='M21 9 L27 9 L27 15' stroke='%2300d4aa' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
   :root{
     --bg:#0a0c0f;--bg2:#111418;--bg3:#181d23;--border:#1f2833;
@@ -1028,7 +1029,7 @@
   .sim-modal{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:24px;width:420px;max-width:90vw;font-family:var(--mono);}
   .sim-modal h2{font-size:15px;color:var(--accent);margin-bottom:16px;font-weight:600;}
   .sim-modal label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;margin-top:12px;}
-  .sim-modal input[type=text],.sim-modal input[type=number],.sim-modal input[type=date]{
+  .sim-modal input[type=text],.sim-modal input[type=number],.sim-modal input[type=date],.sim-modal input[type=email]{
     width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);
     font-family:var(--mono);font-size:12px;border-radius:4px;outline:none;box-sizing:border-box;
   }
@@ -1159,6 +1160,54 @@
   .sim-trade-row .trade-dir.long{color:var(--green);}
   .sim-trade-row .trade-dir.short{color:var(--red);}
   .sim-controls{padding:8px 12px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:6px;}
+
+  /* Duel Mode UI */
+  .duel-tabs{display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--border);}
+  .duel-tab{padding:8px 16px;background:transparent;color:var(--muted);border:none;border-bottom:2px solid transparent;font-family:var(--mono);font-size:12px;cursor:pointer;}
+  .duel-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+  .duel-tab:hover:not(.active){color:var(--text);}
+  .duel-tab-panel{display:none;}
+  .duel-tab-panel.active{display:block;}
+  .duel-status{margin-top:14px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--muted);min-height:20px;line-height:1.5;}
+  .duel-status.connected{border-color:var(--green);color:var(--text);}
+  .duel-status.error{border-color:var(--red);color:var(--red);}
+  .duel-code-display{font-size:22px;font-family:var(--mono);color:var(--accent);letter-spacing:4px;font-weight:600;text-align:center;padding:14px;background:var(--bg3);border:1px dashed var(--accent);border-radius:6px;margin:12px 0 6px;cursor:pointer;user-select:all;}
+  .duel-code-label{font-size:10px;text-transform:uppercase;color:var(--muted);text-align:center;letter-spacing:1px;}
+  .duel-err{font-size:10px;color:var(--red);margin-top:4px;min-height:14px;line-height:1.4;}
+
+  /* Duel panel — sits at the top of the trade panel while a duel is live.
+     Three stacked rows: header (identity), body (countdown + indicators),
+     actions (READY + End). Sized so all text is comfortably readable. */
+  .duel-banner{background:linear-gradient(180deg,var(--bg2),var(--bg3));border-bottom:2px solid var(--yellow);font-family:var(--mono);display:flex;flex-direction:column;}
+  .duel-banner.hidden{display:none;}
+
+  .duel-banner-header{padding:7px 12px;background:var(--bg3);display:flex;align-items:center;gap:8px;font-size:10px;color:var(--muted);border-bottom:1px solid var(--border);flex-wrap:wrap;}
+  .duel-banner-label{color:var(--yellow);font-weight:700;letter-spacing:2px;font-size:11px;}
+  .duel-banner-opp{color:var(--text);font-weight:600;}
+  .duel-banner-sep{color:var(--muted);opacity:0.5;}
+  .duel-banner-room{color:var(--muted);}
+  .duel-banner-phase{margin-left:auto;padding:2px 8px;color:var(--accent);font-weight:700;text-transform:uppercase;font-size:10px;border:1px solid var(--accent);border-radius:3px;letter-spacing:1.5px;}
+  .duel-banner-phase.live{color:var(--green);border-color:var(--green);}
+  .duel-banner-phase.ended{color:var(--muted);border-color:var(--muted);}
+  .duel-banner-phase.offline{color:var(--red);border-color:var(--red);}
+
+  .duel-banner-body{padding:12px 14px;display:flex;align-items:center;gap:18px;}
+  .duel-countdown{font-family:'Share Tech Mono','Consolas',monospace;font-size:34px;color:var(--yellow);background:#000;padding:6px 14px;border-radius:5px;border:1px solid var(--border);letter-spacing:3px;text-shadow:0 0 8px rgba(245,200,66,0.55);font-variant-numeric:tabular-nums;min-width:120px;text-align:center;line-height:1;}
+  .duel-countdown.urgent{color:var(--red);text-shadow:0 0 8px rgba(239,83,80,0.7);animation:duelPulse 0.9s ease-in-out infinite alternate;}
+  .duel-countdown.idle{color:var(--muted);text-shadow:none;opacity:0.55;}
+  @keyframes duelPulse{from{opacity:0.8;}to{opacity:1;}}
+
+  .duel-indicators{display:flex;flex-direction:column;gap:6px;flex:1;}
+  .duel-ind-row{display:flex;align-items:center;gap:8px;}
+  .duel-ind-dot{width:11px;height:11px;border-radius:50%;background:#0c0c10;border:1px solid var(--muted);transition:all 0.15s;flex-shrink:0;}
+  .duel-ind-dot.active{background:var(--green);border-color:var(--green);box-shadow:0 0 5px rgba(38,166,154,0.7);}
+  .duel-ind-label{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;min-width:32px;}
+  .duel-ind-state{color:var(--text);font-size:11px;}
+
+  .duel-banner-actions{padding:8px 12px 10px;display:flex;gap:8px;border-top:1px solid var(--border);}
+  .duel-banner-actions .sim-btn{padding:9px 14px;font-size:12px;font-weight:600;letter-spacing:0.5px;}
+  .duel-banner-actions #duel-ready-btn{flex:2;}
+  .duel-banner-actions #duel-end-btn{flex:1;}
 
   /* Inline trade entry form (inside sim left panel) */
   .sim-trade-form{padding:10px 12px;border-bottom:1px solid var(--border);background:var(--bg3);}
@@ -1634,8 +1683,37 @@
     <!-- Right trade panel (visible during simulation) -->
     <div class="trade-panel hidden sim-panel" id="trade-panel">
       <div class="panel-resize-handle" id="trade-panel-resize"></div>
+      <div class="duel-banner hidden" id="duel-banner">
+        <div class="duel-banner-header">
+          <span class="duel-banner-label">DUEL</span>
+          <span id="duel-banner-opp">vs —</span>
+          <span class="duel-banner-sep">·</span>
+          <span id="duel-banner-room">Room —</span>
+          <span class="duel-banner-phase" id="duel-banner-phase">—</span>
+        </div>
+        <div class="duel-banner-body">
+          <div class="duel-countdown idle" id="duel-countdown">--:--</div>
+          <div class="duel-indicators">
+            <div class="duel-ind-row">
+              <span class="duel-ind-dot" id="duel-ind-me"></span>
+              <span class="duel-ind-label">YOU</span>
+              <span class="duel-ind-state" id="duel-ind-me-state">—</span>
+            </div>
+            <div class="duel-ind-row">
+              <span class="duel-ind-dot" id="duel-ind-opp"></span>
+              <span class="duel-ind-label">OPP</span>
+              <span class="duel-ind-state" id="duel-ind-opp-state">—</span>
+            </div>
+          </div>
+        </div>
+        <div class="duel-banner-actions">
+          <button class="sim-btn primary" id="duel-ready-btn">I'M READY</button>
+          <button class="sim-btn danger" id="duel-end-btn">End Duel</button>
+        </div>
+      </div>
       <div class="sim-controls" id="sim-controls">
         <button class="sim-btn" id="sim-save">Save</button>
+        <button class="sim-btn" id="sim-load-template" title="Apply a saved template's chart/indicator settings to this sim">Load Template</button>
         <button class="sim-btn" id="sim-save-template" title="Save chart/indicator settings as reusable template">Save Template</button>
         <button class="sim-btn danger" id="sim-exit">Exit</button>
       </div>
@@ -1780,6 +1858,179 @@
     <div class="sim-actions">
       <button class="sim-btn" id="sim-modal-cancel">Cancel</button>
       <button class="sim-btn primary" id="sim-modal-start">Start Simulation</button>
+    </div>
+  </div>
+</div>
+
+<!-- Duel Mode Modal -->
+<div class="sim-modal-overlay hidden" id="duel-modal">
+  <div class="sim-modal" style="width:460px;">
+    <h2 id="duel-modal-title">Duel Mode</h2>
+
+    <!-- STAGE: connect (host/join tabs) -->
+    <div class="duel-stage" data-duel-stage="connect">
+      <div class="duel-tabs">
+        <button class="duel-tab active" data-duel-tab="host">Host</button>
+        <button class="duel-tab" data-duel-tab="join">Join</button>
+      </div>
+
+      <div class="duel-tab-panel active" data-duel-panel="host">
+        <div id="duel-host-precode">
+          <label>Your email (used for display name only, never shared)</label>
+          <input type="email" id="duel-host-email" placeholder="alice@example.com" autocomplete="email">
+          <div class="duel-err" id="duel-host-email-err"></div>
+
+          <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">
+            <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:4px;">
+              Pick the duel's constraints. A random ticker matching them will be selected,
+              and the sim will run for exactly the chosen number of years (252 trading
+              bars per year). Eligible tickers are those with enough history to cover
+              that range plus any MA warmup.
+            </div>
+            <div class="sim-row" style="margin-top:10px;">
+              <div>
+                <label title="Length of the duel in trading years (252 bars/year). Also the minimum history a ticker must have to qualify.">Years for simulation</label>
+                <input type="number" id="duel-cfg-years" value="2" min="1" max="20" step="1">
+              </div>
+              <div>
+                <label>Decision timeout (sec)</label>
+                <input type="number" id="duel-cfg-to" value="45" min="5" max="120" step="1">
+              </div>
+            </div>
+            <label style="margin-top:10px;">Min average ADR% (slow to fast)</label>
+            <input type="number" id="duel-cfg-adr" value="2" min="0" max="20" step="0.1">
+            <div class="sim-check" style="margin-top:10px;align-items:center;gap:6px;flex-wrap:wrap;">
+              <input type="checkbox" id="duel-cfg-skipma" checked>
+              <span>Start from first bar with</span>
+              <input type="number" id="duel-cfg-skipma-period" value="50" min="1" max="999"
+                     style="width:50px;padding:2px 4px;font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:2px;font-family:var(--mono);">
+              <select id="duel-cfg-skipma-type" style="padding:2px 4px;font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:2px;font-family:var(--mono);">
+                <option value="SMA">SMA</option>
+                <option value="EMA">EMA</option>
+              </select>
+              <span>data available</span>
+            </div>
+            <div class="sim-check" style="margin-top:10px;align-items:flex-start;gap:6px;">
+              <input type="checkbox" id="duel-cfg-hidden" style="margin-top:2px;">
+              <div style="flex:1;line-height:1.5;">
+                <span>Keep ticker hidden until the end of the duel</span>
+                <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+                  Both players trade blind. The ticker is revealed in the
+                  post-duel report, not in the chart header or trade history.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sim-actions" style="margin-top:14px;">
+            <button class="sim-btn" id="duel-host-cancel">Cancel</button>
+            <button class="sim-btn primary" id="duel-host-create">Create Room</button>
+          </div>
+        </div>
+        <div id="duel-host-postcode" style="display:none;">
+          <div class="duel-code-label">Share this code with your opponent</div>
+          <div class="duel-code-display" id="duel-host-code" title="Click to copy">—</div>
+          <div class="duel-code-label" style="margin-top:-2px;font-size:9px;">(click to copy)</div>
+          <div class="duel-status" id="duel-host-status">Connecting…</div>
+          <div class="sim-actions">
+            <button class="sim-btn danger" id="duel-host-abort">End</button>
+            <button class="sim-btn primary" id="duel-host-proceed" disabled>Continue</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="duel-tab-panel" data-duel-panel="join">
+        <div id="duel-join-prejoin">
+          <label>Your email (used for display name only, never shared)</label>
+          <input type="email" id="duel-join-email" placeholder="bob@example.com" autocomplete="email">
+          <div class="duel-err" id="duel-join-email-err"></div>
+          <label>Room code</label>
+          <input type="text" id="duel-join-code" placeholder="ABCDEF" maxlength="6"
+                 style="text-transform:uppercase;letter-spacing:4px;font-size:16px;text-align:center;">
+          <div class="duel-err" id="duel-join-code-err"></div>
+          <div class="sim-actions">
+            <button class="sim-btn" id="duel-join-cancel">Cancel</button>
+            <button class="sim-btn primary" id="duel-join-submit">Join Duel</button>
+          </div>
+        </div>
+        <div id="duel-join-postjoin" style="display:none;">
+          <div class="duel-status" id="duel-join-status">Connecting…</div>
+          <div class="sim-actions">
+            <button class="sim-btn danger" id="duel-join-abort">End</button>
+            <button class="sim-btn primary" id="duel-join-proceed" disabled>Continue</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STAGE: config (guest-only waiting screen; host fills config on connect) -->
+    <div class="duel-stage" data-duel-stage="config" style="display:none;">
+      <div id="duel-cfg-guest">
+        <div class="duel-status" id="duel-cfg-wait-status">
+          Waiting for <span id="duel-cfg-host-name">your opponent</span> to share the duel settings…
+        </div>
+        <div class="sim-actions">
+          <button class="sim-btn danger" id="duel-cfg-guest-abort">End</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STAGE: preparing (pick ticker + verify data on both sides) -->
+    <div class="duel-stage" data-duel-stage="preparing" style="display:none;">
+      <div id="duel-prep-summary" style="font-size:11px;color:var(--muted);background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:10px 12px;margin-bottom:12px;line-height:1.6;"></div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:12px;">
+        Selecting a ticker and verifying both players have the data.
+      </div>
+      <div class="duel-status" id="duel-prep-mine-status">Starting…</div>
+      <div class="duel-status" id="duel-prep-opp-status" style="margin-top:8px;">Waiting for opponent…</div>
+      <div class="sim-actions">
+        <button class="sim-btn danger" id="duel-prep-abort">End</button>
+      </div>
+    </div>
+
+    <!-- STAGE: honor code -->
+    <div class="duel-stage" data-duel-stage="honor" style="display:none;">
+      <div id="duel-config-summary" style="font-size:11px;color:var(--muted);background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:10px 12px;margin-bottom:14px;line-height:1.6;"></div>
+      <div style="font-size:13px;color:var(--accent);font-weight:600;margin-bottom:8px;">The Duel Pact</div>
+      <div style="font-size:11px;color:var(--text);line-height:1.65;">
+        This is a friendly duel, not a cage match. The market has already humbled
+        everyone here. No need to pile on.
+        <br><br>
+        You both win the moment you hit Start. You're about to get sharper at the
+        stuff that actually matters: reading bars in real time, resisting FOMO,
+        not chasing, not revenging, not freezing.
+        <br><br>
+        So: no peeking at the live chart in another tab. No googling the ticker.
+        No asking your dog what happens next.
+        <br><br>
+        Trade the bars you're given. Learn from the market together with your
+        opponent, and high-five each other afterward.
+      </div>
+      <div class="duel-status" id="duel-honor-status" style="margin-top:14px;">Click "I agree" when you're ready.</div>
+      <div class="sim-actions">
+        <button class="sim-btn danger" id="duel-honor-abort">End</button>
+        <button class="sim-btn primary" id="duel-honor-accept">I agree to duel honorably</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Load Template Modal — apply a saved template to the running sim/duel -->
+<div class="sim-modal-overlay hidden" id="tpl-load-modal">
+  <div class="sim-modal">
+    <h2>Load Template</h2>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5;">
+      Applies chart style, indicators, MAs, secondary chart, and trade
+      preferences from the selected template. Trades, bar index, and duel
+      state are not affected.
+    </div>
+    <label>Template</label>
+    <select id="tpl-load-picker" style="width:100%;padding:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;border-radius:4px;">
+      <option value="">— Select a template —</option>
+    </select>
+    <div class="sim-actions">
+      <button class="sim-btn" id="tpl-load-cancel">Cancel</button>
+      <button class="sim-btn primary" id="tpl-load-apply" disabled>Apply</button>
     </div>
   </div>
 </div>
@@ -5175,6 +5426,17 @@ function simVisibleOpenTrades(){
 
 function simAdvance(){
   if(simState!=='playing'&&simState!=='paused')return false;
+  if(window.duelGate && window.duelGate.active){
+    // In active phase, right-arrow = "I'm ready to advance this bar"; the gate
+    // waits for the opponent (or timeout) before actually moving simIdx. The
+    // _committing guard lets the gate's own simAdvance re-entry proceed.
+    if(window.duelGate.phase === 'active' && !window.duelGate._committing){
+      return window.duelGate.requestAdvance();
+    }
+    if(!window.duelGate.canAdvance()){
+      const r=window.duelGate.advanceBlockReason(); if(r)flash(r); return false;
+    }
+  }
   if(simIdx>=simAllBars.length-1)return false;
   try{simRevertAllPendingSL();}catch(_){}
   simIdx++;
@@ -5194,6 +5456,9 @@ function simAdvance(){
 
 function simRetreat(){
   if(simState!=='playing'&&simState!=='paused')return false;
+  if(window.duelGate && window.duelGate.active && !window.duelGate.canRetreat()){
+    const r=window.duelGate.retreatBlockReason(); if(r)flash(r); return false;
+  }
   if(simIdx<=simStartIdx)return false;
   try{simRevertAllPendingSL();}catch(_){}
   simIdx--;
@@ -5764,7 +6029,10 @@ function simBuildSavePayload(){
     indicators:{maList:maList.map(m=>({type:m.type,period:m.period,color:m.color,enabled:m.enabled})),adrEnabled,adrPeriod,atrEnabled,atrPeriod},
     chartState:{chartType,priceColors,isLogScale,timeframe:currentTF,rightOffset:persistedRightOffset},
     tradePrefs:simGetTradePrefs(),
-    notes:document.getElementById('sim-notes')?.value||''
+    notes:document.getElementById('sim-notes')?.value||'',
+    // Snapshot live duel state so it survives page refresh. Null when no duel
+    // is active; the restore path no-ops on null.
+    duelState: (window.duelPersistence && window.duelPersistence.snapshot()) || null
   };
   // Include config so slMode (and other config changes) persist.
   if(simConfig){
@@ -6220,13 +6488,26 @@ async function simStart(config){
   }
   simIdx=simStartIdx;
 
-  // Create on server
+  // Create on server. For duels we also seed duelState in the create body so
+  // an immediate hard reset (before the first PUT fires) still leaves a sim
+  // that can be restored with a live duel.
   try{
-    const resp=await fetch('/api/simulations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      name:config.name,ticker:config.ticker,config:{startingCapital:config.startingCapital,startDate:config.startDate||simAllBars[simStartIdx]?.time,useFirstBar:config.useFirstBar,entryBarSLProtection:config.entryBarSLProtection!==false}
-    })});
+    const createBody={
+      name:config.name,ticker:config.ticker,
+      config:{startingCapital:config.startingCapital,startDate:config.startDate||simAllBars[simStartIdx]?.time,useFirstBar:config.useFirstBar,entryBarSLProtection:config.entryBarSLProtection!==false}
+    };
+    if(window.duelPersistence){
+      const dsnap=window.duelPersistence.snapshot();
+      if(dsnap)createBody.duelState=dsnap;
+    }
+    const resp=await fetch('/api/simulations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(createBody)});
     const sim=await resp.json();
     simId=sim.id;
+    // Write to both stores: sessionStorage is tab-scoped (so two tabs on
+    // the same browser — e.g. host + guest of a local duel — each remember
+    // THEIR own active sim); localStorage is the cross-session fallback
+    // for "close the browser, reopen tomorrow".
+    try{sessionStorage.setItem('bm_active_sim_id',String(simId));}catch(e){}
     try{localStorage.setItem('bm_active_sim_id',String(simId));}catch(e){}
   }catch(e){simId=null;}
 
@@ -6302,7 +6583,13 @@ async function simPause(){
 }
 
 async function simExit(){
+  // Wind down any live duel so the MQTT relay closes cleanly and the saved
+  // duelState gets flipped to null before we flush+drop this sim.
+  if(window.duelGate && window.duelGate.active && window.duelPersistence){
+    try { window.duelPersistence.end(); } catch(_){}
+  }
   await simFlushSave();
+  try{sessionStorage.removeItem('bm_active_sim_id');}catch(e){}
   try{localStorage.removeItem('bm_active_sim_id');}catch(e){}
   simState='idle';simConfig=null;simAllBars=[];simTrades=[];simPending=[];simId=null;simTradePrefs=null;_simReviewId=null;
   // Restore global drawings (sim-specific drawings were isolated in sim JSON)
@@ -6356,6 +6643,8 @@ async function simLoadFromServer(id){
     };
 
     simConfig=config;simId=sim.id;
+    // Tab-scoped first, then cross-session fallback. See comment in simStart.
+    try{sessionStorage.setItem('bm_active_sim_id',String(simId));}catch(e){}
     try{localStorage.setItem('bm_active_sim_id',String(simId));}catch(e){}
     simState='playing';
     simTrades=(sim.trades||[]).map(t=>{
@@ -6482,6 +6771,12 @@ async function simLoadFromServer(id){
       simClearSecondary();
     }
     showPage('chart');
+    // Re-establish a live duel if this sim was in the middle of one. Runs
+    // after the sim is fully loaded so duelGate + banner have a stable
+    // simIdx / simConfig to work with.
+    if(sim.duelState && window.duelPersistence){
+      try { await window.duelPersistence.restore(sim.duelState); } catch(_){}
+    }
   }catch(e){
     flash(`Error loading simulation: ${e.message}`);
     document.getElementById('loading').classList.add('hidden');
@@ -6510,6 +6805,7 @@ async function loadSimsList(){
     const sims=await resp.json();
     const toolbar=`<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;">
       <button class="sim-btn primary" id="new-sim-btn">+ New Simulation</button>
+      <button class="sim-btn" id="duel-mode-btn" title="1v1 duel against a remote opponent">Duel Mode</button>
       <span style="width:10px"></span>
       <button class="sim-btn" id="sims-select-all">Select all</button>
       <button class="sim-btn danger" id="sims-bulk-delete" disabled>Delete selected</button>
@@ -6599,6 +6895,8 @@ function wireSimsListToolbar(sims){
   const impFile=document.getElementById('sims-import-file');
   const newBtn=document.getElementById('new-sim-btn');
   if(newBtn)newBtn.addEventListener('click',openNewSimModal);
+  const duelBtn=document.getElementById('duel-mode-btn');
+  if(duelBtn)duelBtn.addEventListener('click',()=>window.duelUI&&window.duelUI.open());
   const boxes=()=>document.querySelectorAll('.sim-row-check');
   const selected=()=>Array.from(boxes()).filter(b=>b.checked).map(b=>b.dataset.id);
   const refresh=()=>{
@@ -7768,6 +8066,66 @@ document.getElementById('sim-save').addEventListener('click',()=>{
   simAutoSave();flash('Saved');
 });
 
+// Load Template — applies a saved template's chart/indicator/trade prefs to
+// the currently running sim (or duel). Reuses applyTemplate() which is
+// already the sim-start path's template loader, so behavior is identical.
+(function(){
+  const modal  = document.getElementById('tpl-load-modal');
+  const picker = document.getElementById('tpl-load-picker');
+  const applyBtn = document.getElementById('tpl-load-apply');
+  const cancelBtn = document.getElementById('tpl-load-cancel');
+  const openBtn = document.getElementById('sim-load-template');
+  if(!modal || !picker || !applyBtn || !cancelBtn || !openBtn) return;
+
+  async function populate(){
+    picker.innerHTML = '<option value="">— Select a template —</option>';
+    applyBtn.disabled = true;
+    try{
+      const r = await fetch('/api/templates');
+      const items = await r.json();
+      if(!Array.isArray(items) || items.length===0){
+        picker.innerHTML = '<option value="">(no templates saved yet)</option>';
+        return;
+      }
+      picker.innerHTML = '<option value="">— Select a template —</option>'
+        + items.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+    }catch(e){}
+  }
+
+  openBtn.addEventListener('click', async ()=>{
+    if(!simId){ flash('No active simulation'); return; }
+    await populate();
+    modal.classList.remove('hidden');
+  });
+
+  picker.addEventListener('change', ()=>{ applyBtn.disabled = !picker.value; });
+  cancelBtn.addEventListener('click', ()=>{ modal.classList.add('hidden'); });
+
+  applyBtn.addEventListener('click', async ()=>{
+    const id = picker.value;
+    if(!id) return;
+    applyBtn.disabled = true;
+    try{
+      const r = await fetch(`/api/templates/${id}`);
+      const tpl = await r.json();
+      if(tpl && !tpl.error){
+        applyTemplate(tpl);
+        // Repaint the main chart + vol pane with the new indicator set, and
+        // persist the change into the sim JSON so it survives refresh.
+        try { redrawAll(); } catch(_){}
+        try { simApplyBars(); } catch(_){}
+        try { simAutoSave(); } catch(_){}
+        flash(`Template "${tpl.name}" applied`);
+      } else {
+        flash('Failed to load template');
+      }
+    }catch(e){
+      flash('Failed to load template: ' + (e.message||e));
+    }
+    modal.classList.add('hidden');
+  });
+})();
+
 // Notes autosave — uses the existing debounced autosave, with transient status indicator
 (function(){
   const notesEl=document.getElementById('sim-notes');
@@ -7813,9 +8171,13 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
   function applyGrid(leftW,rightW){
     const simActive=main.classList.contains('sim-active');
     if(simActive){
-      const lw=leftW||leftPanel.offsetWidth;
+      // In sim-active, table-panel is display:none — only chart + trade-panel
+      // are in the grid. CSS defines TWO columns (1fr + clamp). Writing a
+      // three-column inline override puts chart in column 1 with a tiny
+      // width and trade-panel in column 2 at 1fr, making trade-panel eat
+      // the entire viewport.
       const rw=rightW||(rightPanel?rightPanel.offsetWidth:320);
-      main.style.gridTemplateColumns=`${lw}px 1fr ${rw}px`;
+      main.style.gridTemplateColumns=`1fr ${rw}px`;
     }else{
       const lw=leftW||leftPanel.offsetWidth;
       main.style.gridTemplateColumns=`${lw}px 1fr`;
@@ -8167,6 +8529,1303 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
 })();
 
 // ==============================================
+// DUEL MODE — Chunk 1: MQTT relay + host/join handshake
+// ==============================================
+(function(){
+  const BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
+  // Namespace prefix keeps us off colliding topics on the public broker.
+  const TOPIC_NS = 'mbelgin/mts/duel';
+  const STALE_MS = 120000;
+
+  let client = null;
+  let roomCode = null;
+  let mySlot = null;       // 'host' | 'guest'
+  let myName = null;
+  let opponentName = null;
+  let onOpponentCb = null;
+  let onCloseCb = null;
+  const msgHandlers = {};  // { type: [fn, ...] } — fired when opponent publishes that type
+
+  function nameFromEmail(email){
+    if(!email || typeof email!=='string') return '';
+    const at = email.indexOf('@');
+    if(at<=0) return '';
+    return email.slice(0,at).trim();
+  }
+
+  function genRoomCode(){
+    // Avoid confusables: drop I, O, 0, 1.
+    const alpha = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let out = '';
+    for(let i=0;i<6;i++) out += alpha[Math.floor(Math.random()*alpha.length)];
+    return out;
+  }
+
+  function topicFor(slot){ return `${TOPIC_NS}/${roomCode}/${slot}`; }
+  function otherSlot(){ return mySlot==='host' ? 'guest' : 'host'; }
+
+  function connect(code, slot, name, onReady, onError, opts){
+    if(typeof mqtt === 'undefined'){
+      onError && onError('MQTT library not loaded'); return;
+    }
+    roomCode = code;
+    mySlot = slot;
+    myName = name;
+    opponentName = null;
+    const isResume = !!(opts && opts.resume);
+
+    // Stable clientId (no random suffix) plus clean:false = persistent MQTT
+    // session. Broker queues QoS 1 messages while we're briefly offline and
+    // redelivers on reconnect, so a dropped packet or a momentary network
+    // blip can't desync the two peers. Different room codes produce
+    // different clientIds, so separate duels don't collide.
+    const clientId = `${slot}-${code}`;
+    try{
+      client = mqtt.connect(BROKER_URL, {
+        clientId, clean:false, reconnectPeriod:2000, connectTimeout:8000,
+      });
+    }catch(e){
+      onError && onError('Could not start MQTT client: '+(e.message||e));
+      return;
+    }
+
+    client.on('connect', ()=>{
+      // Fresh host creating a room: wipe any stale retained messages so
+      // ghost rooms don't report phantom opponents. On a RESUME (page was
+      // refreshed mid-duel) we DO NOT wipe — the opponent's retained hello
+      // is the only way we can re-learn they're still alive.
+      if(mySlot === 'host' && !isResume){
+        try{ client.publish(topicFor('host'),  '', {qos:0, retain:true}); }catch(e){}
+        try{ client.publish(topicFor('guest'), '', {qos:0, retain:true}); }catch(e){}
+      }
+      client.subscribe(topicFor(otherSlot()), {qos:1}, err=>{
+        if(err){ onError && onError('Subscribe failed: '+err.message); return; }
+        // Small delay lets the retain-clear propagate before our own hello.
+        setTimeout(()=>{
+          try{
+            client.publish(topicFor(mySlot),
+              JSON.stringify({type:'hello', name:myName, ts:Date.now()}),
+              {qos:1, retain:true});
+          }catch(e){}
+          onReady && onReady();
+        }, mySlot==='host' ? 150 : 0);
+      });
+    });
+
+    client.on('message', (topic, payload)=>{
+      let msg=null;
+      const txt = payload && payload.toString ? payload.toString() : '';
+      if(!txt) return; // empty payload = retained-message clear
+      try{ msg = JSON.parse(txt); }catch(e){ return; }
+      if(!msg || typeof msg!=='object') return;
+      if(topic !== topicFor(otherSlot())) return;
+      if(msg.type === 'hello'){
+        if(typeof msg.ts === 'number' && Date.now() - msg.ts > STALE_MS) return;
+        const isNew = (opponentName !== msg.name);
+        if(isNew) opponentName = msg.name || '(opponent)';
+        // Fire on EVERY hello (initial OR re-announce), so a refreshed peer
+        // gets a fresh handshake and both sides can re-sync their state.
+        onOpponentCb && onOpponentCb(opponentName, {isInitial: isNew});
+        return;
+      }
+      const handlers = msgHandlers[msg.type];
+      if(handlers) handlers.forEach(fn=>{ try{ fn(msg); }catch(e){} });
+    });
+
+    client.on('error', err=>{
+      onError && onError('MQTT error: '+((err&&err.message)||err||'unknown'));
+    });
+    client.on('close', ()=>{
+      onCloseCb && onCloseCb();
+    });
+  }
+
+  function disconnect(){
+    if(!client){ reset(); return; }
+    try{
+      if(roomCode && mySlot){
+        client.publish(topicFor(mySlot), '', {qos:0, retain:true});
+      }
+    }catch(e){}
+    try{ client.end(true); }catch(e){}
+    reset();
+  }
+  function reset(){
+    client = null; roomCode = null; mySlot = null;
+    myName = null; opponentName = null;
+    onOpponentCb = null; onCloseCb = null;
+    for(const k in msgHandlers) delete msgHandlers[k];
+  }
+
+  // Publish a typed message on my own slot topic at QoS 1. With clean:false
+  // sessions on both sides, the broker queues anything that can't be
+  // delivered immediately and redelivers on reconnect — so a peer who's
+  // briefly offline still picks the message up, and an in-flight packet
+  // can't silently vanish.
+  // Retain is reserved for the initial `hello` beacon only; each slot has ONE
+  // topic, so retained publishes overwrite each other and only the latest
+  // survives on the broker. Retaining anything beyond hello would silently
+  // bury earlier state for a late-reconnecting peer.
+  function publish(type, data){
+    if(!client) return false;
+    const payload = Object.assign({type, ts:Date.now()}, data||{});
+    try{ client.publish(topicFor(mySlot), JSON.stringify(payload), {qos:1, retain:false}); return true; }
+    catch(e){ return false; }
+  }
+  function onMessage(type, fn){
+    if(!msgHandlers[type]) msgHandlers[type] = [];
+    msgHandlers[type].push(fn);
+  }
+
+  window.duelRelay = {
+    connect, disconnect, publish, onMessage, genRoomCode, nameFromEmail,
+    setOpponentHandler: fn=>{ onOpponentCb = fn; },
+    setCloseHandler: fn=>{ onCloseCb = fn; },
+    get roomCode(){ return roomCode; },
+    get opponentName(){ return opponentName; },
+    get myName(){ return myName; },
+    get mySlot(){ return mySlot; },
+    get isConnected(){ return !!client; }
+  };
+})();
+
+// Duel Mode UI wiring
+(function(){
+  const modal = document.getElementById('duel-modal');
+  if(!modal) return;
+
+  function $(id){ return document.getElementById(id); }
+
+  // Set the text + styling of any .duel-status element. `mode` is '' (default),
+  // 'connected' (green), or 'error' (red). Single source of truth for the
+  // ~15 status lines the modal presents across stages.
+  function setDuelStatus(id, text, mode){
+    const el = $(id);
+    if(!el) return;
+    el.textContent = text;
+    el.className = 'duel-status' + (mode ? ' '+mode : '');
+  }
+
+  // Duel state (reset on every open)
+  let duelConfig = null;
+  let myHonorAccepted = false;
+  let oppHonorAccepted = false;
+  let tickerChoice = null;   // {ticker, startDate, endDate, warmupBars, ...}
+  let myDataReady = false;
+  let oppDataReady = false;
+  let myReady = false;       // player clicked I'm READY in the prep phase
+  let oppReady = false;
+
+  // Global gate consulted by simAdvance / simRetreat to block playback during
+  // a duel. Exposed on window so the sim code can check without importing.
+  // Extended with per-bar sync: in phase='active' each bar requires BOTH
+  // players to signal 'advance' (via right-arrow) OR the per-bar timeout to
+  // expire. Each side runs its own local timer; both publish 'advance'
+  // messages tagged with barIdx.
+  const duelGate = {
+    active: false,
+    phase: null,  // 'prep' | 'active' | 'ended'
+    // Per-bar sync state (meaningful only in phase === 'active')
+    currentBar: -1,
+    myAdvanced: false,
+    oppAdvanced: false,
+    deadline: 0,
+    timerId: null,
+    pendingOppAdvances: {},  // {barIdx: true} buffered when opponent races ahead
+    _committing: false,      // recursion guard around the real simAdvance call
+    _lockInAt: 0,            // when we set myAdvanced=true (via press OR timeout). Drives grace + retry.
+    _lastRepublishAt: 0,     // last time we re-published our advance
+
+    canAdvance(){ return !this.active || this.phase === 'active'; },
+    canRetreat(){ return !this.active; },
+    advanceBlockReason(){
+      if(this.phase === 'prep') return 'Click READY on both sides to start the duel.';
+      if(this.phase === 'ended') return 'Duel has ended.';
+      if(this.phase === 'active' && this.myAdvanced) return 'Waiting for opponent…';
+      return '';
+    },
+    retreatBlockReason(){ return 'No going back during a duel.'; },
+
+    // Local player pressed right-arrow. Register intent, publish, wait for opp
+    // (or timeout). Does NOT advance simIdx here — _commit does that once both
+    // sides are ready. _lockInAt drives the retry-publish + force-commit grace
+    // in _tick so a dropped advance packet can't hang us indefinitely.
+    requestAdvance(){
+      if(!this.active || this.phase !== 'active') return false;
+      if(this.myAdvanced){ flash('Waiting for opponent…'); return false; }
+      this.myAdvanced = true;
+      const now = Date.now();
+      this._lockInAt = now;
+      this._lastRepublishAt = now;
+      // Carry our local deadline so the opponent can adopt the earlier of
+      // the two (see advance-handler "earlier wins" logic). Keeps both
+      // countdowns converged without needing a host or shared clock.
+      try { duelRelay.publish('advance', {barIdx: this.currentBar, deadline: this.deadline}); } catch(_){}
+      this._updateBanner();
+      if(this.oppAdvanced) this._commit();
+      return false;
+    },
+
+    // Opponent published their advance for some barIdx. Match to our current
+    // bar; if they're racing ahead (rare), buffer it until we catch up.
+    onOpponentAdvance(barIdx){
+      if(!this.active || this.phase !== 'active') return;
+      if(typeof barIdx !== 'number') return;
+      if(barIdx < this.currentBar) return; // stale
+      if(barIdx > this.currentBar){ this.pendingOppAdvances[barIdx] = true; return; }
+      if(this.oppAdvanced) return;
+      this.oppAdvanced = true;
+      this._updateBanner();
+      if(this.myAdvanced) this._commit();
+    },
+
+    // Both sides ready: actually advance simIdx++ and start the next bar's
+    // gate. _committing lets simAdvance bypass its own duel-gate check during
+    // the re-entry.
+    _commit(){
+      this._stopCountdown();
+      this._committing = true;
+      try { simAdvance(); } finally { this._committing = false; }
+      this._startNextBar();
+    },
+
+    // Called once by checkBothReady to begin gating on the current bar; and
+    // again by _commit after each advance.
+    beginGating(){ this._startNextBar(); },
+
+    _startNextBar(){
+      // End-of-duel check: stop gating when we've reached the configured end.
+      const endIdx = tickerChoice ? tickerChoice.endBarIdx : null;
+      if(typeof endIdx === 'number' && simIdx >= endIdx){
+        this.phase = 'ended';
+        this.active = false;
+        this._stopCountdown();
+        try { updateReadyBanner(); } catch(_){}
+        flash('Duel complete: last bar reached.');
+        return;
+      }
+      this.currentBar = simIdx;
+      this.myAdvanced = false;
+      this.oppAdvanced = !!this.pendingOppAdvances[this.currentBar];
+      delete this.pendingOppAdvances[this.currentBar];
+      // Reset per-bar lock-in bookkeeping so the retry + force-commit grace
+      // always starts fresh on the new bar.
+      this._lockInAt = 0;
+      this._lastRepublishAt = 0;
+      const toSec = (duelConfig && duelConfig.toSec) ? duelConfig.toSec : 45;
+      this.deadline = Date.now() + (toSec * 1000);
+      this._startCountdown();
+      this._updateBanner();
+      if(this.myAdvanced && this.oppAdvanced) this._commit();
+    },
+
+    _startCountdown(){
+      this._stopCountdown();
+      this.timerId = setInterval(() => this._tick(), 250);
+      this._tick();
+    },
+    _stopCountdown(){
+      if(this.timerId){ clearInterval(this.timerId); this.timerId = null; }
+    },
+
+    _tick(){
+      const now = Date.now();
+      const msLeft = this.deadline - now;
+
+      // Auto-lock on deadline expiry if the user didn't press →.
+      if(msLeft <= 0 && !this.myAdvanced){
+        this.myAdvanced = true;
+        this._lockInAt = now;
+        this._lastRepublishAt = now;
+        try { duelRelay.publish('advance', {barIdx: this.currentBar, timeout:true, deadline: this.deadline}); } catch(_){}
+        this._updateBanner();
+        if(this.oppAdvanced){ this._commit(); return; }
+        return;
+      }
+
+      // Locked in (pressed → or timed out) but still waiting on the opp.
+      // We only advance when BOTH sides have acknowledged for the same bar;
+      // unilateral force-commit was removed because it let simIdx diverge
+      // when messages were slow. Just retry the publish every ~1s so a
+      // dropped packet gets through eventually, and leave commit gated on
+      // oppAdvanced flipping via onOpponentAdvance.
+      if(this.myAdvanced && !this.oppAdvanced){
+        if(!this._lockInAt) this._lockInAt = now;
+        if(now - (this._lastRepublishAt || 0) >= 1000){
+          this._lastRepublishAt = now;
+          try { duelRelay.publish('advance', {barIdx: this.currentBar, timeout: msLeft <= 0, deadline: this.deadline}); } catch(_){}
+        }
+        this._updateBanner(msLeft);
+        return;
+      }
+
+      // Nothing special: just render the countdown.
+      this._updateBanner(msLeft);
+    },
+
+    _updateBanner(msLeftExplicit){
+      // Delegate to the unified renderer so banner layout stays in one place.
+      try { updateReadyBanner(msLeftExplicit); } catch(_){}
+    },
+  };
+  window.duelGate = duelGate;
+
+  function setStage(name){
+    modal.querySelectorAll('.duel-stage').forEach(el=>{
+      el.style.display = (el.dataset.duelStage === name) ? 'block' : 'none';
+    });
+  }
+
+  function setTab(which){
+    modal.querySelectorAll('.duel-tab').forEach(b=>b.classList.toggle('active', b.dataset.duelTab===which));
+    modal.querySelectorAll('.duel-tab-panel').forEach(p=>p.classList.toggle('active', p.dataset.duelPanel===which));
+  }
+  modal.querySelectorAll('.duel-tab').forEach(btn=>{
+    btn.addEventListener('click', ()=>setTab(btn.dataset.duelTab));
+  });
+
+  // Keep host/join email fields in sync. Filling one auto-fills the other.
+  const hostEmailEl = $('duel-host-email');
+  const joinEmailEl = $('duel-join-email');
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  function validateEmail(inputEl, errId){
+    const ok = EMAIL_RE.test((inputEl.value||'').trim());
+    inputEl.classList.toggle('invalid', !ok);
+    const errEl = document.getElementById(errId);
+    if(errEl) errEl.textContent = ok ? '' : 'Please enter a valid email (e.g. alice@example.com).';
+    return ok;
+  }
+  function clearEmailErr(inputEl, errId){
+    inputEl.classList.remove('invalid');
+    const errEl = document.getElementById(errId);
+    if(errEl) errEl.textContent = '';
+  }
+  if(hostEmailEl && joinEmailEl){
+    hostEmailEl.addEventListener('input', ()=>{
+      joinEmailEl.value = hostEmailEl.value;
+      clearEmailErr(hostEmailEl, 'duel-host-email-err');
+      clearEmailErr(joinEmailEl, 'duel-join-email-err');
+    });
+    joinEmailEl.addEventListener('input', ()=>{
+      hostEmailEl.value = joinEmailEl.value;
+      clearEmailErr(hostEmailEl, 'duel-host-email-err');
+      clearEmailErr(joinEmailEl, 'duel-join-email-err');
+    });
+  }
+
+  function resetHost(){
+    $('duel-host-precode').style.display='block';
+    $('duel-host-postcode').style.display='none';
+    setDuelStatus('duel-host-status', 'Connecting…');
+    $('duel-host-proceed').disabled = true;
+    $('duel-host-code').textContent = '—';
+    clearEmailErr($('duel-host-email'), 'duel-host-email-err');
+  }
+  function resetJoin(){
+    $('duel-join-prejoin').style.display='block';
+    $('duel-join-postjoin').style.display='none';
+    setDuelStatus('duel-join-status', 'Connecting…');
+    $('duel-join-proceed').disabled = true;
+    clearEmailErr($('duel-join-email'), 'duel-join-email-err');
+    const codeEl = $('duel-join-code');
+    if(codeEl) codeEl.classList.remove('invalid');
+    const codeErr = $('duel-join-code-err');
+    if(codeErr) codeErr.textContent = '';
+  }
+
+  function resetAll(){
+    setStage('connect');
+    setTab('host');
+    resetHost();
+    resetJoin();
+    duelConfig = null;
+    myHonorAccepted = false;
+    oppHonorAccepted = false;
+    tickerChoice = null;
+    myDataReady = false;
+    oppDataReady = false;
+    myReady = false;
+    oppReady = false;
+    duelGate.active = false;
+    duelGate.phase = null;
+    duelGate.currentBar = -1;
+    duelGate.myAdvanced = false;
+    duelGate.oppAdvanced = false;
+    duelGate.deadline = 0;
+    duelGate.pendingOppAdvances = {};
+    duelGate._committing = false;
+    if(duelGate.timerId){ clearInterval(duelGate.timerId); duelGate.timerId = null; }
+    hideDuelBanner();
+    _verifyInFlight = false;
+    handlersWired = false;  // will re-register on next connect
+  }
+
+  function open(){ modal.classList.remove('hidden'); resetAll(); }
+  function close(){ modal.classList.add('hidden'); duelRelay.disconnect(); resetAll(); }
+
+  // ---- Stage: connect (host) ----
+  // Host fills the duel config on the connect screen (years, TO, ADR, etc.)
+  // THEN clicks Create Room. Config is read here, snapshot into duelConfig,
+  // and published retained the moment the relay connects so the guest sees
+  // the settings as soon as they join.
+  $('duel-host-create').addEventListener('click', ()=>{
+    if(!validateEmail($('duel-host-email'), 'duel-host-email-err')) return;
+    const email = $('duel-host-email').value.trim();
+    const name = duelRelay.nameFromEmail(email);
+
+    // Read duel config from the form (moved into precode).
+    const years = Math.max(1, parseInt($('duel-cfg-years').value, 10) || 2);
+    const toSec = Math.max(5, parseInt($('duel-cfg-to').value, 10) || 45);
+    const minAdr = Math.max(0, parseFloat($('duel-cfg-adr').value) || 0);
+    const skipEnabled = $('duel-cfg-skipma').checked;
+    const skipPeriod = Math.max(1, parseInt($('duel-cfg-skipma-period').value, 10) || 50);
+    const skipType = ($('duel-cfg-skipma-type').value || 'SMA').toUpperCase();
+    const tickerHidden = $('duel-cfg-hidden').checked;
+    duelConfig = {
+      years, toSec, minAdr, tickerHidden,
+      skipMa: { enabled: skipEnabled, period: skipPeriod, type: skipType }
+    };
+
+    const code = duelRelay.genRoomCode();
+    $('duel-host-code').textContent = code;
+    $('duel-host-precode').style.display='none';
+    $('duel-host-postcode').style.display='block';
+    setDuelStatus('duel-host-status', 'Connecting to relay…');
+
+    duelRelay.setOpponentHandler(opp=>{
+      setDuelStatus('duel-host-status', `Connected! Opponent: ${opp}`, 'connected');
+      $('duel-host-proceed').disabled = false;
+      // Guest just appeared on the wire (we got their hello). They're
+      // guaranteed to be subscribed now, so push the config live. Publishing
+      // it earlier (on host connect) is unreliable since non-retained
+      // messages are lost when nobody is subscribed yet.
+      if(duelConfig){
+        try { duelRelay.publish('config', {config: duelConfig}); } catch(_){}
+      }
+      // If a duel is already in progress (i.e. we're resuming after a refresh
+      // and the opponent is still online OR has also reconnected), re-sync
+      // our state to them.
+      if(duelGate.active){
+        publishStateSnapshot();
+        if(tickerChoice) try { duelRelay.publish('ticker_choice', {choice: tickerChoice}); } catch(_){}
+      }
+    });
+    duelRelay.setCloseHandler(()=>{
+      setDuelStatus('duel-host-status', 'Disconnected from relay.', 'error');
+    });
+
+    wireSharedMessageHandlers();
+
+    duelRelay.connect(code, 'host', name,
+      ()=>{
+        if(!duelRelay.opponentName){
+          setDuelStatus('duel-host-status', 'Waiting for opponent. Share the code with them.');
+        }
+      },
+      err=>{ setDuelStatus('duel-host-status', err, 'error'); });
+  });
+
+  $('duel-host-code').addEventListener('click', ()=>{
+    const code = $('duel-host-code').textContent;
+    if(!code || code==='—') return;
+    try{ navigator.clipboard.writeText(code); flash('Code copied: '+code); }
+    catch(e){ flash('Copy failed — select the code manually'); }
+  });
+
+  $('duel-host-cancel').addEventListener('click', close);
+  $('duel-host-abort').addEventListener('click', close);
+
+  // ---- Stage: connect (join) ----
+  $('duel-join-submit').addEventListener('click', ()=>{
+    const emailOk = validateEmail($('duel-join-email'), 'duel-join-email-err');
+    const code = ($('duel-join-code').value||'').trim().toUpperCase();
+    const codeOk = code.length >= 4;
+    $('duel-join-code').classList.toggle('invalid', !codeOk);
+    const codeErr = $('duel-join-code-err');
+    if(codeErr) codeErr.textContent = codeOk ? '' : 'Enter the room code your opponent sent you.';
+    if(!emailOk || !codeOk) return;
+    const email = $('duel-join-email').value.trim();
+    const name = duelRelay.nameFromEmail(email);
+
+    $('duel-join-prejoin').style.display='none';
+    $('duel-join-postjoin').style.display='block';
+    setDuelStatus('duel-join-status', 'Connecting to relay…');
+
+    duelRelay.setOpponentHandler(opp=>{
+      setDuelStatus('duel-join-status', `Connected! Opponent: ${opp}`, 'connected');
+      $('duel-join-proceed').disabled = false;
+      // If we're resuming a duel (refreshed mid-game), re-sync to host.
+      if(duelGate.active){
+        publishStateSnapshot();
+      }
+    });
+    duelRelay.setCloseHandler(()=>{
+      setDuelStatus('duel-join-status', 'Disconnected from relay.', 'error');
+    });
+
+    wireSharedMessageHandlers();
+
+    duelRelay.connect(code, 'guest', name,
+      ()=>{
+        if(!duelRelay.opponentName){
+          setDuelStatus('duel-join-status', `Looking for host at code ${code}…`);
+        }
+      },
+      err=>{ setDuelStatus('duel-join-status', err, 'error'); });
+  });
+
+  $('duel-join-cancel').addEventListener('click', close);
+  $('duel-join-abort').addEventListener('click', close);
+
+  $('duel-join-code').addEventListener('input', e=>{
+    const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+    if(v !== e.target.value) e.target.value = v;
+    e.target.classList.remove('invalid');
+    const err = $('duel-join-code-err');
+    if(err) err.textContent = '';
+  });
+
+  // ---- Stage transitions after handshake ----
+  // Host already filled config on the connect screen, so Continue goes
+  // straight to the honor stage. Guest goes through the config-waiting
+  // screen; as soon as the retained config message arrives the shared
+  // onMessage('config') handler calls goToHonor automatically.
+  $('duel-host-proceed').addEventListener('click', goToHonor);
+  $('duel-join-proceed').addEventListener('click', ()=>{
+    setStage('config');
+    $('duel-cfg-host-name').textContent = duelRelay.opponentName || 'your opponent';
+    // If the retained config has already been received (common when host
+    // published it before guest clicked Continue), jump straight to honor.
+    if(duelConfig) goToHonor();
+  });
+
+  $('duel-cfg-guest-abort').addEventListener('click', close);
+
+  // ---- Shared message handlers (register once per connect) ----
+  let handlersWired = false;
+  function wireSharedMessageHandlers(){
+    if(handlersWired) return;
+    handlersWired = true;
+
+    duelRelay.onMessage('config', msg=>{
+      if(duelRelay.mySlot !== 'guest') return;
+      if(!msg.config) return;
+      duelConfig = msg.config;
+      // Guard: if we're already past the honor stage (restored mid-duel),
+      // a republished config from the host must NOT yank us back to the
+      // honor modal. goToHonor resets myHonorAccepted and changes stage,
+      // which would corrupt state on a subsequent save.
+      if(duelGate.active) return;
+      goToHonor();
+    });
+
+    duelRelay.onMessage('honor', msg=>{
+      if(!msg.accepted) return;
+      oppHonorAccepted = true;
+      updateHonorStatus();
+      // Same guard as config above. A redelivered honor while active would
+      // trigger enterPreparingStage which resets myDataReady and, on the
+      // host side, picks a new random ticker mid-duel.
+      if(duelGate.active) return;
+      checkBothHonor();
+    });
+
+    duelRelay.onMessage('ticker_choice', msg=>{
+      if(!msg.choice) return;
+      tickerChoice = msg.choice;
+      onTickerChoiceReceived();
+    });
+
+    duelRelay.onMessage('data_ready', ()=>{
+      oppDataReady = true;
+      updatePrepStatus();
+      checkBothDataReady();
+    });
+
+    duelRelay.onMessage('data_error', msg=>{
+      const reason = (msg && msg.reason) || 'unknown error';
+      const who = duelRelay.opponentName || 'Opponent';
+      setDuelStatus('duel-prep-opp-status', `${who} hit a problem: ${reason}`, 'error');
+      if(!myDataReady){
+        setDuelStatus('duel-prep-mine-status', 'Duel aborted. Close and start over.', 'error');
+      }
+    });
+
+    duelRelay.onMessage('ready', ()=>{
+      if(duelGate.phase !== 'prep') return;
+      oppReady = true;
+      updateReadyBanner();
+      checkBothReady();
+    });
+
+    duelRelay.onMessage('advance', (msg)=>{
+      const bi = (msg && typeof msg.barIdx === 'number') ? msg.barIdx : null;
+      if(bi === null) return;
+      // "Earlier wins" deadline sync: if opp's advance is for our current
+      // bar and their deadline is earlier than ours, adopt theirs. Both
+      // peers converge within one advance message per bar — no host, no
+      // shared clock.
+      if(duelGate.active && duelGate.phase === 'active'
+         && bi === duelGate.currentBar
+         && typeof msg.deadline === 'number'
+         && msg.deadline < duelGate.deadline){
+        duelGate.deadline = msg.deadline;
+        try { duelGate._updateBanner(); } catch(_){}
+      }
+      duelGate.onOpponentAdvance(bi);
+    });
+
+    // Opponent explicitly ended the duel. Fire a flash and cleanly shut
+    // down our side. `remote:true` skips the outbound duel_ended publish
+    // so we don't bounce the message back.
+    duelRelay.onMessage('duel_ended', ()=>{
+      if(!duelGate.active) return;
+      const who = duelRelay.opponentName || 'Your opponent';
+      flash(`${who} ended the duel.`);
+      endDuel({remote:true});
+    });
+
+    // State snapshot — published by a peer on (re)connect so the other side
+    // can update stale opp state after a refresh. Idempotent.
+    duelRelay.onMessage('state_snapshot', (msg)=>{
+      if(!msg) return;
+      // Opp's READY state during prep
+      if(msg.phase === 'prep' && msg.myReady === true && !oppReady){
+        oppReady = true;
+        updateReadyBanner();
+        checkBothReady();
+      }
+      // Opp's honor acceptance (in case we missed the honor message)
+      if(msg.honorAccepted === true && !oppHonorAccepted){
+        oppHonorAccepted = true;
+        updateHonorStatus();
+        checkBothHonor();
+      }
+      // Opp's advance on the current bar
+      if(duelGate.phase === 'active' && typeof msg.advancedBar === 'number'){
+        duelGate.onOpponentAdvance(msg.advancedBar);
+      }
+    });
+  }
+
+  // Publish our current state snapshot. Used on (re)connect so a peer that
+  // missed intermediate messages can re-sync.
+  function publishStateSnapshot(){
+    if(!duelRelay.isConnected) return;
+    const snap = {
+      phase: duelGate.phase,
+      myReady: myReady,
+      honorAccepted: myHonorAccepted,
+    };
+    if(duelGate.phase === 'active' && duelGate.myAdvanced){
+      snap.advancedBar = duelGate.currentBar;
+    }
+    try { duelRelay.publish('state_snapshot', snap); } catch(_){}
+  }
+
+  // ---- Stage: honor code ----
+  function goToHonor(){
+    // Defense-in-depth: never reset honor state once a duel is active.
+    if(duelGate.active) return;
+    setStage('honor');
+    renderConfigSummary();
+    myHonorAccepted = false;
+    $('duel-honor-accept').disabled = false;
+    $('duel-honor-accept').textContent = 'I agree to duel honorably';
+    updateHonorStatus();
+  }
+
+  function renderConfigSummary(){
+    if(!duelConfig) return;
+    const c = duelConfig;
+    const skipTxt = c.skipMa && c.skipMa.enabled
+      ? `start once ${c.skipMa.period}-${c.skipMa.type} is defined`
+      : 'no MA warmup';
+    const hiddenTxt = c.tickerHidden
+      ? ' <span style="color:var(--yellow);">Ticker stays hidden until the end.</span>'
+      : '';
+    const html =
+      `<b style="color:var(--text);">Duel parameters:</b> `+
+      `${c.years}y history · ADR ≥ ${c.minAdr}% · ${c.toSec}s per bar · ${skipTxt}.`+
+      hiddenTxt;
+    // Populate both the honor-stage and prep-stage summary boxes. Prep can
+    // sit on screen for a while (data downloads, ticker pick) and the
+    // guest should see exactly what they signed up for the whole time.
+    const honor = $('duel-config-summary');
+    const prep  = $('duel-prep-summary');
+    if(honor) honor.innerHTML = html;
+    if(prep)  prep.innerHTML  = html;
+  }
+
+  function updateHonorStatus(){
+    const opp = duelRelay.opponentName || 'opponent';
+    if(myHonorAccepted && oppHonorAccepted){
+      setDuelStatus('duel-honor-status', 'Both players accepted. Preparing…', 'connected');
+    } else if(myHonorAccepted){
+      setDuelStatus('duel-honor-status', `Waiting for ${opp} to accept…`);
+    } else if(oppHonorAccepted){
+      setDuelStatus('duel-honor-status', `${opp} has accepted. Your turn.`);
+    } else {
+      setDuelStatus('duel-honor-status', 'Click "I agree" when you\u2019re ready.');
+    }
+  }
+
+  function checkBothHonor(){
+    // Skip if we're already in a live duel — redelivered honor messages
+    // post-refresh must not drag us back into preparing.
+    if(duelGate.active) return;
+    if(myHonorAccepted && oppHonorAccepted){
+      // Small delay so both sides see the "Both accepted" status briefly
+      setTimeout(()=>{ enterPreparingStage(); }, 400);
+    }
+  }
+
+  // ---- Stage: preparing (ticker pick + data verification) ----
+  function enterPreparingStage(){
+    // Final guard. If a duel is already active, running this would reset
+    // myDataReady and, on host, pick a new ticker mid-duel. Hard NO.
+    if(duelGate.active) return;
+    setStage('preparing');
+    myDataReady = false;
+    oppDataReady = false;
+    // Render the duel parameters box so the guest (and host) can see the
+    // agreed settings while the data fetch/ticker pick runs. Both sides
+    // use the same renderer that populates the honor-stage summary.
+    renderConfigSummary();
+    updatePrepStatus();
+
+    if(duelRelay.mySlot === 'host'){
+      hostPickTickerAndVerify();
+    } else {
+      // Guest: may already have received ticker_choice via retained message.
+      if(tickerChoice){
+        onTickerChoiceReceived();
+      } else {
+        setDuelStatus('duel-prep-mine-status', 'Randomly selecting a ticker that matches the filters…');
+      }
+    }
+  }
+
+  function updatePrepStatus(){
+    const oppName = duelRelay.opponentName || 'Opponent';
+    if(myDataReady){
+      setDuelStatus('duel-prep-mine-status', 'Data ready on your side.', 'connected');
+    }
+    if(oppDataReady){
+      setDuelStatus('duel-prep-opp-status', `${oppName}: data ready.`, 'connected');
+    } else if(tickerChoice){
+      setDuelStatus('duel-prep-opp-status', `${oppName}: verifying data…`);
+    } else {
+      setDuelStatus('duel-prep-opp-status', `Waiting for ${oppName}…`);
+    }
+  }
+
+  function checkBothDataReady(){
+    // Don't launch a new sim if a duel is already live. On a restore, the
+    // broker (persistent clean:false session) may redeliver a stale
+    // data_ready from the opponent — without this guard that ping would
+    // fire launchDuelSim → simStart → POST /api/simulations → duplicate sim
+    // sitting next to the one we just restored. Happens every hard refresh.
+    if(duelGate.active || simId) return;
+    if(myDataReady && oppDataReady){
+      setTimeout(()=>{ launchDuelSim(); }, 300);
+    }
+  }
+
+  async function hostPickTickerAndVerify(){
+    setDuelStatus('duel-prep-mine-status', 'Randomly selecting a ticker that matches the filters…');
+    try{
+      const body = {
+        years: duelConfig.years,
+        minAdr: duelConfig.minAdr,
+        skipMaEnabled: !!(duelConfig.skipMa && duelConfig.skipMa.enabled),
+        skipMaPeriod: (duelConfig.skipMa && duelConfig.skipMa.period) || 0,
+      };
+      const resp = await fetch('/api/duel/pick-ticker', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+      });
+      if(!resp.ok){
+        const j = await resp.json().catch(()=>({error:'Server error'}));
+        throw new Error(j.error || `HTTP ${resp.status}`);
+      }
+      tickerChoice = await resp.json();
+    } catch(e){
+      setDuelStatus('duel-prep-mine-status', 'Ticker pick failed: '+e.message, 'error');
+      duelRelay.publish('data_error', {reason:'Host could not pick a ticker: '+e.message});
+      return;
+    }
+
+    // Publish retained so a late-reconnecting guest sees it.
+    duelRelay.publish('ticker_choice', {choice: tickerChoice});
+
+    // Host already has the data locally (they loaded it to pick it), but
+    // still verify defensively to keep both sides on the same code path.
+    await verifyDataLocal();
+  }
+
+  let _verifyInFlight = false;
+  async function onTickerChoiceReceived(){
+    if(duelRelay.mySlot === 'host') return; // host initiated it
+    if(myDataReady || _verifyInFlight) return;
+    await verifyDataLocal();
+  }
+
+  async function verifyDataLocal(){
+    if(!tickerChoice || myDataReady || _verifyInFlight) return;
+    _verifyInFlight = true;
+    const hidden = !!(duelConfig && duelConfig.tickerHidden);
+    const nameForUi = hidden ? 'the duel data' : tickerChoice.ticker;
+
+    setDuelStatus('duel-prep-mine-status', `Checking ${nameForUi}…`);
+
+    try{
+      let ok = await hasEnoughCoverage(tickerChoice);
+      if(!ok){
+        setDuelStatus('duel-prep-mine-status', `Downloading ${nameForUi}…`);
+        const dl = await fetch('/api/yahoo/download', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({symbol: tickerChoice.ticker, mode:'merge'})
+        });
+        if(!dl.ok){
+          const j = await dl.json().catch(()=>({error:'download failed'}));
+          throw new Error(j.error || `HTTP ${dl.status}`);
+        }
+        ok = await hasEnoughCoverage(tickerChoice);
+        if(!ok) throw new Error('History from Yahoo does not cover the duel range');
+      }
+    } catch(e){
+      const raw = e.message || 'data fetch failed';
+      const shown = hidden ? 'data fetch failed' : raw;
+      setDuelStatus('duel-prep-mine-status', 'Data problem: '+shown, 'error');
+      duelRelay.publish('data_error', {reason: shown});
+      _verifyInFlight = false;
+      return;
+    }
+
+    myDataReady = true;
+    _verifyInFlight = false;
+    duelRelay.publish('data_ready', {});
+    updatePrepStatus();
+    checkBothDataReady();
+  }
+
+  async function hasEnoughCoverage(choice){
+    // Verify locally that we have bars covering startDate..endDate AND at
+    // least warmupBars of history BEFORE startDate.
+    try{
+      const barsResp = await fetch(`/api/ohlcv?symbol=${encodeURIComponent(choice.ticker)}`);
+      if(!barsResp.ok) return false;
+      const bars = await barsResp.json();
+      if(!Array.isArray(bars) || bars.length === 0) return false;
+      const startIdx = bars.findIndex(b => b.time >= choice.startDate);
+      if(startIdx < 0) return false;                 // start date not in data
+      if(startIdx < choice.warmupBars) return false; // not enough warmup
+      const lastDate = bars[bars.length-1].time;
+      if(lastDate < choice.endDate) return false;    // data doesn't reach end
+      return true;
+    } catch(e){
+      return false;
+    }
+  }
+
+  $('duel-prep-abort').addEventListener('click', close);
+
+  $('duel-honor-abort').addEventListener('click', close);
+
+  $('duel-honor-accept').addEventListener('click', ()=>{
+    if(myHonorAccepted) return;
+    myHonorAccepted = true;
+    $('duel-honor-accept').disabled = true;
+    $('duel-honor-accept').textContent = 'Accepted';
+    duelRelay.publish('honor', {accepted:true});
+    updateHonorStatus();
+    checkBothHonor();
+    // Persist the accepted-honor state so a refresh after sim-start keeps it.
+    if(window.simAutoSave) simAutoSave();
+  });
+
+  // ---- Duel runtime: banner, sim launch, READY gating ----
+  function hideModal(){ modal.classList.add('hidden'); }
+
+  function showDuelBanner(){
+    const banner = $('duel-banner');
+    if(!banner) return;
+    banner.classList.remove('hidden');
+    const opp = duelRelay.opponentName || 'opponent';
+    $('duel-banner-opp').textContent = `vs ${opp}`;
+    $('duel-banner-room').textContent = `Room ${duelRelay.roomCode}`;
+    updateReadyBanner();
+  }
+  function hideDuelBanner(){
+    const banner = $('duel-banner');
+    if(banner) banner.classList.add('hidden');
+  }
+
+  // Unified renderer for the duel panel. Drives phase badge, countdown,
+  // indicator dots, and the READY button in one place. Called on every
+  // state change (prep↔active, advances) and on the countdown tick.
+  function updateReadyBanner(msLeftExplicit){
+    const phaseEl  = $('duel-banner-phase');
+    const cdEl     = $('duel-countdown');
+    const meDot    = $('duel-ind-me');
+    const oppDot   = $('duel-ind-opp');
+    const meState  = $('duel-ind-me-state');
+    const oppState = $('duel-ind-opp-state');
+    const readyBtn = $('duel-ready-btn');
+    if(!phaseEl || !cdEl || !readyBtn) return;
+
+    const oppName = duelRelay.opponentName || 'opp';
+
+    if(duelGate.phase === 'prep'){
+      phaseEl.textContent = 'PREP';
+      phaseEl.className = 'duel-banner-phase';
+      cdEl.textContent = '--:--';
+      cdEl.className = 'duel-countdown idle';
+      meDot.className  = 'duel-ind-dot' + (myReady  ? ' active' : '');
+      oppDot.className = 'duel-ind-dot' + (oppReady ? ' active' : '');
+      meState.textContent  = myReady  ? 'ready' : 'not ready yet';
+      oppState.textContent = oppReady ? `${oppName}: ready` : `${oppName}: waiting…`;
+
+      if(myReady && oppReady){
+        readyBtn.style.display = 'none';
+      } else if(myReady){
+        readyBtn.style.display = '';
+        readyBtn.disabled = true;
+        readyBtn.textContent = `Waiting for ${oppName}…`;
+      } else {
+        readyBtn.style.display = '';
+        readyBtn.disabled = false;
+        readyBtn.textContent = "I'M READY";
+      }
+    } else if(duelGate.phase === 'active'){
+      phaseEl.textContent = 'LIVE';
+      phaseEl.className = 'duel-banner-phase live';
+      readyBtn.style.display = 'none';
+
+      const ms  = (msLeftExplicit !== undefined) ? msLeftExplicit : Math.max(0, duelGate.deadline - Date.now());
+      const sec = Math.max(0, Math.ceil(ms/1000));
+      const mm  = Math.floor(sec/60);
+      const ss  = sec % 60;
+      cdEl.textContent = `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+      cdEl.className = 'duel-countdown' + (sec <= 5 && !duelGate.myAdvanced ? ' urgent' : '');
+
+      meDot.className  = 'duel-ind-dot' + (duelGate.myAdvanced  ? ' active' : '');
+      oppDot.className = 'duel-ind-dot' + (duelGate.oppAdvanced ? ' active' : '');
+      meState.textContent  = duelGate.myAdvanced  ? 'locked in' : 'press → to lock';
+      oppState.textContent = duelGate.oppAdvanced ? `${oppName}: locked in` : `${oppName}: deciding…`;
+    } else if(duelGate.phase === 'ended'){
+      phaseEl.textContent = 'ENDED';
+      phaseEl.className = 'duel-banner-phase ended';
+      cdEl.textContent = '--:--';
+      cdEl.className = 'duel-countdown idle';
+      readyBtn.style.display = 'none';
+      meDot.className  = 'duel-ind-dot';
+      oppDot.className = 'duel-ind-dot';
+      meState.textContent  = '—';
+      oppState.textContent = '—';
+    }
+  }
+
+  function checkBothReady(){
+    if(myReady && oppReady && duelGate.phase === 'prep'){
+      duelGate.phase = 'active';
+      updateReadyBanner();
+      // Kick off per-bar sync. Both sides run the same countdown locally;
+      // advance fires when both have pressed right-arrow (or timed out).
+      duelGate.beginGating();
+      flash('Duel started. Press → when you are ready for the next bar.');
+      try { simAutoSave(); } catch(_){}
+    }
+  }
+
+  function maskTickerUI(){
+    if(!duelConfig || !duelConfig.tickerHidden || !tickerChoice) return;
+    const meta = document.getElementById('sim-panel-meta');
+    if(meta) meta.textContent = meta.textContent.replace(tickerChoice.ticker, '???');
+    const sym = document.getElementById('ct-sym');
+    if(sym) sym.textContent = '???';
+  }
+
+  function endDuel(opts){
+    const remote = !!(opts && opts.remote);
+    // We're ending intentionally; mute the "Disconnected from relay" close
+    // handler (meant for unexpected drops) so it doesn't paint a misleading
+    // error in the stale modal status element.
+    try { duelRelay.setCloseHandler(null); } catch(_){}
+    // Notify the opp BEFORE we disconnect, so they see a friendly "opponent
+    // ended" flash instead of an ambient MQTT disconnect. Short timeout
+    // gives the outbound publish time to land on the broker before our
+    // client.end() tears down the connection.
+    if(!remote && duelRelay.isConnected){
+      try { duelRelay.publish('duel_ended', {}); } catch(_){}
+      setTimeout(()=>{ try{ duelRelay.disconnect(); }catch(_){} }, 150);
+    } else {
+      try{ duelRelay.disconnect(); }catch(_){}
+    }
+    duelGate.active = false;
+    duelGate.phase = 'ended';
+    if(duelGate.timerId){ clearInterval(duelGate.timerId); duelGate.timerId = null; }
+    updateReadyBanner();
+    hideDuelBanner();
+    myReady = false;
+    oppReady = false;
+    // Persist the 'ended' state immediately. Without this, a refresh after
+    // End Duel would restore the prior 'active' snapshot and re-engage the
+    // duel gate. snapshot() returns null while phase==='ended', so the
+    // duelState field in the sim JSON gets cleared on this save.
+    try { simAutoSave(); } catch(_){}
+    // Only flash "Duel ended." on the clicker's side; the remote side has
+    // already been given the "<opp> ended the duel" flash by the handler
+    // that invoked us.
+    if(!remote) flash('Duel ended.');
+  }
+
+  async function launchDuelSim(){
+    hideModal();
+
+    duelGate.active = true;
+    duelGate.phase = 'prep';
+    myReady = false;
+    oppReady = false;
+
+    const cfg = {
+      // Side-tag the sim name so each player can tell their own file apart
+      // in the sims list ("Duel ABC123 Host" vs "Duel ABC123 Guest").
+      name: `Duel ${duelRelay.roomCode} ${duelRelay.mySlot === 'host' ? 'Host' : 'Guest'}`,
+      ticker: tickerChoice.ticker,
+      startingCapital: 100000,
+      startDate: tickerChoice.startDate,
+      useFirstBar: false,
+      entryBarSLProtection: true,
+      skipToMa: !!(duelConfig.skipMa && duelConfig.skipMa.enabled),
+      skipMaPeriod: (duelConfig.skipMa && duelConfig.skipMa.period) || 50,
+      skipMaType: (duelConfig.skipMa && duelConfig.skipMa.type) || 'SMA',
+    };
+
+    try { showPage('chart'); } catch(e){}
+
+    try {
+      await simStart(cfg);
+    } catch(e) {
+      flash('Failed to start duel sim: ' + (e.message || e));
+      endDuel();
+      return;
+    }
+    if(simState !== 'playing'){
+      // simStart bailed quietly (e.g. bars fetch failed). Treat as abort.
+      endDuel();
+      return;
+    }
+    if(!simId){
+      // Sim state is in memory but server-side create failed; with no simId
+      // we can't persist duelState, so a refresh would land on nothing.
+      // Fail loudly rather than silently breaking refresh recovery.
+      flash('Failed to register the duel sim on the server. Duel cannot continue.');
+      endDuel();
+      return;
+    }
+
+    maskTickerUI();
+    showDuelBanner();
+    // First save after the duel gate becomes active: writes duelState into
+    // the sim JSON so a refresh now has something to restore from. Use the
+    // synchronous flush (not the 500ms-debounced simAutoSave) — otherwise a
+    // hard reset in the first half-second after launch lands on a sim with
+    // no duelState and the duel can't be restored.
+    try { await simFlushSave(); } catch(_){}
+  }
+
+  // READY button — publishes `ready` and waits for opponent.
+  $('duel-ready-btn').addEventListener('click', ()=>{
+    if(duelGate.phase !== 'prep' || myReady) return;
+    myReady = true;
+    duelRelay.publish('ready', {});
+    updateReadyBanner();
+    checkBothReady();
+    // Persist READY state so a refresh doesn't re-prompt.
+    simAutoSave();
+  });
+
+  // End Duel button — tears down the relay and leaves the sim as a normal sim.
+  $('duel-end-btn').addEventListener('click', ()=>{
+    if(!confirm('End the duel now? Your sim is saved — you can continue it solo.')) return;
+    endDuel();
+  });
+
+  // Page unload during a live duel. DO NOT call duelRelay.disconnect() here:
+  // disconnect() clears roomCode/mySlot as a side effect, and the other
+  // beforeunload handler that runs right after (simFlushSave in BOOT) then
+  // snapshots a dead duel and writes duelState=null to the sim JSON —
+  // destroying the resume state we're trying to preserve. Just let the
+  // MQTT socket die naturally when the page goes away; the retained hello
+  // stays on the broker so the reconnecting side can find us.
+  window.addEventListener('beforeunload', (e)=>{
+    if(duelGate.active && duelGate.phase !== 'ended'){
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+
+  // ---- Duel persistence (snapshot/restore across refresh) ----
+  // State we save into the sim JSON. opp-side things are NOT saved: they
+  // re-sync from opp's state_snapshot on reconnect.
+  function snapshotDuelState(){
+    if(!duelGate.active || duelGate.phase === 'ended') return null;
+    if(!duelRelay.roomCode || !duelRelay.mySlot) return null;
+    const snap = {
+      roomCode: duelRelay.roomCode,
+      mySlot: duelRelay.mySlot,
+      myName: duelRelay.myName,
+      opponentName: duelRelay.opponentName,
+      duelConfig,
+      tickerChoice,
+      phase: duelGate.phase,
+      myHonorAccepted,
+      myReady,
+    };
+    // In-flight countdown — remember WHEN this bar's decision window
+    // expires so a refresh can resume the clock instead of resetting to the
+    // full TO. deadline is an absolute ms-since-epoch timestamp.
+    if(duelGate.phase === 'active'){
+      snap.currentBar  = duelGate.currentBar;
+      snap.deadline    = duelGate.deadline;
+      snap.myAdvanced  = duelGate.myAdvanced;
+    }
+    return snap;
+  }
+
+  async function restoreDuelState(state){
+    if(!state || !state.roomCode || !state.mySlot || !state.myName) return;
+
+    // Restore local vars
+    duelConfig = state.duelConfig || null;
+    tickerChoice = state.tickerChoice || null;
+    myHonorAccepted = !!state.myHonorAccepted;
+    oppHonorAccepted = false;   // will re-sync via state_snapshot
+    myDataReady = true;         // data was verified before we saved
+    oppDataReady = true;
+    myReady = !!state.myReady;
+    oppReady = false;           // re-sync via state_snapshot
+    _verifyInFlight = false;
+
+    duelGate.active = true;
+    duelGate.phase = state.phase || 'prep';
+
+    // Hide any residual modal state, apply ticker masking, show banner.
+    hideModal();
+    maskTickerUI();
+
+    // Wire MQTT callbacks for the RESTORED side. These match the
+    // host-create / join-submit handlers so we stay consistent.
+    wireSharedMessageHandlers();
+    duelRelay.setOpponentHandler(opp=>{
+      updateReadyBanner();
+      if(duelGate.active){
+        publishStateSnapshot();
+        if(state.mySlot === 'host'){
+          if(duelConfig){ try{ duelRelay.publish('config', {config: duelConfig}); }catch(_){} }
+          if(tickerChoice){ try{ duelRelay.publish('ticker_choice', {choice: tickerChoice}); }catch(_){} }
+        }
+      }
+    });
+    duelRelay.setCloseHandler(()=>{
+      const phaseEl = $('duel-banner-phase');
+      if(phaseEl) phaseEl.textContent = 'Offline';
+    });
+
+    // The onReady callback fires on every MQTT 'connect' event, including
+    // auto-reconnects triggered by clean:false's session-keepalive cycle.
+    // Restore setup (beginGating, deadline override, state.myAdvanced fixup)
+    // must only run ONCE — otherwise beginGating's fresh deadline=now+45
+    // briefly stomps our saved deadline on every reconnect and the banner
+    // flickers between 45 and the real remaining time.
+    let restoreDone = false;
+    duelRelay.connect(state.roomCode, state.mySlot, state.myName,
+      ()=>{
+        showDuelBanner();
+        if(restoreDone){
+          // Auto-reconnect: banner/gate are already live, nothing to set up
+          // again. Just re-publish our state so the peer resyncs if needed.
+          try { publishStateSnapshot(); } catch(_){}
+          return;
+        }
+        restoreDone = true;
+
+        if(duelGate.phase === 'active'){
+          // Resume per-bar gating WITHOUT calling beginGating() first —
+          // beginGating runs _startNextBar which resets deadline to
+          // now+45 and starts the timer, so its very first _tick repaints
+          // the banner at 45 before our saved-deadline override lands.
+          // Instead, set the state directly in the correct order (deadline
+          // before countdown start) and fire _startCountdown once.
+          const now = Date.now();
+          // End-of-duel safety: if the saved bar is past the configured
+          // end, drop into the ended phase instead of starting a ticker.
+          const endIdx = tickerChoice ? tickerChoice.endBarIdx : null;
+          if(typeof endIdx === 'number' && simIdx >= endIdx){
+            duelGate.phase = 'ended';
+            duelGate.active = false;
+            try { updateReadyBanner(); } catch(_){}
+            return;
+          }
+          duelGate.currentBar = simIdx;
+          duelGate.myAdvanced = false;
+          duelGate.oppAdvanced = !!duelGate.pendingOppAdvances[simIdx];
+          delete duelGate.pendingOppAdvances[simIdx];
+          duelGate._lockInAt = 0;
+          duelGate._lastRepublishAt = 0;
+
+          const savedDeadline = (typeof state.deadline === 'number') ? state.deadline : null;
+          if(savedDeadline && savedDeadline > now){
+            // Saved deadline still in the future — pick up where we left off.
+            duelGate.deadline = savedDeadline;
+            if(state.myAdvanced){
+              duelGate.myAdvanced = true;
+              duelGate._lockInAt = now;
+              duelGate._lastRepublishAt = now;
+              try { duelRelay.publish('advance', {barIdx: duelGate.currentBar, deadline: duelGate.deadline}); } catch(_){}
+            }
+          } else if(savedDeadline !== null){
+            // Saved deadline expired while the tab was gone. Publish a
+            // timeout-advance so the opp isn't left hanging; use full TO
+            // as the new deadline so _tick has something sane to count.
+            const toSec = (duelConfig && duelConfig.toSec) ? duelConfig.toSec : 45;
+            duelGate.deadline = now + (toSec * 1000);
+            duelGate.myAdvanced = true;
+            duelGate._lockInAt = now;
+            duelGate._lastRepublishAt = now;
+            try { duelRelay.publish('advance', {barIdx: duelGate.currentBar, timeout:true, deadline: duelGate.deadline}); } catch(_){}
+          } else {
+            // No saved deadline — shouldn't happen, but fall back to a fresh TO.
+            const toSec = (duelConfig && duelConfig.toSec) ? duelConfig.toSec : 45;
+            duelGate.deadline = now + (toSec * 1000);
+          }
+
+          // Now start ticking. First _tick will read the correct deadline
+          // and paint the correct remaining seconds with zero flicker.
+          duelGate._startCountdown();
+          duelGate._updateBanner();
+        } else {
+          updateReadyBanner();
+        }
+      },
+      err=>{
+        flash('Duel relay failed to reconnect: ' + err);
+      },
+      {resume: true});
+  }
+
+  window.duelPersistence = {
+    snapshot: snapshotDuelState,
+    restore:  restoreDuelState,
+    end:      endDuel,
+  };
+
+  window.duelUI = { open, close };
+})();
+
+// ==============================================
 // BOOT
 // ==============================================
 window.addEventListener('load',async()=>{
@@ -8180,12 +9839,16 @@ window.addEventListener('load',async()=>{
   await loadDrawings();
   loadTickers();
   // Auto-resume active simulation if one was running before the refresh.
+  // Prefer sessionStorage (tab-scoped) over localStorage so each tab in a
+  // dual-tab setup (local host + guest testing) gets its own sim.
   try{
-    const activeId=localStorage.getItem('bm_active_sim_id');
+    const activeId = sessionStorage.getItem('bm_active_sim_id')
+                    || localStorage.getItem('bm_active_sim_id');
     if(activeId){
       await simLoadFromServer(activeId);
     }
   }catch(e){
+    try{sessionStorage.removeItem('bm_active_sim_id');}catch(_){}
     try{localStorage.removeItem('bm_active_sim_id');}catch(_){}
   }
 });

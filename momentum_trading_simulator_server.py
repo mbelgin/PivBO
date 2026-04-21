@@ -7,6 +7,7 @@ import csv
 import io
 import os
 import json
+import random
 import sys
 import uuid
 import zipfile
@@ -339,6 +340,106 @@ def api_ticker_ranges():
 
 
 # ==============================================
+# DUEL MODE — ticker selection
+# ==============================================
+
+# Rough trading-days-per-year used to translate "years of history" into
+# bar counts. Real count varies 251–253; 252 is the standard heuristic.
+_DUEL_BARS_PER_YEAR = 252
+
+
+def _avg_adr_pct(bars, lookback=252):
+    """Average daily range % over the last `lookback` bars."""
+    if not bars:
+        return 0.0
+    tail = bars[-lookback:] if len(bars) > lookback else bars
+    total = 0.0
+    count = 0
+    for b in tail:
+        lo = b.get("low", 0) or 0
+        hi = b.get("high", 0) or 0
+        if lo > 0 and hi > lo:
+            total += (hi / lo - 1.0) * 100.0
+            count += 1
+    return (total / count) if count else 0.0
+
+
+@app.route("/api/duel/pick-ticker", methods=["POST"])
+def api_duel_pick_ticker():
+    """
+    Pick a random ticker + random start bar matching the duel filters.
+
+    Request body:
+      { years:int, minAdr:float, skipMaEnabled:bool, skipMaPeriod:int }
+
+    Response:
+      { ticker, startDate, endDate, warmupBars, startBarIdx, endBarIdx,
+        totalBars, avgAdr, duelBars, eligibleCount }
+    """
+    body = request.get_json(silent=True) or {}
+    try:
+        years = max(1, int(body.get("years") or 2))
+    except (TypeError, ValueError):
+        years = 2
+    try:
+        min_adr = max(0.0, float(body.get("minAdr") or 0.0))
+    except (TypeError, ValueError):
+        min_adr = 0.0
+    skip_enabled = bool(body.get("skipMaEnabled"))
+    try:
+        skip_period = max(1, int(body.get("skipMaPeriod") or 1))
+    except (TypeError, ValueError):
+        skip_period = 1
+
+    warmup = (skip_period - 1) if skip_enabled else 0
+    duel_bars = years * _DUEL_BARS_PER_YEAR
+    min_total = warmup + duel_bars + 1  # +1 so there's at least one bar of slack
+
+    ranges = _load_ticker_ranges()
+    eligible = []
+    for sym in ranges.keys():
+        try:
+            bars = _read_ticker_bars(sym)
+        except Exception:
+            continue
+        if len(bars) < min_total:
+            continue
+        adr = _avg_adr_pct(bars)
+        if adr < min_adr:
+            continue
+        eligible.append({"sym": sym, "len": len(bars), "adr": adr})
+
+    if not eligible:
+        return jsonify({
+            "error": "No tickers match those filters. Relax the criteria (shorter history, lower ADR, or disable MA warmup) and try again.",
+            "eligibleCount": 0,
+        }), 404
+
+    chosen = random.choice(eligible)
+    sym = chosen["sym"]
+    total_bars = chosen["len"]
+    bars = _read_ticker_bars(sym)
+
+    min_start = warmup
+    max_start = total_bars - duel_bars - 1
+    start_idx = random.randint(min_start, max_start) if max_start > min_start else min_start
+    end_idx = min(start_idx + duel_bars, total_bars - 1)
+
+    return jsonify({
+        "ticker": sym,
+        "startDate": bars[start_idx]["time"],
+        "endDate": bars[end_idx]["time"],
+        "warmupBars": warmup,
+        "startBarIdx": start_idx,
+        "endBarIdx": end_idx,
+        "totalBars": total_bars,
+        "duelBars": end_idx - start_idx,
+        "avgAdr": round(chosen["adr"], 2),
+        "eligibleCount": len(eligible),
+    })
+
+
+# ==============================================
 # SIMULATIONS CRUD
 # ==============================================
 
@@ -499,6 +600,10 @@ def api_simulations_create():
             "totalPL": 0,
             "totalTrades": 0,
         }),
+        # Optional: caller may seed duelState at creation time so that a hard
+        # reset in the ~50ms window before the first PUT still leaves a
+        # restorable sim. Harmless for non-duel sims (stored as None).
+        "duelState": data.get("duelState"),
     }
 
     with open(_sim_path(sim_id), "w", encoding="utf-8") as f:
@@ -531,7 +636,7 @@ def api_simulation_update(sim_id):
             sim = json.load(f)
         for key in ("name", "ticker", "config", "chartState", "indicators",
                      "drawings", "playbackState", "pendingOrders", "trades", "analytics",
-                     "tradePrefs", "notes"):
+                     "tradePrefs", "notes", "duelState"):
             if key in data:
                 sim[key] = data[key]
         sim["modified"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
