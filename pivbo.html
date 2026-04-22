@@ -3,12 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Momentum Trading Simulator</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230a0c0f'/><path d='M4 24 L12 16 L18 20 L27 9' stroke='%2300d4aa' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/><path d='M21 9 L27 9 L27 15' stroke='%2300d4aa' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<title>PivotBreakout</title>
+<!-- Favicon: stock-chart icon by Freepik (Flaticon, id 2737448), kept
+     locally in assets/ so we don't depend on the CDN staying alive.
+     Attribution link lives on the landing-page footer (#page-home). -->
+<link rel="icon" type="image/png" href="assets/pivbo.png">
 <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
 <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Share+Tech+Mono&family=Bungee&family=Space+Grotesk:wght@500;600;700&display=swap');
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
   :root{
     --bg:#0a0c0f;--bg2:#111418;--bg3:#181d23;--border:#1f2833;
@@ -44,7 +47,60 @@
   .app{display:grid;grid-template-rows:48px 1fr;height:100vh;}
   .topbar{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 12px;flex-wrap:wrap;}
   .topbar .spacer{flex:1 1 auto;min-width:10px;}
-  .logo{font-family:var(--mono);font-size:13px;color:var(--accent);letter-spacing:2px;text-transform:uppercase;}
+  .logo{font-family:'Space Grotesk','Inter',sans-serif;font-size:17px;font-weight:700;color:var(--accent);letter-spacing:0.5px;cursor:pointer;user-select:none;transition:color 0.15s;line-height:1;}
+  .logo:hover{color:var(--yellow);}
+  .logo .logo-short{color:var(--accent2);}
+
+  /* ===== Landing / Home Page ===== */
+  /* Landing covers the full viewport — top bar is hidden while on home
+     (see showPage). Users navigate out via the three big cards; the
+     landing doesn't need a symbol filter / nav / theme toggle cluttering
+     the composition. */
+  #page-home{position:absolute;inset:0;background:var(--bg);z-index:50;overflow-y:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;}
+  #page-home::before{content:'';position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgba(0,212,170,0.035) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,170,0.035) 1px,transparent 1px);background-size:48px 48px;mask-image:radial-gradient(ellipse at center,black 10%,transparent 70%);-webkit-mask-image:radial-gradient(ellipse at center,black 10%,transparent 70%);}
+  #page-home::after{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 20% 0%,rgba(0,212,170,0.12),transparent 50%),radial-gradient(ellipse at 80% 100%,rgba(255,107,53,0.08),transparent 50%);}
+  .home-inner{position:relative;z-index:1;width:100%;max-width:1100px;display:flex;flex-direction:column;align-items:center;}
+  .home-hero{text-align:center;margin-bottom:48px;animation:homeHeroIn 0.7s ease-out both;}
+  .home-brand-icon{width:84px;height:84px;margin:0 auto 14px;display:block;filter:drop-shadow(0 6px 18px rgba(0,212,170,0.28));animation:homeIconIn 0.8s ease-out both;}
+  @keyframes homeIconIn{from{opacity:0;transform:scale(0.8) translateY(-10px);}to{opacity:1;transform:scale(1) translateY(0);}}
+  @keyframes homeHeroIn{from{opacity:0;transform:translateY(-12px);}to{opacity:1;transform:translateY(0);}}
+  .home-title{font-family:'Space Grotesk','Inter',sans-serif;font-size:64px;font-weight:700;letter-spacing:-0.5px;line-height:1.05;background:linear-gradient(135deg,var(--accent) 0%,var(--yellow) 70%,var(--accent2) 100%);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:10px;display:inline-block;position:relative;}
+  /* Beta stamp — small rotated pill so the app still reads as early-stage
+     without dominating the brand mark. Position absolute so it floats next
+     to the title text without affecting line-height. */
+  .home-title-beta{position:absolute;top:-4px;right:-62px;transform:rotate(-14deg);font-family:'Space Grotesk','Inter',sans-serif;font-size:14px;font-weight:700;padding:3px 10px;border:2px solid var(--yellow);border-radius:6px;color:var(--yellow);background:rgba(245,200,66,0.1);letter-spacing:3px;line-height:1;text-transform:uppercase;-webkit-text-fill-color:var(--yellow);}
+  @media (max-width:680px){.home-title-beta{font-size:11px;right:-44px;top:-2px;padding:2px 7px;}}
+  .home-subtitle{font-family:var(--mono);font-size:11px;letter-spacing:4px;text-transform:uppercase;color:var(--muted);margin-bottom:18px;}
+  .home-tagline{font-family:'Inter',sans-serif;font-size:15px;color:var(--muted);max-width:620px;margin:0 auto;line-height:1.6;}
+  .home-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;width:100%;}
+  @media (max-width:1180px){.home-cards{grid-template-columns:repeat(2,1fr);}}
+  @media (max-width:680px){.home-cards{grid-template-columns:1fr;}.home-title{font-size:38px;}}
+  .home-card-cta-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+  .home-card-cta-row .home-card-cta{margin-top:0;flex:1 1 auto;}
+  .home-card{position:relative;background:linear-gradient(180deg,var(--bg2),var(--bg3));border:1px solid var(--border);border-radius:12px;padding:26px 24px 22px;display:flex;flex-direction:column;gap:12px;cursor:pointer;overflow:hidden;transition:transform 0.2s ease,border-color 0.2s ease,box-shadow 0.25s ease;animation:homeCardIn 0.6s ease-out both;}
+  .home-card:nth-child(1){animation-delay:0.1s;}
+  .home-card:nth-child(2){animation-delay:0.18s;}
+  .home-card:nth-child(3){animation-delay:0.26s;}
+  @keyframes homeCardIn{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+  .home-card::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:0;transition:opacity 0.25s ease;}
+  .home-card:hover{transform:translateY(-5px);border-color:var(--accent);box-shadow:0 14px 36px rgba(0,212,170,0.18),0 0 0 1px rgba(0,212,170,0.25);}
+  .home-card:hover::after{opacity:1;}
+  .home-card.duel:hover{border-color:var(--accent2);box-shadow:0 14px 36px rgba(255,107,53,0.2),0 0 0 1px rgba(255,107,53,0.3);}
+  .home-card.duel:hover::after{background:linear-gradient(90deg,transparent,var(--accent2),transparent);}
+  .home-card-icon{width:52px;height:52px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:var(--bg);border:1px solid var(--border);color:var(--accent);margin-bottom:4px;transition:all 0.2s;}
+  .home-card:hover .home-card-icon{transform:scale(1.06);}
+  .home-card.duel .home-card-icon{color:var(--accent2);}
+  .home-card-icon svg{width:28px;height:28px;}
+  .home-card-title{font-family:'Inter',sans-serif;font-size:22px;font-weight:700;color:var(--text);letter-spacing:-0.3px;}
+  .home-card-desc{font-family:'Inter',sans-serif;font-size:13px;color:var(--muted);line-height:1.6;flex:1;min-height:84px;}
+  .home-card-cta{margin-top:10px;padding:11px 18px;background:var(--accent);color:#04110d;border:none;border-radius:6px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;transition:background 0.15s,transform 0.1s;align-self:flex-start;}
+  .home-card-cta:hover{background:var(--yellow);}
+  .home-card-cta:active{transform:scale(0.97);}
+  .home-card.duel .home-card-cta{background:var(--accent2);color:#fff;}
+  .home-card.duel .home-card-cta:hover{background:#ff8a5c;}
+  .home-footer{margin-top:44px;font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px;text-align:center;opacity:0.7;line-height:1.8;}
+  .home-footer a{color:var(--muted);text-decoration:underline;text-underline-offset:3px;}
+  .home-footer a:hover{color:var(--text);}
   .vsep{width:1px;height:20px;background:var(--border);flex-shrink:0;}
   .filters{display:flex;align-items:center;gap:8px;flex:1;flex-wrap:wrap;}
   .filters select,.filters input{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 7px;border-radius:3px;outline:none;}
@@ -848,6 +904,13 @@
   .eq-mode-toggle button:first-child{border-radius:3px 0 0 3px;}
   .eq-mode-toggle button:last-child{border-radius:0 3px 3px 0;}
   .eq-mode-toggle button.active{color:var(--accent);border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--bg));}
+  /* Duel-only: toggle for the opponent's equity overlay. Orange when ON to
+     match the line color, muted gray when OFF. Hidden unless the button
+     has been explicitly shown by JS (only during a live duel). */
+  .eq-opp-toggle{padding:2px 8px;font-family:var(--mono);font-size:10px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:3px;cursor:pointer;margin-left:10px;transition:color 0.15s,border-color 0.15s,background 0.15s;}
+  .eq-opp-toggle.active{color:var(--accent2);border-color:var(--accent2);background:color-mix(in srgb,var(--accent2) 14%,var(--bg));}
+  .eq-opp-toggle:hover{color:var(--text);}
+  .eq-opp-toggle.hidden{display:none;}
   .eq-pane-info{
     position:absolute;
     top:6px;
@@ -1035,6 +1098,13 @@
   }
   .sim-modal input:focus{border-color:var(--accent);}
   .sim-modal .sim-row{display:flex;gap:12px;align-items:flex-end;}
+  /* Mode selector inside New Simulation modal — single explicit choice at
+     the top so the dialog isn't split visually into competing options. */
+  .sim-mode-toggle{display:flex;gap:2px;padding:3px;margin-bottom:14px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;}
+  .sim-mode-btn{flex:1;padding:7px 12px;background:transparent;color:var(--muted);border:none;border-radius:4px;font-family:var(--mono);font-size:12px;cursor:pointer;transition:background 0.15s,color 0.15s;}
+  .sim-mode-btn:hover:not(.active){color:var(--text);}
+  .sim-mode-btn.active{background:var(--accent);color:#04110d;font-weight:600;}
+  .sim-mode-panel{padding:4px 0;}
   .sim-modal .sim-row>div{flex:1;}
   .sim-modal .sim-check{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--muted);}
   .sim-modal .sim-actions{display:flex;gap:8px;margin-top:20px;justify-content:flex-end;}
@@ -1046,6 +1116,13 @@
   .sim-btn.primary:hover:not(:disabled){border-color:var(--accent);}
   .sim-btn.danger:hover:not(:disabled){background:var(--red);color:#fff;border-color:var(--red);}
   .sim-btn:disabled{opacity:0.4;cursor:not-allowed;}
+  /* Loading state: toggle via JS (.loading class + disabled). Shows an
+     inline spinner after the button label so the user can see work is
+     happening (pick-ticker call + data fetch can take a couple seconds). */
+  .sim-btn.loading{opacity:0.85;cursor:progress;}
+  .sim-btn.loading:disabled{opacity:0.85;}
+  .sim-btn.loading::after{content:'';display:inline-block;width:10px;height:10px;margin-left:8px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:simBtnSpin 0.7s linear infinite;}
+  @keyframes simBtnSpin{to{transform:rotate(360deg);}}
   .sim-modal input.invalid{border-color:var(--red) !important;box-shadow:0 0 0 1px var(--red) inset;}
   .sim-modal input.valid{border-color:var(--green) !important;}
   .sim-modal .sim-btn{padding:7px 18px;border-radius:6px;font-size:12px;background:var(--bg3);color:var(--text);}
@@ -1117,7 +1194,6 @@
   }
 
   /* Save-template dialog */
-  #tpl-save-modal .sim-modal{width:380px;}
   .tpl-input-wrap{position:relative;}
   .tpl-input-wrap input{width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;border-radius:4px;outline:none;box-sizing:border-box;}
   .tpl-input-wrap input:focus{border-color:var(--accent);}
@@ -1132,6 +1208,14 @@
   .tpl-item-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 4px;line-height:1;font-family:var(--mono);}
   .tpl-item-del:hover{color:var(--red);}
   .tpl-overwrite-hint{font-size:10px;color:var(--yellow);margin-top:8px;display:none;}
+  /* Templates management dialog row layout. Name stretches, action buttons
+     sit on the right. */
+  .tpl-row{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--border);}
+  .tpl-row:last-child{border-bottom:none;}
+  .tpl-row .tpl-row-name{flex:1;font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .tpl-row .sim-btn{padding:4px 10px;font-size:10px;}
+  .tpl-row .sim-btn.danger{padding:4px 8px;}
+  .tpl-empty{padding:16px;text-align:center;color:var(--muted);font-size:11px;font-style:italic;}
 
   /* Playback controls bar */
   .playback-bar{display:flex;align-items:center;gap:8px;padding:4px 10px;background:var(--bg2);border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px;min-height:32px;}
@@ -1197,12 +1281,20 @@
   .duel-countdown.idle{color:var(--muted);text-shadow:none;opacity:0.55;}
   @keyframes duelPulse{from{opacity:0.8;}to{opacity:1;}}
 
-  .duel-indicators{display:flex;flex-direction:column;gap:6px;flex:1;}
-  .duel-ind-row{display:flex;align-items:center;gap:8px;}
-  .duel-ind-dot{width:11px;height:11px;border-radius:50%;background:#0c0c10;border:1px solid var(--muted);transition:all 0.15s;flex-shrink:0;}
-  .duel-ind-dot.active{background:var(--green);border-color:var(--green);box-shadow:0 0 5px rgba(38,166,154,0.7);}
-  .duel-ind-label{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;min-width:32px;}
-  .duel-ind-state{color:var(--text);font-size:11px;}
+  .duel-indicators{display:flex;flex-direction:column;gap:5px;flex:1;min-width:0;}
+  .duel-ind-card{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;background:var(--bg);border:1px solid var(--border);transition:background 0.2s, border-color 0.2s;min-width:0;}
+  .duel-ind-card.locked{background:rgba(38,166,154,0.14);border-color:var(--green);}
+  .duel-ind-card.waiting{background:rgba(245,200,66,0.08);border-color:rgba(245,200,66,0.5);}
+  .duel-ind-card.ended{opacity:0.55;}
+  .duel-ind-role{font-size:9px;font-weight:700;letter-spacing:2px;color:var(--muted);min-width:26px;}
+  .duel-ind-name{font-size:11px;font-weight:600;color:var(--text);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .duel-ind-badge{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:2px 7px;border-radius:3px;background:var(--bg3);color:var(--muted);white-space:nowrap;text-align:center;}
+  .duel-ind-card.locked .duel-ind-badge{background:var(--green);color:#000;}
+  .duel-ind-card.waiting .duel-ind-badge{background:rgba(245,200,66,0.22);color:var(--yellow);}
+  .duel-ind-card.waiting.pulse .duel-ind-badge{animation:duelBadgePulse 1.1s ease-in-out infinite alternate;}
+  @keyframes duelBadgePulse{from{opacity:0.75;}to{opacity:1;}}
+  .duel-banner-hint{padding:4px 14px 7px;font-size:10px;color:var(--muted);text-align:center;border-top:1px solid var(--border);font-style:italic;}
+  .duel-banner-hint.hidden{display:none;}
 
   .duel-banner-actions{padding:8px 12px 10px;display:flex;gap:8px;border-top:1px solid var(--border);}
   .duel-banner-actions .sim-btn{padding:9px 14px;font-size:12px;font-weight:600;letter-spacing:0.5px;}
@@ -1279,12 +1371,18 @@
   .nav-tab{padding:4px 12px;font-family:var(--mono);font-size:11px;color:var(--muted);background:transparent;border:1px solid transparent;border-radius:4px;cursor:pointer;}
   .nav-tab:hover{color:var(--text);}
   .nav-tab.active{color:var(--accent);border-color:var(--border);background:var(--bg3);}
+  /* Duel nav tab — action button (opens modal), not a page. Orange accent
+     mirrors the Duel card on the landing page so the modes are visually
+     tied together. */
+  .nav-tab.nav-duel{color:var(--accent2);border-color:rgba(255,107,53,0.35);display:flex;align-items:center;gap:5px;}
+  .nav-tab.nav-duel:hover{color:#fff;background:rgba(255,107,53,0.15);border-color:var(--accent2);}
+  .nav-tab.nav-duel svg{width:11px;height:11px;}
 </style>
 </head>
 <body>
 <div class="app">
   <div class="topbar">
-    <div class="logo">Momentum Trading Simulator</div>
+    <div class="logo" title="PivBO: Pivot BreakOut — click to return to the home screen">PivBO</div>
     <div class="vsep"></div>
     <div class="filters">
       <label>Symbol</label><input id="f-sym" type="text" placeholder="AAPL" style="width:5em;text-transform:uppercase">
@@ -1295,6 +1393,14 @@
     <div class="nav-tabs">
       <button class="nav-tab active" id="nav-chart" data-page="chart">Chart</button>
       <button class="nav-tab" id="nav-sims" data-page="simulations">Simulations</button>
+      <button class="nav-tab nav-duel" id="nav-duel" title="Start or join a remote duel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path>
+          <path d="M13 19l6-6"></path>
+          <path d="M16 16l5 5"></path>
+        </svg>
+        Duel
+      </button>
       <button class="nav-tab" id="yahoo-dl-btn" title="Download / update ticker data from Yahoo">⬇ Data</button>
     </div>
     <div class="vsep"></div>
@@ -1673,6 +1779,7 @@
               <button id="eq-mode-timeline" class="active" title="Time-synced with main chart">Timeline</button>
               <button id="eq-mode-trades" title="One point per trade, evenly spaced">Trades</button>
             </div>
+            <button id="eq-opp-toggle" class="eq-opp-toggle hidden" title="Show / hide the opponent's equity curve">Opp</button>
           </div>
           <div id="eq-chart"></div>
         </div>
@@ -1694,18 +1801,19 @@
         <div class="duel-banner-body">
           <div class="duel-countdown idle" id="duel-countdown">--:--</div>
           <div class="duel-indicators">
-            <div class="duel-ind-row">
-              <span class="duel-ind-dot" id="duel-ind-me"></span>
-              <span class="duel-ind-label">YOU</span>
-              <span class="duel-ind-state" id="duel-ind-me-state">—</span>
+            <div class="duel-ind-card" id="duel-ind-me-card">
+              <span class="duel-ind-role">YOU</span>
+              <span class="duel-ind-name" id="duel-ind-me-name">—</span>
+              <span class="duel-ind-badge" id="duel-ind-me-badge">—</span>
             </div>
-            <div class="duel-ind-row">
-              <span class="duel-ind-dot" id="duel-ind-opp"></span>
-              <span class="duel-ind-label">OPP</span>
-              <span class="duel-ind-state" id="duel-ind-opp-state">—</span>
+            <div class="duel-ind-card" id="duel-ind-opp-card">
+              <span class="duel-ind-role">OPP</span>
+              <span class="duel-ind-name" id="duel-ind-opp-name">—</span>
+              <span class="duel-ind-badge" id="duel-ind-opp-badge">—</span>
             </div>
           </div>
         </div>
+        <div class="duel-banner-hint hidden" id="duel-banner-hint">Press → when you're ready to advance</div>
         <div class="duel-banner-actions">
           <button class="sim-btn primary" id="duel-ready-btn">I'M READY</button>
           <button class="sim-btn danger" id="duel-end-btn">End Duel</button>
@@ -1713,8 +1821,7 @@
       </div>
       <div class="sim-controls" id="sim-controls">
         <button class="sim-btn" id="sim-save">Save</button>
-        <button class="sim-btn" id="sim-load-template" title="Apply a saved template's chart/indicator settings to this sim">Load Template</button>
-        <button class="sim-btn" id="sim-save-template" title="Save chart/indicator settings as reusable template">Save Template</button>
+        <button class="sim-btn" id="sim-templates-btn" title="Save, load, or delete chart/indicator templates">Templates</button>
         <button class="sim-btn danger" id="sim-exit">Exit</button>
       </div>
       <div class="trade-panel-top">
@@ -1767,7 +1874,7 @@
           <div class="tf-row-or">
             <div><label>Risk %</label><input type="number" id="tf-risk-pct" step="0.1" value="1.0"></div>
             <span class="tf-or">OR</span>
-            <div><label>Shares</label><input type="number" id="tf-shares" step="1" placeholder="auto"></div>
+            <div><label title="Position notional as a percent of current capital. Shares are computed at submit from this % and the fill price.">Position Size %</label><input type="number" id="tf-pos-pct" step="0.1" placeholder="auto"></div>
           </div>
           <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">
             <span id="tf-atr-label" style="white-space:nowrap;"></span>
@@ -1804,25 +1911,14 @@
 <div class="sim-modal-overlay hidden" id="sim-modal">
   <div class="sim-modal">
     <h2>New Simulation</h2>
+
+    <!-- Common preferences (apply to either mode). -->
     <label>Name</label>
     <input type="text" id="sim-name" placeholder="e.g. NVDA Bull Run A">
-    <div class="sim-row">
-      <div>
-        <label>Ticker</label>
-        <input type="text" id="sim-ticker" placeholder="AAPL" style="text-transform:uppercase">
-      </div>
-      <div>
-        <label>Starting Capital</label>
-        <input type="number" id="sim-capital" value="100000" step="1000">
-      </div>
-    </div>
-    <label>Start Date</label>
-    <input type="date" id="sim-start-date">
-    <div class="sim-check">
-      <input type="checkbox" id="sim-use-first" checked>
-      <span>Use first available bar</span>
-    </div>
-    <div class="sim-check" style="margin-top:6px;align-items:center;gap:6px;flex-wrap:wrap;">
+    <label>Starting Capital</label>
+    <input type="number" id="sim-capital" value="100000" step="1000">
+
+    <div class="sim-check" style="margin-top:10px;align-items:center;gap:6px;flex-wrap:wrap;">
       <input type="checkbox" id="sim-skip-to-ma">
       <span>Skip to first bar with</span>
       <input type="number" id="sim-skip-ma-period" value="50" min="1" max="999" style="width:50px;padding:2px 4px;font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:2px;font-family:var(--mono);">
@@ -1835,26 +1931,65 @@
     <div style="font-size:10px;color:var(--muted);margin-top:2px;padding-left:20px;line-height:1.4;">
       Shifts the start bar forward so the MA line is visible from bar 1. Previous bars still show as context. No-op if your chosen start date is already past the MA's warmup.
     </div>
-    <div style="margin-top:10px;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;">
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:11px;">
-        <input type="checkbox" id="sim-entry-bar-protect" checked style="margin:0;">
-        <span style="font-weight:600;">Flexed opening-bar SL</span>
-      </label>
-      <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5;">
-        When on, the SL check on the bar a trade enters uses only the bar's <strong>close</strong>, and any fill is capped at the SL price.
-        <br><br>
-        <span style="color:var(--text);">Addresses this corner case:</span> a bar opens <em>below</em> your SL (long), rallies to trigger your entry, dips back toward SL, then closes above entry. Without this flex, strict mode would report a stop-out filled at the bar's open — but your stop order didn't exist yet when the bar opened, so that fill is impossible.
-        <br><br>
-        <span style="color:var(--muted);">Turn off to treat all bars identically and accept the worst-case pessimistic fill on the entry bar.</span>
+
+    <details class="sim-modal-details" style="margin-top:12px;">
+      <summary style="cursor:pointer;font-size:11px;color:var(--muted);padding:4px 0;user-select:none;">Advanced — Flexed opening-bar SL</summary>
+      <div style="margin-top:6px;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:11px;">
+          <input type="checkbox" id="sim-entry-bar-protect" checked style="margin:0;">
+          <span style="font-weight:600;">Flexed opening-bar SL</span>
+        </label>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5;">
+          When on, the SL check on the bar a trade enters uses only the bar's <strong>close</strong>, and any fill is capped at the SL price. Addresses the edge case where a bar opens below your SL (long), rallies to trigger your entry, dips back, then closes above — strict mode would report an impossible stop-out at the open.
+        </div>
+      </div>
+    </details>
+
+    <label style="margin-top:10px;">Template (optional)</label>
+    <select id="sim-template-picker" style="width:100%;padding:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;border-radius:4px;">
+      <option value="">— None —</option>
+    </select>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.4;">
+      Manage your templates (save / load / delete) from the Templates button in the sim controls.
+    </div>
+
+    <!-- Mode selector: all common settings above apply either way. Only
+         the mode-specific panel below changes with the choice. -->
+    <div class="sim-mode-toggle" style="margin-top:16px;">
+      <button type="button" class="sim-mode-btn active" data-sim-mode="ticker">Pick a Ticker</button>
+      <button type="button" class="sim-mode-btn" data-sim-mode="surprise">Surprise Me</button>
+    </div>
+
+    <!-- Mode panel: Pick a Ticker -->
+    <div class="sim-mode-panel" data-sim-mode-panel="ticker">
+      <label style="margin-top:0;">Ticker</label>
+      <input type="text" id="sim-ticker" placeholder="AAPL" style="text-transform:uppercase">
+      <label>Start Date</label>
+      <input type="date" id="sim-start-date">
+      <div class="sim-check">
+        <input type="checkbox" id="sim-use-first" checked>
+        <span>Use first available bar</span>
       </div>
     </div>
-    <label style="margin-top:10px;">Template (optional)</label>
-    <div style="display:flex;gap:6px;">
-      <select id="sim-template-picker" style="flex:1;padding:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;border-radius:4px;">
-        <option value="">— None —</option>
-      </select>
-      <button class="sim-btn danger" id="sim-template-del" title="Delete selected template">×</button>
+
+    <!-- Mode panel: Surprise Me -->
+    <div class="sim-mode-panel" data-sim-mode-panel="surprise" style="display:none;">
+      <div style="font-size:11px;color:var(--muted);line-height:1.5;">
+        We'll pick a random ticker matching the filters below. Start date is
+        also chosen at random to guarantee the requested history.
+      </div>
+      <div class="sim-row" style="margin-top:10px;">
+        <div>
+          <label style="margin-top:0;" title="Minimum years of history a candidate ticker must have.">Min years of history</label>
+          <input type="number" id="sim-surprise-years" value="2" min="1" max="20" step="1">
+        </div>
+        <div>
+          <label style="margin-top:0;">Min average ADR%</label>
+          <input type="number" id="sim-surprise-adr" value="2" min="0" max="20" step="0.1">
+        </div>
+      </div>
     </div>
+
     <div class="sim-actions">
       <button class="sim-btn" id="sim-modal-cancel">Cancel</button>
       <button class="sim-btn primary" id="sim-modal-start">Start Simulation</button>
@@ -2015,42 +2150,36 @@
   </div>
 </div>
 
-<!-- Load Template Modal — apply a saved template to the running sim/duel -->
-<div class="sim-modal-overlay hidden" id="tpl-load-modal">
-  <div class="sim-modal">
-    <h2>Load Template</h2>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5;">
-      Applies chart style, indicators, MAs, secondary chart, and trade
-      preferences from the selected template. Trades, bar index, and duel
-      state are not affected.
+<!-- Templates — single dialog for save/load/overwrite/delete. Replaces
+     the earlier Load-only and Save-only modals; also replaces the × delete
+     affordance that used to sit next to the New Simulation template picker.
+     Applies to both solo sims and duel mode (sim-controls is visible in
+     both). -->
+<div class="sim-modal-overlay hidden" id="tpl-manage-modal">
+  <div class="sim-modal" style="width:500px;">
+    <h2>Templates</h2>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.5;">
+      Templates save chart style, indicators, MAs, secondary chart, and
+      trade preferences. Apply one to the current simulation, save your
+      current settings as a new template, or manage existing ones.
     </div>
-    <label>Template</label>
-    <select id="tpl-load-picker" style="width:100%;padding:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;border-radius:4px;">
-      <option value="">— Select a template —</option>
-    </select>
-    <div class="sim-actions">
-      <button class="sim-btn" id="tpl-load-cancel">Cancel</button>
-      <button class="sim-btn primary" id="tpl-load-apply" disabled>Apply</button>
-    </div>
-  </div>
-</div>
 
-<!-- Save Template Modal -->
-<div class="sim-modal-overlay hidden" id="tpl-save-modal">
-  <div class="sim-modal">
-    <h2>Save Template</h2>
-    <label>Template name</label>
-    <div class="tpl-input-wrap">
-      <div class="tpl-ghost" id="tpl-ghost"></div>
-      <input type="text" id="tpl-save-name" autocomplete="off" spellcheck="false" placeholder="Enter a name…">
+    <!-- Save current settings as new template -->
+    <div style="padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;">
+      <label style="margin-top:0;font-weight:600;">Save current settings as a new template</label>
+      <div style="display:flex;gap:6px;">
+        <input type="text" id="tpl-mgmt-new-name" placeholder="Template name…" style="flex:1;">
+        <button class="sim-btn primary" id="tpl-mgmt-save-new" disabled>Save</button>
+      </div>
     </div>
-    <div class="tpl-overwrite-hint" id="tpl-overwrite-hint">Will overwrite existing template</div>
-    <div class="tpl-list" id="tpl-list">
-      <div class="tpl-list-label">Existing templates</div>
+
+    <div style="font-size:10px;color:var(--muted);margin:14px 0 6px;text-transform:uppercase;letter-spacing:1.5px;">Your templates</div>
+    <div id="tpl-mgmt-list" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;background:var(--bg3);">
+      <div style="padding:12px;color:var(--muted);font-size:11px;">Loading…</div>
     </div>
+
     <div class="sim-actions">
-      <button class="sim-btn" id="tpl-save-cancel">Cancel</button>
-      <button class="sim-btn primary" id="tpl-save-ok" disabled>Save</button>
+      <button class="sim-btn primary" id="tpl-mgmt-close">Close</button>
     </div>
   </div>
 </div>
@@ -2130,6 +2259,99 @@
 </div>
 
 <!-- Saved Simulations Page -->
+<!-- Landing / Home Page — shown on first load when no sim is active -->
+<div class="hidden" id="page-home">
+  <div class="home-inner">
+    <div class="home-hero">
+      <img class="home-brand-icon" src="assets/pivbo.png" alt="" aria-hidden="true">
+      <div class="home-subtitle">Bar-by-bar trading practice</div>
+      <div class="home-title">PivBO: Pivot BreakOut<span class="home-title-beta">beta</span></div>
+      <div class="home-tagline">
+        Study momentum setups on historical US equities. Replay any ticker one bar at a time,
+        manage positions with full risk discipline, and challenge a friend to a timed head-to-head duel.
+      </div>
+    </div>
+
+    <div class="home-cards">
+      <div class="home-card" data-home-nav="chart" role="button" tabindex="0">
+        <div class="home-card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="21" x2="21" y2="21"></line>
+            <polyline points="3,15 8,9 13,12 21,4"></polyline>
+            <polyline points="16,4 21,4 21,9"></polyline>
+          </svg>
+        </div>
+        <div class="home-card-title">Chart</div>
+        <div class="home-card-desc">
+          Browse any ticker, any timeframe. Configurable moving averages, ADR and ATR overlays,
+          secondary chart for market context, drawing tools, log/linear scale.
+        </div>
+        <button class="home-card-cta">Open Chart</button>
+      </div>
+
+      <div class="home-card" role="group" tabindex="-1">
+        <div class="home-card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="5,3 19,12 5,21"></polygon>
+          </svg>
+        </div>
+        <div class="home-card-title">Simulator</div>
+        <div class="home-card-desc">
+          Replay charts bar-by-bar. Place market and limit orders, set stop losses, take partials,
+          track R-multiples and batting average. Save, resume, and analyze every session.
+        </div>
+        <div class="home-card-cta-row">
+          <button class="home-card-cta" data-home-nav="sim-new">New</button>
+          <button class="home-card-cta" data-home-nav="sim-load">Load</button>
+        </div>
+      </div>
+
+      <div class="home-card duel" role="group" tabindex="-1">
+        <div class="home-card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path>
+            <path d="M13 19l6-6"></path>
+            <path d="M5 14l-1.5 1.5"></path>
+            <path d="M16 16l5 5"></path>
+            <path d="M19 21l2-2"></path>
+          </svg>
+        </div>
+        <div class="home-card-title">Duel Mode</div>
+        <div class="home-card-desc">
+          Head-to-head practice against a friend. Same ticker, same bars, synchronized countdowns.
+          Trade blind or visible. Side-by-side comparison report at the end.
+        </div>
+        <div class="home-card-cta-row">
+          <button class="home-card-cta" data-home-nav="duel-host">Host</button>
+          <button class="home-card-cta" data-home-nav="duel-join">Join</button>
+        </div>
+      </div>
+
+      <div class="home-card" data-home-nav="data" role="button" tabindex="0">
+        <div class="home-card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+            <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5"></path>
+            <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6"></path>
+          </svg>
+        </div>
+        <div class="home-card-title">Data</div>
+        <div class="home-card-desc">
+          Browse your local chart data. Add new tickers, download fresh bars from Yahoo Finance,
+          bulk-update the whole library, and check coverage ranges per symbol.
+        </div>
+        <button class="home-card-cta">Manage Data</button>
+      </div>
+    </div>
+
+    <div class="home-footer">
+      Historical data for practice only. Not financial advice.
+      <br>
+      <a href="https://www.flaticon.com/free-icons/trading" target="_blank" rel="noopener" title="trading icons">Trading icons created by Freepik - Flaticon</a>
+    </div>
+  </div>
+</div>
+
 <div class="hidden" id="page-simulations" style="position:absolute;inset:48px 0 0 0;background:var(--bg);z-index:50;overflow-y:auto;padding:20px;">
   <h2 style="font-family:var(--mono);font-size:15px;color:var(--accent);margin-bottom:16px;">Saved Simulations</h2>
   <div id="sims-list" style="font-family:var(--mono);font-size:12px;"></div>
@@ -2161,6 +2383,12 @@ let volPaneHeight=140;
 let _syncingVolRange=false;
 let eqChart=null;
 let eqSeries=null;
+// Duel mode: live overlay of the opponent's equity curve. Points come in
+// via MQTT 'equity' messages; we redraw this series whenever the buffer
+// changes or the equity pane is (re)opened.
+let eqOppSeries=null;
+let oppEquityPoints=[];
+let _lastEquityPublishAt=0;
 let eqBaselineSeries=null;
 let eqUnrealizedSeries=null;
 let eqPaneEnabled=false;
@@ -5160,6 +5388,13 @@ function ensureEqPane(enabled){
       color:'#26a69a',lineWidth:2,lineStyle:LightweightCharts.LineStyle.Dashed,
       priceLineVisible:false,lastValueVisible:true,crosshairMarkerVisible:false,
     });
+    // Opponent's equity line (duel mode only). Orange, solid, drawn on top.
+    // Stays empty + hidden price-label when no duel is active.
+    eqOppSeries=eqChart.addLineSeries({
+      color:'#ff6b35',lineWidth:2,lineStyle:LightweightCharts.LineStyle.Solid,
+      priceLineVisible:false,lastValueVisible:true,crosshairMarkerVisible:false,
+      title:'Opp',
+    });
     try{
       eqChart.timeScale().subscribeVisibleLogicalRangeChange((range)=>{
         if(_syncingVolRange||eqMode==='trades')return;
@@ -5320,6 +5555,52 @@ function eqApplyBars(){
       el.style.color=delta>=0?'var(--green)':'var(--red)';
     }else{el.textContent='—';el.style.color='';}
   }
+  // Re-apply the opponent line after every full redraw. setData() on a
+  // previously-filled series gets wiped during mode switches / eqApplyBars,
+  // so we need to push the current buffer back in.
+  try { applyOppEquity(); } catch(_){}
+}
+
+// Opponent equity helpers (duel mode). applyOppEquity pushes the current
+// buffer into the chart series if both exist AND the user has the
+// opponent-line toggle on. publishDuelEquity sends our current equity to
+// the opp, throttled to at most once per second unless forced (e.g., on
+// bar commit where we want an immediate snapshot).
+let oppEquityVisible = true;
+try { if(localStorage.getItem('bm_duel_opp_eq_hidden')==='1') oppEquityVisible=false; } catch(_){}
+function applyOppEquity(){
+  if(!eqOppSeries) return;
+  try { eqOppSeries.setData(oppEquityVisible ? oppEquityPoints : []); } catch(_){}
+}
+function resetOppEquity(){
+  oppEquityPoints=[];
+  applyOppEquity();
+}
+function setOppEquityToggleVisible(show){
+  const btn = document.getElementById('eq-opp-toggle');
+  if(!btn) return;
+  btn.classList.toggle('hidden', !show);
+}
+function syncOppEquityToggleUI(){
+  const btn = document.getElementById('eq-opp-toggle');
+  if(!btn) return;
+  btn.classList.toggle('active', oppEquityVisible);
+  btn.textContent = oppEquityVisible ? 'Opp: shown' : 'Opp: hidden';
+}
+function simCurrentEquity(){
+  const cap = simConfig?.startingCapital || 100000;
+  const pl  = (simAnalytics && typeof simAnalytics.totalPL === 'number') ? simAnalytics.totalPL : 0;
+  return cap + pl;
+}
+function publishDuelEquity(force){
+  if(!window.duelGate || !window.duelGate.active) return;
+  if(!window.duelRelay || !window.duelRelay.isConnected) return;
+  const now = Date.now();
+  if(!force && (now - _lastEquityPublishAt) < 1000) return;
+  _lastEquityPublishAt = now;
+  const bar = simCurrentBar();
+  if(!bar) return;
+  try { window.duelRelay.publish('equity', {barIdx: simIdx, time: bar.time, value: simCurrentEquity()}); } catch(_){}
 }
 
 function eqSetMode(mode){
@@ -5345,6 +5626,16 @@ function eqSyncModeUI(){
 }
 document.getElementById('eq-mode-timeline')?.addEventListener('click',()=>eqSetMode('timeline'));
 document.getElementById('eq-mode-trades')?.addEventListener('click',()=>eqSetMode('trades'));
+
+// Opponent equity line toggle (duel only)
+document.getElementById('eq-opp-toggle')?.addEventListener('click',()=>{
+  oppEquityVisible = !oppEquityVisible;
+  try { localStorage.setItem('bm_duel_opp_eq_hidden', oppEquityVisible ? '0' : '1'); } catch(_){}
+  syncOppEquityToggleUI();
+  applyOppEquity();
+});
+// Reflect saved state on load.
+syncOppEquityToggleUI();
 
 function simUpdatePlaybackUI(){
   const bar=simCurrentBar();
@@ -5814,6 +6105,10 @@ function simUpdateStatsUI(){
   const a=simAnalytics;
   const fmt=v=>v>=0?`$${v.toFixed(0)}`:`-$${Math.abs(v).toFixed(0)}`;
   const cap0=simConfig?.startingCapital||1;
+  // Duel: publish our current equity to the opp, throttled to 1/s. Covers
+  // bar advances, trade open/close, SL moves — every meaningful update
+  // that changes P/L flows through here, so the opp line stays current.
+  try { publishDuelEquity(false); } catch(_){}
   // Refresh vol-pane header values to reflect the current sim bar — the crosshair
   // handler only updates on hover/leave events, so without this the displayed
   // Vol/$Vol go stale as the sim advances.
@@ -6040,7 +6335,11 @@ function simBuildSavePayload(){
       startingCapital:simConfig.startingCapital,
       startDate:simConfig.startDate||null,
       useFirstBar:simConfig.useFirstBar!==false,
-      entryBarSLProtection:simConfig.entryBarSLProtection!==false
+      entryBarSLProtection:simConfig.entryBarSLProtection!==false,
+      // Persist the "surprise hidden" flag so the ticker stays masked
+      // across refresh / resume for a solo sim. Duel-mode masking is
+      // independent (driven by duelConfig.tickerHidden in the duel path).
+      tickerHidden:!!simConfig.tickerHidden
     };
   }
   return payload;
@@ -6444,6 +6743,48 @@ function simDrawReviewOverlay(){
 }
 
 
+// ==============================================
+// Ticker-filter utilities (shared by Duel hosting + New-Sim "Surprise me")
+// ==============================================
+// readTickerFilters: pulls year / ADR / skip-to-MA values from an arbitrary
+//   set of input IDs so both the duel modal and the new-sim modal can use
+//   exactly the same semantics without ID collisions.
+// pickRandomTicker: calls the server endpoint that also backs duel-mode
+//   ticker selection. Shared code path = same filter behavior everywhere.
+// maskSimTicker: replaces the ticker symbol in the sim UI with '???'. Used
+//   by the duel "hidden ticker" flow AND the solo "surprise hidden" flow.
+function readTickerFilters(ids){
+  const byId = id => document.getElementById(id);
+  const num = (id, dflt, min) => {
+    const v = parseFloat(byId(id)?.value);
+    return Math.max(min, isFinite(v) ? v : dflt);
+  };
+  return {
+    years: Math.max(1, parseInt(byId(ids.years)?.value, 10) || 2),
+    minAdr: num(ids.adr, 0, 0),
+    skipMaEnabled: !!byId(ids.skipMaEnabled)?.checked,
+    skipMaPeriod: Math.max(1, parseInt(byId(ids.skipMaPeriod)?.value, 10) || 50),
+  };
+}
+async function pickRandomTicker(filters){
+  const resp = await fetch('/api/duel/pick-ticker', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(filters)
+  });
+  if(!resp.ok){
+    const j = await resp.json().catch(()=>({error:`HTTP ${resp.status}`}));
+    throw new Error(j.error || `HTTP ${resp.status}`);
+  }
+  return await resp.json();
+}
+function maskSimTicker(ticker){
+  if(!ticker) return;
+  const meta = document.getElementById('sim-panel-meta');
+  if(meta) meta.textContent = meta.textContent.replace(ticker, '???');
+  const sym = document.getElementById('ct-sym');
+  if(sym) sym.textContent = '???';
+}
+
 // Start simulation
 async function simStart(config){
   simConfig=config;
@@ -6455,6 +6796,8 @@ async function simStart(config){
   // Reset notes for new sim
   const _notesEl=document.getElementById('sim-notes');
   if(_notesEl)_notesEl.value='';
+  // Clear any leftover opponent-equity overlay from a prior duel.
+  try { resetOppEquity(); } catch(_){}
 
   document.getElementById('loading').classList.remove('hidden');
   try{
@@ -6522,6 +6865,10 @@ async function simStart(config){
   document.getElementById('sim-panel-meta').textContent=`${config.ticker} | $${config.startingCapital.toLocaleString()} | Start ${(d=>d?`${d.slice(5,7)}-${d.slice(8,10)}-${d.slice(0,4)}`:'—')(simAllBars[simStartIdx]?.time)}`;
   document.getElementById('placeholder').classList.add('hidden');
   document.getElementById('loading').classList.add('hidden');
+  // If the user picked "surprise + hidden" (or this is a duel with hidden
+  // mode), replace the ticker text in the header/chart with '???'. Same
+  // helper the duel flow uses, called whether or not a duel is active.
+  if(config.tickerHidden) maskSimTicker(config.ticker);
 
   // Apply template settings (indicators + secondary chart) if provided
   if(config.template){
@@ -6591,6 +6938,7 @@ async function simExit(){
   await simFlushSave();
   try{sessionStorage.removeItem('bm_active_sim_id');}catch(e){}
   try{localStorage.removeItem('bm_active_sim_id');}catch(e){}
+  try { resetOppEquity(); } catch(_){}
   simState='idle';simConfig=null;simAllBars=[];simTrades=[];simPending=[];simId=null;simTradePrefs=null;_simReviewId=null;
   // Restore global drawings (sim-specific drawings were isolated in sim JSON)
   loadDrawings().then(()=>redrawAll());
@@ -6623,11 +6971,23 @@ function simResume(){
   simLoadFromServer(simId);
 }
 
-async function simLoadFromServer(id){
+async function simLoadFromServer(id, opts){
   try{
     // If a previous sim is still in memory with pending writes, flush first
     // so its secondarySymbol/tradePrefs don't get lost to a race with this GET.
     if(simId&&simId!==id)await simFlushSave();
+    // Tear down any duel state from the PREVIOUS sim before loading a new
+    // one. Without this, the duel banner + duelGate stay active from the
+    // prior sim and sit on top of the freshly-loaded solo sim. If the new
+    // sim is itself a duel and restoreDuel is true, the block below will
+    // re-establish duelGate via duelPersistence.restore().
+    if(window.duelGate && window.duelGate.active && window.duelPersistence){
+      try { window.duelPersistence.end(); } catch(_){}
+    }
+    // Belt-and-suspenders: hide the banner in case duelGate was already
+    // inactive but the DOM still had it visible.
+    const _duelBanner = document.getElementById('duel-banner');
+    if(_duelBanner) _duelBanner.classList.add('hidden');
     // Mark as opened — invalidates cached analysis.
     fetch(`/api/simulations/${id}/touch`,{method:'POST'}).catch(()=>{});
     const resp=await fetch(`/api/simulations/${id}`);
@@ -6639,7 +6999,8 @@ async function simLoadFromServer(id){
       startingCapital:sim.config?.startingCapital||100000,
       startDate:sim.config?.startDate||null,
       useFirstBar:sim.config?.useFirstBar!==false,
-      entryBarSLProtection:sim.config?.entryBarSLProtection!==false
+      entryBarSLProtection:sim.config?.entryBarSLProtection!==false,
+      tickerHidden:!!sim.config?.tickerHidden
     };
 
     simConfig=config;simId=sim.id;
@@ -6754,6 +7115,10 @@ async function simLoadFromServer(id){
     document.getElementById('sim-panel-meta').textContent=`${config.ticker} | $${config.startingCapital.toLocaleString()} | Start ${(d=>d?`${d.slice(5,7)}-${d.slice(8,10)}-${d.slice(0,4)}`:'—')(simAllBars[simStartIdx]?.time)}`;
     document.getElementById('placeholder').classList.add('hidden');
     document.getElementById('loading').classList.add('hidden');
+    // Re-apply the surprise-hidden mask so the reloaded sim doesn't leak
+    // the ticker right after restore. Duel-mode masking is separately
+    // re-applied by duelPersistence.restore() via its own maskTickerUI.
+    if(config.tickerHidden) maskSimTicker(config.ticker);
 
     simApplyBars();simUpdateStatsUI();simRenderOpenTrades();simRenderTradesList();
     simSyncSlModeUI();
@@ -6771,24 +7136,52 @@ async function simLoadFromServer(id){
       simClearSecondary();
     }
     showPage('chart');
-    // Re-establish a live duel if this sim was in the middle of one. Runs
-    // after the sim is fully loaded so duelGate + banner have a stable
-    // simIdx / simConfig to work with.
-    if(sim.duelState && window.duelPersistence){
-      try { await window.duelPersistence.restore(sim.duelState); } catch(_){}
+    // Re-establish a live duel ONLY if the caller opted in. Default is
+    // false so that navigating to a saved duel sim (via sims list, fresh
+    // browser start, etc.) opens it as a plain sim — no zombie banner,
+    // no "I'M READY" buttons for an opponent who logged off hours ago.
+    // Boot passes restoreDuel:true only for an actual refresh (detected
+    // via sessionStorage, which dies on browser close).
+    const restoreDuel = !!(opts && opts.restoreDuel);
+    if(sim.duelState){
+      if(restoreDuel && window.duelPersistence){
+        try { await window.duelPersistence.restore(sim.duelState); } catch(_){}
+      } else {
+        // Not resuming — null out the saved duelState so it stays dead.
+        // simAutoSave's payload reads duelPersistence.snapshot(), which
+        // returns null when duelGate.active is false, so the debounced
+        // PUT will write duelState:null.
+        try { simAutoSave(); } catch(_){}
+      }
     }
   }catch(e){
     flash(`Error loading simulation: ${e.message}`);
     document.getElementById('loading').classList.add('hidden');
+    // If the sim genuinely doesn't exist anymore (deleted, stale local
+    // reference), drop the pointers so we don't keep chasing a ghost.
+    const msg = String(e && e.message || '').toLowerCase();
+    if(msg.includes('not found') || msg.includes('404')){
+      try{ sessionStorage.removeItem('bm_active_sim_id'); }catch(_){}
+      try{ localStorage.removeItem('bm_active_sim_id'); }catch(_){}
+      try{ showPage('home'); }catch(_){}
+    }
   }
 }
 
 // Page navigation
 function showPage(page){
+  const homeEl = document.getElementById('page-home');
+  if(homeEl) homeEl.classList.toggle('hidden', page !== 'home');
   document.getElementById('page-simulations').classList.toggle('hidden',page!=='simulations');
   document.getElementById('page-analysis').classList.toggle('hidden',page!=='analysis');
   document.getElementById('page-compare').classList.toggle('hidden',page!=='compare');
   document.querySelector('.main').style.display=page==='chart'?'':'none';
+  // Top bar is UI noise on the landing page — none of its controls
+  // (symbol input, stock count, nav tabs, theme toggle) are useful there,
+  // and the three cards handle navigation out. Hide it on home, show
+  // everywhere else.
+  const topbar = document.querySelector('.topbar');
+  if(topbar) topbar.style.display = (page === 'home') ? 'none' : '';
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.toggle('active',t.dataset.page==='simulations'&&(page==='simulations'||page==='analysis'||page==='compare')?true:t.dataset.page===page));
   if(page==='simulations')loadSimsList();
   if(page==='chart'){
@@ -7616,7 +8009,72 @@ async function importDataCheck(imported){
 }
 
 // Wire up UI events
-document.querySelectorAll('.nav-tab').forEach(t=>t.addEventListener('click',()=>showPage(t.dataset.page)));
+document.querySelectorAll('.nav-tab').forEach(t=>t.addEventListener('click',()=>{
+  // Only route to showPage() for tabs that declare a page. Buttons like
+  // Duel and Data open modals / popovers and own their own click handlers.
+  if(t.dataset.page) showPage(t.dataset.page);
+}));
+
+// Duel tab → open the host/join modal directly (not a page). We jump to
+// the Simulations view first so saved duel sims are listed in the
+// background when the modal closes, matching the home-card flow.
+(function(){
+  const btn = document.getElementById('nav-duel');
+  if(!btn) return;
+  btn.addEventListener('click', ()=>{
+    showPage('simulations');
+    setTimeout(()=>{ if(window.duelUI) window.duelUI.open(); }, 50);
+  });
+})();
+
+// Logo click → home landing page.
+(function(){
+  const logo = document.querySelector('.logo');
+  if(logo) logo.addEventListener('click', ()=>showPage('home'));
+})();
+
+// Landing-page card navigation. Cards route to chart, simulations, data
+// management, or the Duel Mode modal. Click anywhere on the card OR on its
+// CTA buttons. The duel card has two CTAs (Host / Join) which open the
+// duel modal with the respective tab preselected. Keyboard (Enter/Space)
+// works on any element with [data-home-nav].
+(function(){
+  const handleNav = (target)=>{
+    if(target === 'chart'){
+      showPage('chart');
+    } else if(target === 'simulations'){
+      showPage('simulations');
+    } else if(target === 'data'){
+      // Chart page hosts the ⬇ Data button; open the downloader directly.
+      showPage('chart');
+      setTimeout(()=>{
+        const btn = document.getElementById('yahoo-dl-btn');
+        if(btn) btn.click();
+      }, 50);
+    } else if(target === 'duel-host' || target === 'duel-join'){
+      const tab = (target === 'duel-join') ? 'join' : 'host';
+      showPage('simulations');
+      setTimeout(()=>{ if(window.duelUI) window.duelUI.open({tab}); }, 50);
+    } else if(target === 'sim-new'){
+      // New Simulation: jump to the sims list page so closing the modal
+      // leaves the user on a useful screen, then pop the dialog.
+      showPage('simulations');
+      setTimeout(()=>{ if(typeof openNewSimModal === 'function') openNewSimModal(); }, 50);
+    } else if(target === 'sim-load'){
+      showPage('simulations');
+    }
+  };
+  // Clicks on any element with data-home-nav navigate. Cover both whole-card
+  // tiles and individual CTA buttons inside a tile.
+  document.querySelectorAll('[data-home-nav]').forEach(el=>{
+    const nav = el.dataset.homeNav;
+    if(!nav) return;
+    el.addEventListener('click', e=>{ e.stopPropagation(); handleNav(nav); });
+    el.addEventListener('keydown', e=>{
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); handleNav(nav); }
+    });
+  });
+})();
 
 async function openNewSimModal(){
   document.getElementById('sim-modal').classList.remove('hidden');
@@ -7645,64 +8103,115 @@ function simTickerValidate(){
 document.getElementById('sim-modal-cancel').addEventListener('click',()=>{
   document.getElementById('sim-modal').classList.add('hidden');
 });
+// Mode toggle for New Simulation: "Pick a Ticker" vs "Surprise Me".
+// Swap the visible panel + remember the active mode on the container.
+(function(){
+  const modal = document.getElementById('sim-modal');
+  if(!modal) return;
+  function setMode(which){
+    modal.dataset.simMode = which;
+    modal.querySelectorAll('.sim-mode-btn').forEach(b=>{
+      b.classList.toggle('active', b.dataset.simMode === which);
+    });
+    modal.querySelectorAll('.sim-mode-panel').forEach(p=>{
+      p.style.display = (p.dataset.simModePanel === which) ? '' : 'none';
+    });
+  }
+  modal.querySelectorAll('.sim-mode-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>setMode(btn.dataset.simMode));
+  });
+  setMode('ticker');
+})();
+
+// Start Simulation — one handler, branches on the active mode. Shared
+// fields (name, capital, skip-to-MA, SL protection, template) are read
+// the same way both ways. Surprise mode calls the same pick-ticker
+// endpoint the duel flow uses (DRY helpers).
 document.getElementById('sim-modal-start').addEventListener('click',async()=>{
-  const name=document.getElementById('sim-name').value.trim()||'Untitled';
-  const tickerEl=document.getElementById('sim-ticker');
-  const ticker=tickerEl.value.trim().toUpperCase();
-  if(!ticker){tickerEl.classList.add('invalid');tickerEl.focus();return;}
+  const startBtn = document.getElementById('sim-modal-start');
+  // Quiet busy state: tiny spinner appended next to the button's existing
+  // label via the .loading class (see .sim-btn.loading::after). Label text
+  // does NOT change — that made the button grow and flash bright teal.
+  const setBusy = () => { startBtn.disabled = true; startBtn.classList.add('loading'); };
+  const clearBusy = () => { startBtn.disabled = false; startBtn.classList.remove('loading'); };
 
-  // Validate ticker exists locally. If not, offer to open Download dialog.
-  const exists = Array.isArray(allRows) && allRows.some(r => (r.symbol || '').toUpperCase() === ticker);
-  if(!exists){
-    tickerEl.classList.add('invalid');
-    const wantDownload = confirm(
-      `"${ticker}" isn't in your local data.\n\n` +
-      `Click OK to open the Download dialog and fetch it from Yahoo Finance — or Cancel to keep editing.`
-    );
-    if(!wantDownload) return;
-    // Hide sim modal temporarily, open Yahoo modal pre-filled with ticker + auto-run Check.
-    document.getElementById('sim-modal').classList.add('hidden');
-    if (typeof window.openYahooModal === 'function') {
-      window.openYahooModal(ticker, { autoCheck: true, onClose: ()=>{
-        // Restore sim modal so user can retry Start
-        document.getElementById('sim-modal').classList.remove('hidden');
-        simTickerValidate();
-      }});
-    }
-    return;
-  }
-
-  const capital=parseFloat(document.getElementById('sim-capital').value)||100000;
-  const useFirst=document.getElementById('sim-use-first').checked;
-  const startDate=useFirst?null:document.getElementById('sim-start-date').value;
-  const entryBarSLProtection=document.getElementById('sim-entry-bar-protect')?.checked!==false;
-  const skipToMa=document.getElementById('sim-skip-to-ma')?.checked||false;
-  const skipMaPeriod=Math.max(1,parseInt(document.getElementById('sim-skip-ma-period')?.value,10)||0);
-  const skipMaType=(document.getElementById('sim-skip-ma-type')?.value||'SMA').toUpperCase();
-  const templateId=document.getElementById('sim-template-picker').value;
-  let tpl=null;
-  if(templateId){
-    try{const r=await fetch(`/api/templates/${templateId}`);tpl=await r.json();if(tpl.error)tpl=null;}catch(e){}
-  }
-  document.getElementById('sim-modal').classList.add('hidden');
-  showPage('chart');
   try {
-    await simStart({name,ticker,startingCapital:capital,startDate,useFirstBar:useFirst,entryBarSLProtection,template:tpl,skipToMa,skipMaPeriod,skipMaType});
-  } catch(e) {
-    flash(`Simulation failed: ${e.message}`);
+    const modal=document.getElementById('sim-modal');
+    const mode=modal.dataset.simMode || 'ticker';
+    const name=document.getElementById('sim-name').value.trim()||(mode==='surprise'?'Surprise Sim':'Untitled');
+    const capital=parseFloat(document.getElementById('sim-capital').value)||100000;
+    const entryBarSLProtection=document.getElementById('sim-entry-bar-protect')?.checked!==false;
+    const skipToMa=document.getElementById('sim-skip-to-ma')?.checked||false;
+    const skipMaPeriod=Math.max(1,parseInt(document.getElementById('sim-skip-ma-period')?.value,10)||0);
+    const skipMaType=(document.getElementById('sim-skip-ma-type')?.value||'SMA').toUpperCase();
+
+    let ticker, startDate, useFirstBar;
+
+    if(mode === 'surprise'){
+      // Random pick: server chooses ticker + start bar from filters.
+      setBusy();
+      try {
+        const filters = readTickerFilters({
+          years: 'sim-surprise-years',
+          adr:   'sim-surprise-adr',
+          skipMaEnabled: 'sim-skip-to-ma',
+          skipMaPeriod:  'sim-skip-ma-period',
+        });
+        const choice = await pickRandomTicker(filters);
+        ticker = choice.ticker;
+        startDate = choice.startDate;
+        useFirstBar = false;
+      } catch(e) {
+        flash(`No ticker matched: ${e.message}`);
+        return;
+      }
+    } else {
+      // Manual ticker: validate the user's input exists locally.
+      const tickerEl=document.getElementById('sim-ticker');
+      ticker = tickerEl.value.trim().toUpperCase();
+      if(!ticker){tickerEl.classList.add('invalid');tickerEl.focus();return;}
+      const exists = Array.isArray(allRows) && allRows.some(r => (r.symbol || '').toUpperCase() === ticker);
+      if(!exists){
+        tickerEl.classList.add('invalid');
+        const wantDownload = confirm(
+          `"${ticker}" isn't in your local data.\n\n` +
+          `Click OK to open the Download dialog and fetch it from Yahoo Finance — or Cancel to keep editing.`
+        );
+        if(!wantDownload) return;
+        document.getElementById('sim-modal').classList.add('hidden');
+        if (typeof window.openYahooModal === 'function') {
+          window.openYahooModal(ticker, { autoCheck: true, onClose: ()=>{
+            document.getElementById('sim-modal').classList.remove('hidden');
+            simTickerValidate();
+          }});
+        }
+        return;
+      }
+      useFirstBar = document.getElementById('sim-use-first').checked;
+      startDate = useFirstBar ? null : document.getElementById('sim-start-date').value;
+    }
+
+    setBusy();
+
+    const templateId=document.getElementById('sim-template-picker').value;
+    let tpl=null;
+    if(templateId){
+      try{const r=await fetch(`/api/templates/${templateId}`);tpl=await r.json();if(tpl.error)tpl=null;}catch(e){}
+    }
+    document.getElementById('sim-modal').classList.add('hidden');
+    showPage('chart');
+    try {
+      await simStart({name,ticker,startingCapital:capital,startDate,useFirstBar,entryBarSLProtection,template:tpl,skipToMa,skipMaPeriod,skipMaType});
+    } catch(e) {
+      flash(`Simulation failed: ${e.message}`);
+    }
+  } finally {
+    clearBusy();
   }
 });
-document.getElementById('sim-template-del').addEventListener('click',async()=>{
-  const picker=document.getElementById('sim-template-picker');
-  const id=picker.value;
-  if(!id)return;
-  if(!confirm('Delete template "'+picker.options[picker.selectedIndex].text+'"?'))return;
-  await fetch(`/api/templates/${id}`,{method:'DELETE'});
-  await loadTemplatesIntoPicker();
-});
-
-async function loadTemplatesIntoPicker(){
-  const picker=document.getElementById('sim-template-picker');
+async function loadTemplatesIntoPicker(pickerId){
+  pickerId = pickerId || 'sim-template-picker';
+  const picker=document.getElementById(pickerId);
   if(!picker)return;
   try{
     const r=await fetch('/api/templates');
@@ -7713,112 +8222,23 @@ async function loadTemplatesIntoPicker(){
   }catch(e){}
 }
 
-// Save-template modal
-{
-  const tplModal    = document.getElementById('tpl-save-modal');
-  const tplInput    = document.getElementById('tpl-save-name');
-  const tplGhost    = document.getElementById('tpl-ghost');
-  const tplList     = document.getElementById('tpl-list');
-  const tplHint     = document.getElementById('tpl-overwrite-hint');
-  const tplBtnOk    = document.getElementById('tpl-save-ok');
-  const tplBtnCancel= document.getElementById('tpl-save-cancel');
-  let tplItems = [];
-  let tplSelectedId = null;
+// Unified Templates management dialog (save / load / overwrite / delete).
+// Replaces the former separate Save-Template and Load-Template modals plus
+// the × delete affordance in the New Simulation modal. Works in both solo
+// sims and duel mode (sim-controls is visible in both).
+(function(){
+  const modal   = document.getElementById('tpl-manage-modal');
+  const listEl  = document.getElementById('tpl-mgmt-list');
+  const newName = document.getElementById('tpl-mgmt-new-name');
+  const saveNewBtn = document.getElementById('tpl-mgmt-save-new');
+  const closeBtn= document.getElementById('tpl-mgmt-close');
+  const openBtn = document.getElementById('sim-templates-btn');
+  if(!modal || !listEl || !openBtn) return;
 
-  function tplClose(){ tplModal.classList.add('hidden'); }
-
-  async function tplOpen(){
-    tplInput.value = '';
-    tplGhost.textContent = '';
-    tplHint.style.display = 'none';
-    tplBtnOk.disabled = true;
-    tplSelectedId = null;
-    try{
-      const r = await fetch('/api/templates');
-      tplItems = await r.json();
-    }catch(e){ tplItems = []; }
-    tplRenderList();
-    tplModal.classList.remove('hidden');
-    tplInput.focus();
-  }
-
-  function tplRenderList(filter){
-    const f = (filter||'').trim().toLowerCase();
-    const filtered = f ? tplItems.filter(t=>t.name.toLowerCase().includes(f)) : tplItems;
-    let html = '<div class="tpl-list-label">Existing templates'+(tplItems.length?` (${tplItems.length})`:' — none yet')+'</div>';
-    for(const t of filtered){
-      const sel = t.id===tplSelectedId ? ' selected':'';
-      const esc = t.name.replace(/</g,'&lt;').replace(/"/g,'&quot;');
-      html += `<div class="tpl-item${sel}" data-id="${t.id}" data-name="${esc}">
-        <span class="tpl-item-name">${esc}</span>
-        <button class="tpl-item-del" data-id="${t.id}" title="Delete">×</button>
-      </div>`;
-    }
-    if(tplItems.length && !filtered.length) html += '<div style="font-size:11px;color:var(--muted);padding:8px 0;">No matches</div>';
-    tplList.innerHTML = html;
-  }
-
-  function tplUpdateGhost(){
-    const val = tplInput.value;
-    if(!val){ tplGhost.textContent=''; tplHint.style.display='none'; tplSelectedId=null; tplBtnOk.disabled=true; tplRenderList(); return; }
-    const lower = val.toLowerCase();
-    const match = tplItems.find(t=>t.name.toLowerCase().startsWith(lower));
-    if(match){
-      tplGhost.textContent = val + match.name.slice(val.length);
-      const exact = tplItems.find(t=>t.name.toLowerCase()===lower);
-      if(exact){ tplSelectedId=exact.id; tplHint.style.display=''; }
-      else { tplSelectedId=null; tplHint.style.display='none'; }
-    } else {
-      tplGhost.textContent = '';
-      tplSelectedId=null;
-      tplHint.style.display='none';
-    }
-    tplBtnOk.disabled = !val.trim();
-    tplBtnOk.textContent = tplSelectedId ? 'Overwrite' : 'Save';
-    tplRenderList(val);
-  }
-
-  tplInput.addEventListener('input', tplUpdateGhost);
-
-  tplInput.addEventListener('keydown', e=>{
-    if(e.key==='Tab' && tplGhost.textContent && tplGhost.textContent!==tplInput.value){
-      e.preventDefault();
-      tplInput.value = tplGhost.textContent;
-      tplUpdateGhost();
-    }
-    if(e.key==='Enter' && !tplBtnOk.disabled) tplBtnOk.click();
-    if(e.key==='Escape') tplClose();
-  });
-
-  tplList.addEventListener('click', async e=>{
-    const delBtn = e.target.closest('.tpl-item-del');
-    if(delBtn){
-      e.stopPropagation();
-      const id = delBtn.dataset.id;
-      const t = tplItems.find(x=>x.id===id);
-      if(!confirm(`Delete template "${t?t.name:id}"?`)) return;
-      await fetch(`/api/templates/${id}`,{method:'DELETE'});
-      tplItems = tplItems.filter(x=>x.id!==id);
-      if(tplSelectedId===id) tplSelectedId=null;
-      tplUpdateGhost();
-      tplRenderList(tplInput.value);
-      await loadTemplatesIntoPicker();
-      return;
-    }
-    const item = e.target.closest('.tpl-item');
-    if(item){
-      tplInput.value = item.dataset.name;
-      tplUpdateGhost();
-    }
-  });
-
-  tplBtnCancel.addEventListener('click', tplClose);
-  tplModal.addEventListener('click', e=>{ if(e.target===tplModal) tplClose(); });
-
-  async function tplDoSave(){
-    const name = tplInput.value.trim();
-    if(!name) return;
-    const payload = {
+  // Shared payload builder — snapshots the current chart/indicator/trade
+  // prefs state in the exact shape the server expects for /api/templates.
+  function currentTemplatePayload(name){
+    return {
       name,
       chartState:{chartType,priceColors,isLogScale,timeframe:currentTF,rightOffset:persistedRightOffset},
       indicators:{maList:maList.map(m=>({type:m.type,period:m.period,color:m.color,enabled:m.enabled})),adrEnabled,adrPeriod,atrEnabled,atrPeriod},
@@ -7828,25 +8248,127 @@ async function loadTemplatesIntoPicker(){
         visible:!document.getElementById('chart-wrap-secondary').classList.contains('hidden')
       }
     };
-    try{
-      let r;
-      if(tplSelectedId){
-        r = await fetch(`/api/templates/${tplSelectedId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-      } else {
-        r = await fetch('/api/templates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-      }
-      const tpl = await r.json();
-      if(tpl.error){ flash('Template save failed: '+tpl.error); return; }
-      flash(`Template "${name}" ${tplSelectedId?'updated':'saved'}`);
-      tplClose();
-      await loadTemplatesIntoPicker();
-    }catch(e){ flash('Template save failed: '+e.message); }
   }
 
-  tplBtnOk.addEventListener('click', tplDoSave);
+  function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-  document.getElementById('sim-save-template').addEventListener('click', ()=>tplOpen());
-}
+  let cachedItems = [];
+  async function refreshList(){
+    try{
+      const r = await fetch('/api/templates');
+      cachedItems = await r.json();
+    }catch(e){ cachedItems = []; }
+    if(!Array.isArray(cachedItems) || cachedItems.length===0){
+      listEl.innerHTML = '<div class="tpl-empty">No saved templates yet. Use the form above to save your first one.</div>';
+      return;
+    }
+    listEl.innerHTML = cachedItems.map(t=>`
+      <div class="tpl-row" data-id="${t.id}">
+        <span class="tpl-row-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
+        <button class="sim-btn" data-tpl-action="load" title="Apply to current sim">Load</button>
+        <button class="sim-btn" data-tpl-action="overwrite" title="Replace with current chart settings">Overwrite</button>
+        <button class="sim-btn danger" data-tpl-action="delete" title="Delete">×</button>
+      </div>
+    `).join('');
+  }
+
+  async function open(){
+    newName.value = '';
+    saveNewBtn.disabled = true;
+    listEl.innerHTML = '<div class="tpl-empty">Loading…</div>';
+    modal.classList.remove('hidden');
+    await refreshList();
+    newName.focus();
+  }
+  function close(){ modal.classList.add('hidden'); }
+
+  openBtn.addEventListener('click', open);
+  closeBtn.addEventListener('click', close);
+  modal.addEventListener('click', e=>{ if(e.target===modal) close(); });
+
+  // Save-new input: enable Save button only when name is non-empty and
+  // doesn't collide with an existing template (would need Overwrite).
+  newName.addEventListener('input', ()=>{
+    const v = newName.value.trim();
+    const exists = cachedItems.some(t => t.name.toLowerCase() === v.toLowerCase());
+    saveNewBtn.disabled = !v || exists;
+    saveNewBtn.title = exists ? 'A template with this name already exists — use Overwrite on its row instead.' : '';
+  });
+  newName.addEventListener('keydown', e=>{
+    if(e.key==='Enter' && !saveNewBtn.disabled) saveNewBtn.click();
+    if(e.key==='Escape') close();
+  });
+
+  saveNewBtn.addEventListener('click', async ()=>{
+    const name = newName.value.trim();
+    if(!name) return;
+    try{
+      const r = await fetch('/api/templates', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(currentTemplatePayload(name))
+      });
+      const tpl = await r.json();
+      if(tpl.error){ flash('Template save failed: '+tpl.error); return; }
+      flash(`Template "${name}" saved`);
+      newName.value = '';
+      saveNewBtn.disabled = true;
+      await refreshList();
+      await loadTemplatesIntoPicker();
+    }catch(e){ flash('Template save failed: '+e.message); }
+  });
+
+  // Row-level actions: load / overwrite / delete. Delegated for simplicity.
+  listEl.addEventListener('click', async e=>{
+    const btn = e.target.closest('[data-tpl-action]');
+    if(!btn) return;
+    const row = btn.closest('.tpl-row');
+    if(!row) return;
+    const id = row.dataset.id;
+    const tpl = cachedItems.find(t => t.id === id);
+    const name = tpl ? tpl.name : id;
+    const action = btn.dataset.tplAction;
+
+    if(action === 'load'){
+      try{
+        const r = await fetch(`/api/templates/${id}`);
+        const full = await r.json();
+        if(full && !full.error){
+          applyTemplate(full);
+          try { redrawAll(); } catch(_){}
+          try { simApplyBars(); } catch(_){}
+          try { simAutoSave(); } catch(_){}
+          flash(`Template "${name}" applied`);
+          close();
+        } else {
+          flash('Failed to load template');
+        }
+      }catch(err){ flash('Failed to load template: '+err.message); }
+    } else if(action === 'overwrite'){
+      if(!confirm(`Overwrite "${name}" with the current chart settings? This cannot be undone.`)) return;
+      try{
+        const r = await fetch(`/api/templates/${id}`, {
+          method:'PUT',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(currentTemplatePayload(name))
+        });
+        const out = await r.json();
+        if(out.error){ flash('Overwrite failed: '+out.error); return; }
+        flash(`Template "${name}" updated`);
+        await refreshList();
+        await loadTemplatesIntoPicker();
+      }catch(err){ flash('Overwrite failed: '+err.message); }
+    } else if(action === 'delete'){
+      if(!confirm(`Delete template "${name}"? This cannot be undone.`)) return;
+      try{
+        await fetch(`/api/templates/${id}`, {method:'DELETE'});
+        flash(`Template "${name}" deleted`);
+        await refreshList();
+        await loadTemplatesIntoPicker();
+      }catch(err){ flash('Delete failed: '+err.message); }
+    }
+  });
+})();
 document.getElementById('sim-use-first').addEventListener('change',e=>{
   document.getElementById('sim-start-date').disabled=e.target.checked;
 });
@@ -7885,7 +8407,15 @@ function showTradeForm(prefill){
   document.getElementById('tf-entry').value=prefill?.price||'';
   document.getElementById('tf-entry').placeholder=bar?bar.close.toFixed(2):'close';
   document.getElementById('tf-sl').value=prefill?.stopLoss||'';
-  document.getElementById('tf-shares').value=prefill?.shares||'';
+  // Convert legacy prefill.shares (used when editing a pending limit order) to
+  // position-size % for display. Shares are recomputed from % on submit.
+  const prefillShares=prefill?.shares||0;
+  const prefillEntry=prefill?.price||simCurrentBar()?.close||0;
+  const cap=simAnalytics.currentCapital||0;
+  document.getElementById('tf-pos-pct').value=
+    (prefillShares>0 && prefillEntry>0 && cap>0)
+      ? ((prefillShares*prefillEntry/cap)*100).toFixed(2)
+      : '';
   // Prefer per-sim prefs, fall back to localStorage, then default
   const savedRisk=simTradePrefs?.riskPct||localStorage.getItem('bm_sim_risk_pct')||'1.0';
   document.getElementById('tf-risk-pct').value=savedRisk;
@@ -7906,7 +8436,7 @@ function hideTradeForm(){
   _tfEditingPendingIdx=null;
   document.getElementById('tf-entry').value='';
   document.getElementById('tf-sl').value='';
-  document.getElementById('tf-shares').value='';
+  document.getElementById('tf-pos-pct').value='';
   document.getElementById('tf-debug').textContent='';
   document.getElementById('tf-atr-label').innerHTML='';
   simSetSelectedBar(null);
@@ -7920,18 +8450,22 @@ function simSubmitTrade(){
   const entry=entryRaw?parseFloat(entryRaw):0;
   const slRaw=document.getElementById('tf-sl').value.trim();
   const sl=slRaw?parseFloat(slRaw):0;
-  const shares=parseInt(document.getElementById('tf-shares').value)||0;
+  const posPct=parseFloat(document.getElementById('tf-pos-pct').value)||0;
   const isLimit=document.getElementById('tf-limit-order').checked;
-
-  if(!shares||shares<=0){
-    dbg.textContent='Enter shares or set SL + risk%';
-    dbg.style.color='var(--red)';
-    return;
-  }
 
   const bar=simCurrentBar();
   const fillPrice=entry||bar?.close;
   if(!fillPrice){dbg.textContent='No price available';dbg.style.color='var(--red)';return;}
+
+  const cap=simAnalytics.currentCapital||0;
+  const shares=(posPct>0 && cap>0 && fillPrice>0)
+    ? Math.floor((posPct/100)*cap/fillPrice)
+    : 0;
+  if(!shares||shares<=0){
+    dbg.textContent='Set SL + risk% or enter a position size %';
+    dbg.style.color='var(--red)';
+    return;
+  }
 
   // Save preferences
   const riskPct=document.getElementById('tf-risk-pct').value;
@@ -7985,6 +8519,10 @@ document.getElementById('tf-risk-pct').addEventListener('change',()=>{
 });
 
 // Position size calculator + auto-direction from SL
+// Two sizing paths: Risk% (risk/share × capital × pct) or Position Size %
+// (notional/capital). Risk% changes auto-populate the pos-pct field as a
+// preview; typing directly into pos-pct overrides that. Actual share count
+// is derived from pos-pct at submit time (see simSubmitTrade).
 function simCalcShares(){
   const bar=simCurrentBar();
   const entry=parseFloat(document.getElementById('tf-entry').value)||(bar?bar.close:0);
@@ -7998,15 +8536,36 @@ function simCalcShares(){
     }
   }
   const riskPct=parseFloat(document.getElementById('tf-risk-pct').value)||0;
-  if(!sl||!riskPct||!entry||entry===sl)return;
-  const riskAmount=simAnalytics.currentCapital*(riskPct/100);
+  const cap=simAnalytics.currentCapital||0;
+  if(!sl||!riskPct||!entry||entry===sl||cap<=0)return;
+  const riskAmount=cap*(riskPct/100);
   const riskPerShare=Math.abs(entry-sl);
   const shares=Math.floor(riskAmount/riskPerShare);
-  if(shares>0)document.getElementById('tf-shares').value=shares;
+  if(shares>0){
+    const posPct=(shares*entry/cap)*100;
+    document.getElementById('tf-pos-pct').value=posPct.toFixed(2);
+  }
+}
+// Reverse direction: typing into Position Size % recomputes Risk % from the
+// implied share count + SL distance. Setting .value programmatically does
+// NOT fire an 'input' event, so there's no feedback loop with simCalcShares.
+function simCalcRiskFromPosSize(){
+  const bar=simCurrentBar();
+  const entry=parseFloat(document.getElementById('tf-entry').value)||(bar?bar.close:0);
+  const sl=parseFloat(document.getElementById('tf-sl').value)||0;
+  const posPct=parseFloat(document.getElementById('tf-pos-pct').value)||0;
+  const cap=simAnalytics.currentCapital||0;
+  if(!entry||!sl||entry===sl||!posPct||cap<=0)return;
+  const shares=Math.floor((posPct/100)*cap/entry);
+  if(shares<=0)return;
+  const riskPerShare=Math.abs(entry-sl);
+  const riskPct=(shares*riskPerShare/cap)*100;
+  document.getElementById('tf-risk-pct').value=riskPct.toFixed(2);
 }
 document.getElementById('tf-sl').addEventListener('input',()=>{simCalcShares();simUpdateATRLabel();redrawAll();});
 document.getElementById('tf-risk-pct').addEventListener('input',simCalcShares);
 document.getElementById('tf-entry').addEventListener('input',()=>{simCalcShares();simUpdateATRLabel();redrawAll();});
+document.getElementById('tf-pos-pct').addEventListener('input',simCalcRiskFromPosSize);
 
 // Track last focused price field for quick-fill buttons
 let _tfActiveField='tf-sl';
@@ -8065,66 +8624,6 @@ document.getElementById('sim-flatten').addEventListener('click',simFlattenAll);
 document.getElementById('sim-save').addEventListener('click',()=>{
   simAutoSave();flash('Saved');
 });
-
-// Load Template — applies a saved template's chart/indicator/trade prefs to
-// the currently running sim (or duel). Reuses applyTemplate() which is
-// already the sim-start path's template loader, so behavior is identical.
-(function(){
-  const modal  = document.getElementById('tpl-load-modal');
-  const picker = document.getElementById('tpl-load-picker');
-  const applyBtn = document.getElementById('tpl-load-apply');
-  const cancelBtn = document.getElementById('tpl-load-cancel');
-  const openBtn = document.getElementById('sim-load-template');
-  if(!modal || !picker || !applyBtn || !cancelBtn || !openBtn) return;
-
-  async function populate(){
-    picker.innerHTML = '<option value="">— Select a template —</option>';
-    applyBtn.disabled = true;
-    try{
-      const r = await fetch('/api/templates');
-      const items = await r.json();
-      if(!Array.isArray(items) || items.length===0){
-        picker.innerHTML = '<option value="">(no templates saved yet)</option>';
-        return;
-      }
-      picker.innerHTML = '<option value="">— Select a template —</option>'
-        + items.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
-    }catch(e){}
-  }
-
-  openBtn.addEventListener('click', async ()=>{
-    if(!simId){ flash('No active simulation'); return; }
-    await populate();
-    modal.classList.remove('hidden');
-  });
-
-  picker.addEventListener('change', ()=>{ applyBtn.disabled = !picker.value; });
-  cancelBtn.addEventListener('click', ()=>{ modal.classList.add('hidden'); });
-
-  applyBtn.addEventListener('click', async ()=>{
-    const id = picker.value;
-    if(!id) return;
-    applyBtn.disabled = true;
-    try{
-      const r = await fetch(`/api/templates/${id}`);
-      const tpl = await r.json();
-      if(tpl && !tpl.error){
-        applyTemplate(tpl);
-        // Repaint the main chart + vol pane with the new indicator set, and
-        // persist the change into the sim JSON so it survives refresh.
-        try { redrawAll(); } catch(_){}
-        try { simApplyBars(); } catch(_){}
-        try { simAutoSave(); } catch(_){}
-        flash(`Template "${tpl.name}" applied`);
-      } else {
-        flash('Failed to load template');
-      }
-    }catch(e){
-      flash('Failed to load template: ' + (e.message||e));
-    }
-    modal.classList.add('hidden');
-  });
-})();
 
 // Notes autosave — uses the existing debounced autosave, with transient status indicator
 (function(){
@@ -8308,7 +8807,7 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
       const looksHtml = /^\s*<!doctype|^\s*<html/i.test(text);
       throw new Error(
         looksHtml
-          ? `Server is missing ${url.split('?')[0]} — restart momentum_trading_simulator_server.py (or a stale server is still on the port). HTTP ${r.status}.`
+          ? `Server is missing ${url.split('?')[0]} — restart pivbo_server.py (or a stale server is still on the port). HTTP ${r.status}.`
           : `Non-JSON response from ${url.split('?')[0]} — HTTP ${r.status}: ${text.slice(0,120)}`
       );
     }
@@ -8534,7 +9033,7 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
 (function(){
   const BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
   // Namespace prefix keeps us off colliding topics on the public broker.
-  const TOPIC_NS = 'mbelgin/mts/duel';
+  const TOPIC_NS = 'pivbo/duel';
   const STALE_MS = 120000;
 
   let client = null;
@@ -8787,6 +9286,10 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
       this._committing = true;
       try { simAdvance(); } finally { this._committing = false; }
       this._startNextBar();
+      // Force a fresh equity publish the moment the bar flips so the
+      // opponent's line gets a definitive per-bar data point (not merely
+      // whatever the throttled simUpdateStatsUI call gave).
+      try { publishDuelEquity(true); } catch(_){}
     },
 
     // Called once by checkBothReady to begin gating on the current bar; and
@@ -8960,7 +9463,12 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
     handlersWired = false;  // will re-register on next connect
   }
 
-  function open(){ modal.classList.remove('hidden'); resetAll(); }
+  function open(opts){
+    modal.classList.remove('hidden');
+    resetAll();
+    const tab = opts && opts.tab;
+    if(tab === 'host' || tab === 'join') setTab(tab);
+  }
   function close(){ modal.classList.add('hidden'); duelRelay.disconnect(); resetAll(); }
 
   // ---- Stage: connect (host) ----
@@ -9175,6 +9683,18 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
       duelGate.onOpponentAdvance(bi);
     });
 
+    // Opponent's equity snapshot for a given bar. Append or replace the
+    // point at that bar's time, then push into the chart series. Stored as
+    // a plain array so it survives series recreation on mode switches.
+    duelRelay.onMessage('equity', msg=>{
+      if(!msg || typeof msg.value !== 'number' || !msg.time) return;
+      const i = oppEquityPoints.findIndex(p => p.time === msg.time);
+      if(i >= 0) oppEquityPoints[i] = {time: msg.time, value: msg.value};
+      else oppEquityPoints.push({time: msg.time, value: msg.value});
+      oppEquityPoints.sort((a,b)=>(a.time > b.time ? 1 : a.time < b.time ? -1 : 0));
+      applyOppEquity();
+    });
+
     // Opponent explicitly ended the duel. Fire a flash and cleanly shut
     // down our side. `remote:true` skips the outbound duel_ended publish
     // so we don't bounce the message back.
@@ -9325,8 +9845,11 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
     // broker (persistent clean:false session) may redeliver a stale
     // data_ready from the opponent — without this guard that ping would
     // fire launchDuelSim → simStart → POST /api/simulations → duplicate sim
-    // sitting next to the one we just restored. Happens every hard refresh.
-    if(duelGate.active || simId) return;
+    // sitting next to the one we just restored. `duelGate.active` is set
+    // BEFORE simStart in launchDuelSim, so it's sufficient here: any
+    // legitimate first launch has active=false, and both restore and
+    // already-running cases have active=true.
+    if(duelGate.active) return;
     if(myDataReady && oppDataReady){
       setTimeout(()=>{ launchDuelSim(); }, 300);
     }
@@ -9335,21 +9858,12 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
   async function hostPickTickerAndVerify(){
     setDuelStatus('duel-prep-mine-status', 'Randomly selecting a ticker that matches the filters…');
     try{
-      const body = {
+      tickerChoice = await pickRandomTicker({
         years: duelConfig.years,
         minAdr: duelConfig.minAdr,
         skipMaEnabled: !!(duelConfig.skipMa && duelConfig.skipMa.enabled),
         skipMaPeriod: (duelConfig.skipMa && duelConfig.skipMa.period) || 0,
-      };
-      const resp = await fetch('/api/duel/pick-ticker', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify(body)
       });
-      if(!resp.ok){
-        const j = await resp.json().catch(()=>({error:'Server error'}));
-        throw new Error(j.error || `HTTP ${resp.status}`);
-      }
-      tickerChoice = await resp.json();
     } catch(e){
       setDuelStatus('duel-prep-mine-status', 'Ticker pick failed: '+e.message, 'error');
       duelRelay.publish('data_error', {reason:'Host could not pick a ticker: '+e.message});
@@ -9463,40 +9977,61 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
   }
 
   // Unified renderer for the duel panel. Drives phase badge, countdown,
-  // indicator dots, and the READY button in one place. Called on every
+  // two player cards, the READY button, and the hint line. Called on every
   // state change (prep↔active, advances) and on the countdown tick.
   function updateReadyBanner(msLeftExplicit){
-    const phaseEl  = $('duel-banner-phase');
-    const cdEl     = $('duel-countdown');
-    const meDot    = $('duel-ind-me');
-    const oppDot   = $('duel-ind-opp');
-    const meState  = $('duel-ind-me-state');
-    const oppState = $('duel-ind-opp-state');
-    const readyBtn = $('duel-ready-btn');
+    const phaseEl    = $('duel-banner-phase');
+    const cdEl       = $('duel-countdown');
+    const meCard     = $('duel-ind-me-card');
+    const oppCard    = $('duel-ind-opp-card');
+    const meName     = $('duel-ind-me-name');
+    const oppName_el = $('duel-ind-opp-name');
+    const meBadge    = $('duel-ind-me-badge');
+    const oppBadge   = $('duel-ind-opp-badge');
+    const readyBtn   = $('duel-ready-btn');
+    const hintEl     = $('duel-banner-hint');
     if(!phaseEl || !cdEl || !readyBtn) return;
 
     const oppName = duelRelay.opponentName || 'opp';
+    const myName  = duelRelay.myName || 'you';
+    if(meName)     meName.textContent     = myName;
+    if(oppName_el) oppName_el.textContent = oppName;
+
+    const applyCard = (card, badge, cls, text)=>{
+      if(!card || !badge) return;
+      card.className = 'duel-ind-card' + (cls ? ' '+cls : '');
+      badge.textContent = text;
+    };
+
+    const setHint = (text)=>{
+      if(!hintEl) return;
+      if(!text){ hintEl.classList.add('hidden'); return; }
+      hintEl.classList.remove('hidden');
+      hintEl.textContent = text;
+    };
 
     if(duelGate.phase === 'prep'){
       phaseEl.textContent = 'PREP';
       phaseEl.className = 'duel-banner-phase';
       cdEl.textContent = '--:--';
       cdEl.className = 'duel-countdown idle';
-      meDot.className  = 'duel-ind-dot' + (myReady  ? ' active' : '');
-      oppDot.className = 'duel-ind-dot' + (oppReady ? ' active' : '');
-      meState.textContent  = myReady  ? 'ready' : 'not ready yet';
-      oppState.textContent = oppReady ? `${oppName}: ready` : `${oppName}: waiting…`;
+
+      applyCard(meCard,  meBadge,  myReady  ? 'locked'  : 'waiting pulse', myReady  ? 'READY'   : 'WAITING');
+      applyCard(oppCard, oppBadge, oppReady ? 'locked'  : 'waiting',       oppReady ? 'READY'   : 'WAITING');
 
       if(myReady && oppReady){
         readyBtn.style.display = 'none';
+        setHint('Starting the duel…');
       } else if(myReady){
         readyBtn.style.display = '';
         readyBtn.disabled = true;
         readyBtn.textContent = `Waiting for ${oppName}…`;
+        setHint('');
       } else {
         readyBtn.style.display = '';
         readyBtn.disabled = false;
         readyBtn.textContent = "I'M READY";
+        setHint('Click READY once your chart and indicators are set up.');
       }
     } else if(duelGate.phase === 'active'){
       phaseEl.textContent = 'LIVE';
@@ -9510,20 +10045,25 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
       cdEl.textContent = `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
       cdEl.className = 'duel-countdown' + (sec <= 5 && !duelGate.myAdvanced ? ' urgent' : '');
 
-      meDot.className  = 'duel-ind-dot' + (duelGate.myAdvanced  ? ' active' : '');
-      oppDot.className = 'duel-ind-dot' + (duelGate.oppAdvanced ? ' active' : '');
-      meState.textContent  = duelGate.myAdvanced  ? 'locked in' : 'press → to lock';
-      oppState.textContent = duelGate.oppAdvanced ? `${oppName}: locked in` : `${oppName}: deciding…`;
+      applyCard(meCard,  meBadge,  duelGate.myAdvanced  ? 'locked' : 'waiting pulse', duelGate.myAdvanced  ? 'LOCKED'   : 'DECIDING');
+      applyCard(oppCard, oppBadge, duelGate.oppAdvanced ? 'locked' : 'waiting',       duelGate.oppAdvanced ? 'LOCKED'   : 'DECIDING');
+
+      if(duelGate.myAdvanced && !duelGate.oppAdvanced){
+        setHint(`Waiting for ${oppName}…`);
+      } else if(!duelGate.myAdvanced){
+        setHint('Press →  to lock in your decision');
+      } else {
+        setHint('');
+      }
     } else if(duelGate.phase === 'ended'){
       phaseEl.textContent = 'ENDED';
       phaseEl.className = 'duel-banner-phase ended';
       cdEl.textContent = '--:--';
       cdEl.className = 'duel-countdown idle';
       readyBtn.style.display = 'none';
-      meDot.className  = 'duel-ind-dot';
-      oppDot.className = 'duel-ind-dot';
-      meState.textContent  = '—';
-      oppState.textContent = '—';
+      applyCard(meCard,  meBadge,  'ended', '—');
+      applyCard(oppCard, oppBadge, 'ended', '—');
+      setHint('Duel complete.');
     }
   }
 
@@ -9541,14 +10081,12 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
 
   function maskTickerUI(){
     if(!duelConfig || !duelConfig.tickerHidden || !tickerChoice) return;
-    const meta = document.getElementById('sim-panel-meta');
-    if(meta) meta.textContent = meta.textContent.replace(tickerChoice.ticker, '???');
-    const sym = document.getElementById('ct-sym');
-    if(sym) sym.textContent = '???';
+    maskSimTicker(tickerChoice.ticker);
   }
 
   function endDuel(opts){
     const remote = !!(opts && opts.remote);
+    try { setOppEquityToggleVisible(false); } catch(_){}
     // We're ending intentionally; mute the "Disconnected from relay" close
     // handler (meant for unexpected drops) so it doesn't paint a misleading
     // error in the stale modal status element.
@@ -9628,6 +10166,11 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
 
     maskTickerUI();
     showDuelBanner();
+    // Start the opponent-equity overlay fresh. Seed an initial point for
+    // OUR side so the opp sees a starting marker as soon as they receive.
+    try { resetOppEquity(); } catch(_){}
+    try { publishDuelEquity(true); } catch(_){}
+    try { setOppEquityToggleVisible(true); syncOppEquityToggleUI(); } catch(_){}
     // First save after the duel gate becomes active: writes duelState into
     // the sim JSON so a refresh now has something to restore from. Use the
     // synchronous flush (not the 500ms-debounced simAutoSave) — otherwise a
@@ -9809,6 +10352,12 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
         } else {
           updateReadyBanner();
         }
+        // After restore, flush our current equity so the opp line on their
+        // side picks up our latest point (they may have missed the most
+        // recent while we were refreshing).
+        try { resetOppEquity(); } catch(_){}
+        try { publishDuelEquity(true); } catch(_){}
+        try { setOppEquityToggleVisible(true); syncOppEquityToggleUI(); } catch(_){}
       },
       err=>{
         flash('Duel relay failed to reconnect: ' + err);
@@ -9839,17 +10388,24 @@ window.addEventListener('load',async()=>{
   await loadDrawings();
   loadTickers();
   // Auto-resume active simulation if one was running before the refresh.
-  // Prefer sessionStorage (tab-scoped) over localStorage so each tab in a
-  // dual-tab setup (local host + guest testing) gets its own sim.
+  // sessionStorage is tab-scoped (survives refresh but dies on browser
+  // close). Only when the session ID is present do we treat this as a
+  // genuine refresh and resurrect a live duel along with the sim —
+  // otherwise we just open the sim as a read-able record, no zombie duel.
   try{
-    const activeId = sessionStorage.getItem('bm_active_sim_id')
-                    || localStorage.getItem('bm_active_sim_id');
+    const sessionId = sessionStorage.getItem('bm_active_sim_id');
+    const localId   = localStorage.getItem('bm_active_sim_id');
+    const activeId  = sessionId || localId;
+    const isRefresh = !!sessionId;
     if(activeId){
-      await simLoadFromServer(activeId);
+      await simLoadFromServer(activeId, {restoreDuel: isRefresh});
+    } else {
+      showPage('home');
     }
   }catch(e){
     try{sessionStorage.removeItem('bm_active_sim_id');}catch(_){}
     try{localStorage.removeItem('bm_active_sim_id');}catch(_){}
+    try{ showPage('home'); }catch(_){}
   }
 });
 

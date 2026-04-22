@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# Momentum Trading Simulator — local Flask server
-# Usage: python momentum_trading_simulator_server.py
+# PivotBreakout (PivBo) — local Flask server
+# Usage: python pivbo_server.py
 # Then open http://localhost:5051/ in browser
 
 import csv
@@ -156,7 +156,9 @@ def _load_spy_bars():
 
 
 def _resolve_index_html_path():
-    for name in ("momentum_trading_simulator.html",):
+    # Check the new name first; fall back to the legacy name so a dev
+    # running against a pre-rebrand working copy still boots.
+    for name in ("pivbo.html", "momentum_trading_simulator.html"):
         p = os.path.join(SCRIPT_DIR, name)
         if os.path.exists(p):
             return p
@@ -167,7 +169,7 @@ def _resolve_index_html_path():
 def index():
     html_path = _resolve_index_html_path()
     if not html_path:
-        return f"momentum_trading_simulator.html not found in {SCRIPT_DIR}", 404
+        return f"pivbo.html not found in {SCRIPT_DIR}", 404
     with open(html_path, "r", encoding="utf-8") as f:
         content = f.read()
     return Response(content, mimetype="text/html")
@@ -2845,7 +2847,7 @@ if __name__ == "__main__":
         except (AttributeError, ValueError):
             pass
 
-    print(f"Momentum Trading Simulator: http://localhost:{PORT}/   (PID {os.getpid()})")
+    print(f"PivotBreakout (PivBo): http://localhost:{PORT}/   (PID {os.getpid()})")
     yahoo_routes = sorted(str(r) for r in app.url_map.iter_rules() if "/api/yahoo" in str(r))
     print(f"Yahoo data routes ({len(yahoo_routes)}):")
     for rt in yahoo_routes:

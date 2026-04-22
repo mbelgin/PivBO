@@ -1,4 +1,6 @@
-# Momentum Trading Simulator
+# PivotBreakout (PivBo)
+
+_Formerly known as Momentum Trading Simulator._
 
 A self-hosted, bar-by-bar trading simulator for studying momentum setups on
 historical US equity data. Runs entirely on your own machine, offline.
@@ -54,13 +56,87 @@ subscribing to data, or sending any activity to the cloud.
 
 ## Quickstart
 
-Requires Python 3.9+.
+This guide assumes you've never used a terminal before. Follow it line by line.
+
+### 1. Install the two tools you need
+
+You only need to do this once.
+
+1. **Python** (version 3.9 or newer): download and install from
+   [python.org/downloads](https://www.python.org/downloads/). On Windows, during
+   the install, tick the box that says **"Add Python to PATH"**.
+2. **Git**: download and install from
+   [git-scm.com/downloads](https://git-scm.com/downloads). Accept all the
+   default settings.
+
+### 2. Open a terminal
+
+- **Windows**: press the Windows key, type `cmd`, press Enter.
+- **macOS**: press `Cmd + Space`, type `Terminal`, press Enter.
+- **Linux**: you already know.
+
+A black (or white) window opens with a blinking cursor. This is where you
+type commands. Each line below is one command: type it, then press Enter.
+
+### 3. First time only: download the project
+
+Pick a folder where the project will live, for example your Documents folder.
+Change into it:
+
+```bash
+cd Documents
+```
+
+Then download the project:
+
+```bash
+git clone https://bitbucket.org/mbelgin/momentum_trading_simulator.git pivbo
+cd pivbo
+```
+
+You now have a new folder called `pivbo` with all the code inside.
+
+### 4. Install the project's dependencies
+
+Still in the terminal, still inside the project folder, run:
 
 ```bash
 pip install -r requirements.txt
-python momentum_trading_simulator_server.py
-# open http://localhost:5051/
 ```
+
+This downloads the few Python packages the simulator uses. You only need to
+do this once (and again if `requirements.txt` ever changes).
+
+### 5. Run the simulator
+
+```bash
+python pivbo_server.py
+```
+
+Leave this terminal window open. Now open your web browser and go to:
+
+```
+http://localhost:5051/
+```
+
+That's it. You can start clicking around.
+
+To stop the server, click back into the terminal window and press `Ctrl + C`.
+
+### Coming back later (updating to the latest version)
+
+Next time you want to run the simulator, open your terminal and:
+
+```bash
+cd Documents/pivbo
+git pull
+pip install -r requirements.txt
+python pivbo_server.py
+```
+
+`git pull` downloads any updates since you last ran it. The
+`pip install -r requirements.txt` line is only needed if dependencies
+changed (running it when nothing changed is harmless).
 
 ## Data format
 
