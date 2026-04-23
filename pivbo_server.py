@@ -37,7 +37,15 @@ app = Flask(__name__, static_folder=RESOURCE_DIR, static_url_path="")
 # Single source of truth for the app's version. Wired into the UI footer
 # and exposed via /api/version so the future auto-updater can compare it
 # against /repos/mbelgin/PivBO/releases/latest on GitHub.
-VERSION = "0.0.1"
+#
+# Single source of truth: `__version__` in pivbo/__init__.py. CI writes
+# the git-tag-derived version into that file before each release build,
+# so the installed app always reports the release number of the tag it
+# was cut from, and dev builds show whatever was last committed.
+try:
+    from pivbo import __version__ as VERSION
+except Exception:
+    VERSION = "0.0.0-unknown"
 
 # User-data directory. In dev (running python pivbo_server.py from the
 # source tree) we keep sims/templates/analyses next to the script for

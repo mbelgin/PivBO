@@ -1,8 +1,19 @@
 name: Release
 
-# Matrix-build PivBO installers on every v* tag push and attach them to
-# the matching GitHub Release. First run will surface platform-specific
-# gotchas — expect to iterate on this workflow a few times.
+# Produces portable distribution artifacts for Windows, macOS, and
+# Linux on every `v*` tag push. The installer-style formats (MSI on
+# Windows, DMG on macOS) are intentionally skipped — we ship a ZIP of
+# the runnable app for Windows/macOS and an AppImage for Linux. Users
+# download, double-click, go. See README for the one-time OS warning
+# clickthrough on first launch.
+#
+# Release flow:
+#   1. Bump pyproject.toml version
+#   2. git tag v0.0.X && git push --tags
+#   3. CI runs the three jobs below in parallel, ~5–15 min each
+#   4. All three artifacts get attached to the auto-created Release
+#
+# Manual re-runs: Actions tab → Release → Run workflow.
 
 on:
   push:
@@ -11,17 +22,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: write   # needed for softprops/action-gh-release to push assets
 
 jobs:
-  build:
-    name: Build on ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-
+  # ------------------------------------------------------------
+  # Windows — portable ZIP of the briefcase-staged src/ folder
+  # ------------------------------------------------------------
+  build-windows:
+    name: Build Windows (portable zip)
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,35 +45,214 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install briefcase
 
-      - name: Briefcase create
-        run: briefcase create
+      # See `pin-version` in the Linux job for the shared rationale.
+      - name: Pin version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: python scripts/pin_version.py "${{ github.ref_name }}"
 
-      - name: Briefcase build
-        run: briefcase build
+      - name: Briefcase create (Windows)
+        run: briefcase create windows
 
-      - name: Briefcase package
-        run: briefcase package --adhoc-sign
+      - name: Briefcase build (Windows)
+        run: briefcase build windows
 
-      - name: Upload artifacts
+      # Python's zipfile is more reliable than Compress-Archive here —
+      # WebView2 DLLs have been seen to hold file locks briefly after
+      # build, which Compress-Archive chokes on.
+      - name: Package portable ZIP
+        shell: pwsh
+        run: |
+          python -c "
+          import os, zipfile, time
+          src = r'build/pivbo/windows/app/src'
+          dst = r'dist/PivBO-windows.zip'
+          os.makedirs('dist', exist_ok=True)
+          t0 = time.time(); n = 0
+          with zipfile.ZipFile(dst, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+              for root, _, files in os.walk(src):
+                  for f in files:
+                      p = os.path.join(root, f)
+                      zf.write(p, os.path.relpath(p, src))
+                      n += 1
+          print(f'zipped {n} files in {time.time()-t0:.1f}s -> {os.path.getsize(dst)/1024/1024:.1f} MB')
+          "
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pivbo-${{ matrix.os }}
-          path: |
-            dist/**
-            linux/**/dist/**
-            macOS/**/dist/**
-            windows/**/dist/**
-          if-no-files-found: warn
+          name: PivBO-windows
+          path: dist/PivBO-windows.zip
+          if-no-files-found: error
 
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/**
-            linux/**/dist/**
-            macOS/**/dist/**
-            windows/**/dist/**
+          files: dist/PivBO-windows.zip
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ------------------------------------------------------------
+  # macOS — ZIP of the .app bundle, not a DMG
+  # ------------------------------------------------------------
+  # Plain `zip` strips extended attributes and breaks the ad-hoc
+  # signature; `ditto -c -k --keepParent` preserves them. Without this,
+  # Gatekeeper blocks the downloaded app outright even for the user's
+  # own machine.
+  build-macos:
+    name: Build macOS (portable zip)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Briefcase
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install briefcase
+
+      - name: Pin version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: python scripts/pin_version.py "${{ github.ref_name }}"
+
+      - name: Briefcase create (macOS)
+        run: briefcase create macOS
+
+      - name: Briefcase build (macOS)
+        run: briefcase build macOS
+
+      - name: Package portable ZIP (ditto)
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent build/pivbo/macos/app/PivBO.app dist/PivBO-macos.zip
+          ls -lh dist/PivBO-macos.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PivBO-macos
+          path: dist/PivBO-macos.zip
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/PivBO-macos.zip
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ------------------------------------------------------------
+  # Linux — AppImage (distro-agnostic, signature-free)
+  # ------------------------------------------------------------
+  # Briefcase's AppImage build runs inside a Docker container with an
+  # older glibc base. GitHub's Ubuntu runners have Docker preinstalled,
+  # so this works without extra setup.
+  build-linux:
+    name: Build Linux (AppImage)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Briefcase + system deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install briefcase
+          sudo apt-get update
+          sudo apt-get install -y libfuse2
+
+      # Rewrite the version in pyproject.toml and pivbo/__init__.py to
+      # match the git tag (e.g. "v0.0.2" → "0.0.2"). This way the source
+      # can stay at a placeholder version between releases and CI still
+      # produces correctly-versioned artifacts, UI, /api/version, etc.
+      # The edit is only inside the ephemeral CI checkout — never
+      # committed back — so the repo's committed version stays whatever
+      # the last manual bump was.
+      - name: Pin version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: python scripts/pin_version.py "${{ github.ref_name }}"
+
+      - name: Briefcase create (Linux AppImage)
+        run: briefcase create linux AppImage
+
+      - name: Briefcase build (Linux AppImage)
+        run: briefcase build linux AppImage
+
+      - name: Briefcase package (Linux AppImage)
+        run: briefcase package linux AppImage
+
+      # Briefcase names the AppImage per version from pyproject.toml
+      # (e.g. PivBO-0.0.1-x86_64.AppImage). Rename to a stable filename
+      # so release consumers can link to a predictable URL.
+      - name: Rename AppImage to stable name
+        run: |
+          cd dist
+          ls -lh
+          mv PivBO-*-x86_64.AppImage PivBO-x86_64.AppImage
+          ls -lh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PivBO-linux
+          path: dist/PivBO-x86_64.AppImage
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/PivBO-x86_64.AppImage
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ------------------------------------------------------------
+  # Release notes — runs after all three artifact jobs succeed.
+  # softprops/action-gh-release merges with any existing release body,
+  # so the three upload jobs above attach files without overwriting.
+  # This final job writes the default body template users will see.
+  # ------------------------------------------------------------
+  publish-notes:
+    name: Publish release notes
+    needs: [build-windows, build-macos, build-linux]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Publish release body
+        uses: softprops/action-gh-release@v2
+        with:
+          body: |
+            ## Downloads
+
+            - **Windows** — [PivBO-windows.zip](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PivBO-windows.zip)
+            - **macOS** — [PivBO-macos.zip](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PivBO-macos.zip)
+            - **Linux** — [PivBO-x86_64.AppImage](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PivBO-x86_64.AppImage)
+
+            See the [README](https://github.com/${{ github.repository }}/blob/main/README.md) for first-launch instructions and the one-time OS warning clickthrough.
+
+            ## What's included
+            - Self-contained portable app (Python runtime bundled).
+            - ~930 historical ticker CSVs auto-downloaded from this repo on first launch.
+            - No installer, no admin rights, no Python required on the user's machine.
+          append_body: false
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

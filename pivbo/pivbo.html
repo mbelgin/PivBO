@@ -44,7 +44,11 @@
     box-shadow: 0 6px 18px rgba(0,0,0,0.18);
   }
   html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--tv);overflow:hidden;}
-  .app{display:grid;grid-template-rows:48px 1fr;height:100vh;}
+  /* Three rows: topbar (48px fixed), seed-banner (content-sized; 0 when
+     hidden via .hidden { display:none }), main (1fr absorbs remaining).
+     The seed banner used to land on the 1fr row because it was the 2nd
+     child, stealing all the flexible space from the chart. */
+  .app{display:grid;grid-template-rows:48px auto 1fr;height:100vh;}
   .topbar{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 12px;flex-wrap:wrap;}
   .topbar .spacer{flex:1 1 auto;min-width:10px;}
   .logo{font-family:'Space Grotesk','Inter',sans-serif;font-size:17px;font-weight:700;color:var(--accent);letter-spacing:0.5px;cursor:pointer;user-select:none;transition:color 0.15s;line-height:1;}
@@ -1343,6 +1347,9 @@
   .seed-banner-bar{flex:1 1 200px;height:6px;background:color-mix(in srgb,var(--border) 80%,var(--bg));border-radius:3px;overflow:hidden;min-width:120px;}
   .seed-banner-fill{height:100%;background:var(--accent);width:0%;transition:width 0.4s ease;}
   .seed-banner-count{color:var(--muted);font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;white-space:nowrap;}
+  .seed-banner-actions{display:inline-flex;gap:6px;align-items:center;}
+  .seed-banner-actions.hidden{display:none!important;}
+  .seed-banner-bar.hidden,.seed-banner-count.hidden{display:none!important;}
   .duel-banner{background:linear-gradient(180deg,var(--bg2),var(--bg3));border-bottom:2px solid var(--yellow);font-family:var(--mono);display:flex;flex-direction:column;}
   .duel-banner.hidden{display:none;}
 
@@ -1535,12 +1542,21 @@
   <!-- First-launch chart-data seeder banner. The installer is slim; the
        ~56MB of compressed historical CSVs are fetched from GitHub on
        first run. Poll loop below (seed-status-poller) toggles .hidden
-       and updates the counts. -->
+       and updates the counts.
+
+       Has three visual phases, all driven by the same banner element:
+         1. Seeding      — progress bar + "N of 931" counter
+         2. Prompt       — "Bundled data refreshed. Update to today?" + buttons
+         3. Updating     — progress bar + live job counter -->
   <div id="seed-banner" class="seed-banner hidden" role="status" aria-live="polite">
-    <span class="seed-banner-label">One-time Download</span>
-    <span class="seed-banner-text">Fetching chart data for <span id="seed-banner-total">—</span> tickers.</span>
-    <div class="seed-banner-bar"><div class="seed-banner-fill" id="seed-banner-fill"></div></div>
-    <span class="seed-banner-count"><span id="seed-banner-done">0</span> of <span id="seed-banner-total2">—</span></span>
+    <span class="seed-banner-label" id="seed-banner-label">One-time Download</span>
+    <span class="seed-banner-text" id="seed-banner-text">Fetching chart data for <span id="seed-banner-total">—</span> tickers.</span>
+    <div class="seed-banner-bar" id="seed-banner-bar-wrap"><div class="seed-banner-fill" id="seed-banner-fill"></div></div>
+    <span class="seed-banner-count" id="seed-banner-count"><span id="seed-banner-done">0</span> of <span id="seed-banner-total2">—</span></span>
+    <div class="seed-banner-actions hidden" id="seed-banner-actions">
+      <button class="sim-btn sim-btn-sm primary" id="seed-banner-update">Update to today</button>
+      <button class="sim-btn sim-btn-sm" id="seed-banner-skip">Skip</button>
+    </div>
   </div>
   <!-- Chart panels popover. Single place to toggle all optional chart panes:
        secondary chart (+ its symbol), volume panel, own equity pane, and
@@ -2446,7 +2462,7 @@
   <div class="home-inner">
     <div class="home-hero">
       <img class="home-brand-icon" src="assets/pivbo.png" alt="" aria-hidden="true">
-      <div class="home-subtitle">Practice trading daily bars, one bar at a time</div>
+      <div class="home-subtitle">Master the art of trading, one bar at a time</div>
       <div class="home-title">PivBO: Pivot BreakOut<span class="home-title-beta">beta</span></div>
       <div class="home-subtitle-coffee">
         <span class="home-subtitle-coffee-text">PivBO is &ldquo;<a href="https://ko-fi.com/mbelgin" target="_blank" rel="noopener" class="coffeeware-link" title="Coffeeware (n.): a tongue-in-cheek software license. Free to use, but if it helped you, buy the author a coffee.">coffeeware</a>&rdquo;: completely <strong style="color:var(--text);font-weight:700;">FREE</strong> and open source, running purely on donated caffeine</span>
@@ -2531,7 +2547,7 @@
 
     <div class="home-coffee-box">
       <div class="coffee-line">
-        PivBO is <strong>coffeeware</strong>: free forever, no ads, no tracking, no upsell.<br>
+        PivBO is <strong>coffeeware</strong>: free forever, no ads, no tracking.<br>
         If it saved you from a bad trade or taught you something new, fuel the next feature.
       </div>
       <a href="https://ko-fi.com/mbelgin" target="_blank" rel="noopener" class="kofi-btn">
@@ -11459,75 +11475,173 @@ window.addEventListener('load',async()=>{
   // banner never shows. We stop polling once the seeder reports
   // running=false AND remaining=0.
   (function seedStatusPoller(){
-    const banner = document.getElementById('seed-banner');
+    const banner   = document.getElementById('seed-banner');
     if(!banner) return;
+    const lblLabel  = document.getElementById('seed-banner-label');
+    const lblText   = document.getElementById('seed-banner-text');
     const lblTotal  = document.getElementById('seed-banner-total');
     const lblTotal2 = document.getElementById('seed-banner-total2');
     const lblDone   = document.getElementById('seed-banner-done');
     const fill      = document.getElementById('seed-banner-fill');
+    const barWrap   = document.getElementById('seed-banner-bar-wrap');
+    const countEl   = document.getElementById('seed-banner-count');
+    const actions   = document.getElementById('seed-banner-actions');
+    const updateBtn = document.getElementById('seed-banner-update');
+    const skipBtn   = document.getElementById('seed-banner-skip');
+
+    // Phases: 'idle' → 'seeding' → 'prompt' → 'updating' → 'done'
+    let phase = 'idle';
     let stopped = false;
     let lastDoneCount = 0;
     let lastTickerRefreshAt = 0;
-    const TICKER_REFRESH_MIN_GAP_MS = 4000;  // don't re-scan more than once every 4s
+    const TICKER_REFRESH_MIN_GAP_MS = 4000;
+
+    function showProgressMode(labelText, bodyText){
+      if(lblLabel) lblLabel.textContent = labelText;
+      if(lblText)  lblText.innerHTML    = bodyText;
+      if(barWrap)  barWrap.classList.remove('hidden');
+      if(countEl)  countEl.classList.remove('hidden');
+      if(actions)  actions.classList.add('hidden');
+    }
+    function showPromptMode(downloadedCount){
+      phase = 'prompt';
+      if(lblLabel) lblLabel.textContent = 'Chart Data Ready';
+      if(lblText)  lblText.innerHTML    = `Downloaded ${downloadedCount} tickers. The bundled history is a snapshot; refresh to today's close?`;
+      if(barWrap)  barWrap.classList.add('hidden');
+      if(countEl)  countEl.classList.add('hidden');
+      if(actions)  actions.classList.remove('hidden');
+    }
+    function hideBanner(){
+      banner.classList.add('hidden');
+      stopped = true;
+      phase = 'done';
+    }
+
+    async function refreshTickerListOnce(){
+      try {
+        await fetch('/api/ticker-ranges?refresh=1', {cache:'no-store'});
+        if(typeof loadTickers === 'function') loadTickers();
+      } catch(_){}
+    }
+
+    // ---- Update-all (Yahoo) job handling ----
+    let updateJobId = null;
+    let updateJobPoll = null;
+    async function startUpdateAll(){
+      phase = 'updating';
+      showProgressMode('Updating Tickers', 'Fetching latest bars from Yahoo. This only pulls dates since the last local bar per ticker.');
+      if(fill) fill.style.width = '0%';
+      if(lblDone) lblDone.textContent = '0';
+      try {
+        const r = await fetch('/api/yahoo/update_all', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: '{}',
+          cache: 'no-store',
+        });
+        const j = await r.json();
+        if(!j || !j.job_id){
+          hideBanner();
+          return;
+        }
+        updateJobId = j.job_id;
+        if(lblTotal)  lblTotal.textContent  = j.total;
+        if(lblTotal2) lblTotal2.textContent = j.total;
+        updateJobPoll = setInterval(pollUpdateJob, 1500);
+      } catch(_){
+        hideBanner();
+      }
+    }
+    async function pollUpdateJob(){
+      if(!updateJobId) return;
+      try {
+        const r = await fetch(`/api/yahoo/job/${updateJobId}`, {cache:'no-store'});
+        const j = await r.json();
+        const total    = j.total|0;
+        const progress = j.progress|0;
+        const status   = j.status || '';
+        if(lblDone)  lblDone.textContent = progress;
+        if(fill){
+          const pct = total > 0 ? Math.round((progress / total) * 100) : 0;
+          fill.style.width = pct + '%';
+        }
+        if(status === 'done' || status === 'canceled'){
+          clearInterval(updateJobPoll); updateJobPoll = null;
+          // Final ticker-list refresh so the freshly-updated rows show
+          // their new "to" dates in the table.
+          await refreshTickerListOnce();
+          setTimeout(hideBanner, 800);
+        }
+      } catch(_){}
+    }
+
+    if(updateBtn) updateBtn.addEventListener('click', ()=>{
+      if(phase !== 'prompt') return;
+      startUpdateAll();
+    });
+    if(skipBtn) skipBtn.addEventListener('click', hideBanner);
+
+    // ---- Main seeder-status poll loop ----
     async function tick(){
       if(stopped) return;
       try {
         const r = await fetch('/api/seed/status', {cache:'no-store'});
         const s = await r.json();
-        const total = s.total|0;
-        const remaining = s.remaining|0;
+        const total      = s.total|0;
+        const remaining  = s.remaining|0;
         const downloaded = s.downloaded|0;
-        const skipped = s.skipped|0;
-        const failed = s.failed|0;
-        const done = total - remaining;
-        // Hide the banner if the seeder isn't running and everything's
-        // either present or we never had anything to do. Skipped-only
-        // runs (re-launch on an already-seeded install) never show the
-        // banner at all.
+        const failed     = s.failed|0;
+        const done       = total - remaining;
+
+        // Fast-path: seeder isn't running AND it produced no downloads
+        // (every file existed locally already OR manifest was empty).
+        // Banner never shows, poller stops. Also skips the "Update
+        // to today?" prompt because a returning user doesn't need it.
         const idleNothingToDo = !s.running && remaining === 0 && downloaded === 0 && failed === 0;
-        if(idleNothingToDo){
-          banner.classList.add('hidden');
-          stopped = true;
+        if(idleNothingToDo && phase === 'idle'){
+          hideBanner();
           return;
         }
-        // Show the banner any time the seeder is running or has pending
-        // work. Update counts + the fill bar.
-        if(total > 0){
-          banner.classList.remove('hidden');
-          if(lblTotal)  lblTotal.textContent  = total;
-          if(lblTotal2) lblTotal2.textContent = total;
-          if(lblDone)   lblDone.textContent   = done;
-          if(fill){
-            const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-            fill.style.width = pct + '%';
+
+        // Active seeding: show progress and refresh the ticker list as
+        // new files land.
+        if(s.running || (total > 0 && phase !== 'prompt' && phase !== 'updating')){
+          if(phase === 'idle') phase = 'seeding';
+          if(phase === 'seeding'){
+            showProgressMode(
+              'One-time Download',
+              `Fetching chart data for <span id="seed-banner-total">${total}</span> tickers.`
+            );
+            banner.classList.remove('hidden');
+            if(lblTotal2) lblTotal2.textContent = total;
+            if(lblDone)   lblDone.textContent   = done;
+            if(fill){
+              const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+              fill.style.width = pct + '%';
+            }
+            const now = Date.now();
+            if(done > lastDoneCount && (now - lastTickerRefreshAt) > TICKER_REFRESH_MIN_GAP_MS){
+              lastDoneCount = done;
+              lastTickerRefreshAt = now;
+              refreshTickerListOnce();
+            }
           }
         }
-        // Every time `done` advances beyond the last snapshot we took,
-        // re-fetch the ticker list so new arrivals appear in the table.
-        // Throttle so back-to-back downloads don't hammer the server's
-        // (expensive) full-directory rescan. Uses the `refresh=1` query
-        // param on /api/ticker-ranges to force the cache bypass.
-        const now = Date.now();
-        if(done > lastDoneCount && (now - lastTickerRefreshAt) > TICKER_REFRESH_MIN_GAP_MS){
-          lastDoneCount = done;
-          lastTickerRefreshAt = now;
-          try {
-            await fetch('/api/ticker-ranges?refresh=1', {cache:'no-store'});
-            if(typeof loadTickers === 'function') loadTickers();
-          } catch(_){}
-        }
-        // Stop polling once the seeder has finished AND there's nothing
-        // left to do. One more tick after completion paints the final
-        // 100% state before the banner hides on the NEXT idle check.
-        if(!s.running && remaining === 0){
-          // Final list refresh so the last batch of tickers lands in
-          // the table before the banner fades out.
-          try {
-            await fetch('/api/ticker-ranges?refresh=1', {cache:'no-store'});
-            if(typeof loadTickers === 'function') loadTickers();
-          } catch(_){}
-          setTimeout(()=>{ banner.classList.add('hidden'); stopped = true; }, 800);
-          return;
+
+        // Seeding just finished. Two outcomes:
+        //   - Nothing actually downloaded (all skipped or all failed) →
+        //     hide the banner, no prompt.
+        //   - At least one new ticker landed → show the "Update to
+        //     today?" prompt. User decides whether to kick the Yahoo
+        //     refresh or skip.
+        if(!s.running && remaining === 0 && phase === 'seeding'){
+          await refreshTickerListOnce();
+          if(downloaded > 0){
+            showPromptMode(downloaded);
+          } else {
+            hideBanner();
+          }
+          return;  // stop polling — prompt has its own button handlers
         }
       } catch(_){}
       setTimeout(tick, 1500);

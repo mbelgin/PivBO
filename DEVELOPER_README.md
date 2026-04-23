@@ -149,24 +149,52 @@ on the host — Briefcase runs the build inside a containerized Ubuntu
 
 ## Release workflow
 
-1. Bump version in `pyproject.toml` (`version = "0.0.2"`).
-2. Regenerate the manifest if `collected_stocks/` changed:
-   ```bash
-   python -c "import os; names = sorted(n[:-7].upper() for n in os.listdir('collected_stocks') if n.lower().endswith('.csv.gz')); open('pivbo/collected_stocks_manifest.txt','w',encoding='utf-8',newline='\n').writelines(n+'\n' for n in names)"
-   ```
-3. Commit.
-4. Tag and push:
-   ```bash
-   git tag v0.0.2
-   git push && git push --tags
-   ```
-5. GitHub Actions runs the matrix build (`.github/workflows/release.yml`).
-   Three artifacts land on the Release page:
-   - `PivBO-windows.zip`
-   - `PivBO-macos.zip`
-   - `PivBO-x86_64.AppImage`
-6. (If wired) winget and Homebrew tap manifests auto-bump from the same
-   workflow. See the workflow file for details.
+The git tag is the version source of truth. CI reads `github.ref_name`
+(e.g. `v0.0.2`), strips the leading `v`, and writes the version into
+BOTH `pyproject.toml` and `pivbo/__init__.py` via `scripts/pin_version.py`
+before briefcase runs. So locally you don't need to bump anything — just
+tag and push.
+
+```bash
+# Optional: regenerate the ticker manifest if collected_stocks/ changed.
+python scripts/pin_version.py            # shows current version, no changes
+
+# Optional: bump the committed version so dev-mode `/api/version`
+# reflects what's coming next. CI doesn't care what's committed — it
+# uses the tag — so this is cosmetic for dev-mode users only.
+python scripts/pin_version.py 0.0.2
+
+git commit -am "Bump version to 0.0.2"   # only if you ran pin_version
+
+# The actual release:
+git tag v0.0.2
+git push && git push --tags
+```
+
+CI runs the matrix build (`.github/workflows/release.yml`). Three
+artifacts land on the Release page with the tag's version baked in:
+- `PivBO-windows.zip`
+- `PivBO-macos.zip`
+- `PivBO-x86_64.AppImage`
+
+(If wired) winget and Homebrew tap manifests auto-bump from the same
+workflow — see the workflow file for details.
+
+### Regenerating the ticker manifest
+
+Only needed when you add or remove `.csv.gz` files in `collected_stocks/`:
+
+```bash
+python -c "import os; names = sorted(n[:-7].upper() for n in os.listdir('collected_stocks') if n.lower().endswith('.csv.gz')); open('pivbo/collected_stocks_manifest.txt','w',encoding='utf-8',newline='\n').writelines(n+'\n' for n in names)"
+```
+
+### Version source of truth
+
+`pivbo/__init__.py` defines `__version__`. `pivbo_server.py` imports it.
+The landing page reads `/api/version` at runtime, so the about / footer
+line updates without code changes once the server has the right version.
+`pyproject.toml`'s `version` field must match — `scripts/pin_version.py`
+keeps them in sync with one command.
 
 ## Package manager integrations
 
