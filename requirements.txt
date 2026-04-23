@@ -1,3 +1,10 @@
 Flask>=3.0,<4.0
+waitress>=3.0
 reportlab>=4.0
 matplotlib>=3.5
+platformdirs>=4.0
+briefcase>=0.4
+toga-core>=0.4
+toga-winforms>=0.4 ; sys_platform == "win32"
+toga-cocoa>=0.4 ; sys_platform == "darwin"
+toga-gtk>=0.4 ; sys_platform == "linux"

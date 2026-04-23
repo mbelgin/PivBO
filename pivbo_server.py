@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-# PivotBreakout (PivBo) — local Flask server
+# PivotBreakout (PivBO) — local Flask server
 # Usage: python pivbo_server.py
 # Then open http://localhost:5051/ in browser
 
 import csv
+import gzip
 import io
 import os
 import json
@@ -23,22 +24,203 @@ from datetime import datetime, timezone
 from flask import Flask, jsonify, send_from_directory, request, Response, send_file
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-app = Flask(__name__, static_folder=SCRIPT_DIR, static_url_path="")
 
-# Path configuration
+# Bundled app resources (pivbo.html, assets, SPY CSV) live inside the
+# pivbo/ package so Briefcase picks them up automatically. Flask serves
+# static files from here. In a dev checkout this is ./pivbo/; in a
+# packaged Briefcase app it's the same path because pivbo_server.py and
+# the pivbo/ package are always co-located.
+RESOURCE_DIR = os.path.join(SCRIPT_DIR, "pivbo")
+
+app = Flask(__name__, static_folder=RESOURCE_DIR, static_url_path="")
+
+# Single source of truth for the app's version. Wired into the UI footer
+# and exposed via /api/version so the future auto-updater can compare it
+# against /repos/mbelgin/PivBO/releases/latest on GitHub.
+VERSION = "0.0.1"
+
+# User-data directory. In dev (running python pivbo_server.py from the
+# source tree) we keep sims/templates/analyses next to the script for
+# zero-ceremony iteration. In an installed Briefcase build we move them
+# to the OS's standard per-user location via platformdirs so reinstalls
+# don't stomp user sims and Program Files doesn't need write access.
+#
+# Dev mode is detected by the presence of pivbo.html next to the script.
+# The env var PIVBO_FORCE_USER_DATA_DIR=1 forces the installed-mode path
+# for local testing of the packaged layout.
+def _resolve_user_data_dir():
+    # `pyproject.toml` lives at the repo root but is NOT copied into a
+    # Briefcase bundle (sources only include `pivbo` and `pivbo_server.py`),
+    # so its presence next to this script is a reliable dev-mode marker.
+    dev_mode = os.path.exists(os.path.join(SCRIPT_DIR, "pyproject.toml"))
+    if dev_mode and os.environ.get("PIVBO_FORCE_USER_DATA_DIR") != "1":
+        return SCRIPT_DIR
+    try:
+        import platformdirs
+        return platformdirs.user_data_dir("PivBO", appauthor=False, ensure_exists=True)
+    except Exception:
+        # Last-resort fallback. platformdirs ships with Briefcase so this
+        # branch shouldn't fire in the packaged app.
+        return os.path.join(os.path.expanduser("~"), ".pivbo")
+
+USER_DATA_DIR = _resolve_user_data_dir()
+
+# Market data lookup path. All reads and writes use the per-user dir.
+# The installer does NOT bundle the historical CSVs (931 tickers, ~56MB
+# compressed) — that would bloat every download for every user. Instead,
+# the first-launch seeder (see _seed_* below) fetches them from the
+# GitHub repo on demand, per-ticker, skipping any file that already
+# exists. A user who pulled their own wider date range for a ticker is
+# never overwritten.
 STOCKS_DIRS = [
-    os.path.join(SCRIPT_DIR, "collected_stocks"),
+    os.path.join(USER_DATA_DIR, "collected_stocks"),
 ]
 
-# SPY benchmark data source (UI "VS" overlay)
-SPY_HIST_CSV = os.path.join(SCRIPT_DIR, "SPY Historical Data.csv")
-_SPY_BARS_CACHE = None
 
-# Simulation storage
-SIMULATIONS_DIR = os.path.join(SCRIPT_DIR, "simulations")
-TEMPLATES_DIR = os.path.join(SCRIPT_DIR, "templates")
-ANALYSES_DIR = os.path.join(SCRIPT_DIR, "analyses")
+# Simulation / template / analysis storage — per-user in installed mode.
+SIMULATIONS_DIR = os.path.join(USER_DATA_DIR, "simulations")
+TEMPLATES_DIR = os.path.join(USER_DATA_DIR, "templates")
+ANALYSES_DIR = os.path.join(USER_DATA_DIR, "analyses")
 _TICKER_RANGES_CACHE = None
+
+# -----------------------------------------------------------------
+# First-launch seeder for historical stock data
+# -----------------------------------------------------------------
+# The installer ships only a small manifest (ticker names, one per line).
+# On startup, a background thread iterates the manifest and downloads
+# any missing .csv.gz from the GitHub repo's collected_stocks/ folder.
+#
+# Rule (confirmed with user): existence is the only check. If the file
+# already exists — even partially, even corrupt — we skip it. Downloads
+# land via os.replace() so a crash mid-download never leaves a truncated
+# file at the final path. The seeder is idempotent: running twice after
+# a full seed is effectively a no-op (just 931 stat() calls).
+SEED_MANIFEST_PATH = os.path.join(RESOURCE_DIR, "collected_stocks_manifest.txt")
+SEED_BASE_URL = "https://raw.githubusercontent.com/mbelgin/PivBO/main/collected_stocks"
+SEED_WORKER_COUNT = 8
+
+_seed_lock = threading.Lock()
+_seed_state = {
+    "started": False,     # has the seeder thread been kicked off yet?
+    "running": False,     # is it currently working?
+    "total": 0,           # total tickers in manifest
+    "remaining": 0,       # how many we still need to check/fetch
+    "downloaded": 0,      # completed downloads in THIS session
+    "skipped": 0,         # already present in USER_DATA_DIR
+    "failed": 0,          # network / 404 / write errors
+    "last_error": "",     # most recent error message (for diagnostics)
+}
+
+
+def _seed_manifest_tickers():
+    """Read the bundled manifest of ticker symbols. Returns [] on any error."""
+    try:
+        with open(SEED_MANIFEST_PATH, "r", encoding="utf-8") as f:
+            return [line.strip().upper() for line in f if line.strip()]
+    except OSError:
+        return []
+
+
+def _seed_download_one(ticker, dest_dir):
+    """Fetch a single ticker's .csv.gz into dest_dir atomically.
+
+    Returns one of:
+        "skipped"    — file already existed; untouched.
+        "downloaded" — fetched and written successfully.
+        "failed"     — network / write error (caller logs).
+    """
+    final_path = os.path.join(dest_dir, f"{ticker}.csv.gz")
+    if os.path.exists(final_path):
+        return "skipped"
+    url = f"{SEED_BASE_URL}/{ticker}.csv.gz"
+    tmp_path = final_path + ".part"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "PivBO-seeder/1"})
+        with urllib.request.urlopen(req, timeout=30) as resp, open(tmp_path, "wb") as out:
+            while True:
+                chunk = resp.read(64 * 1024)
+                if not chunk:
+                    break
+                out.write(chunk)
+        # Atomic rename — partial .part files never appear at final_path.
+        os.replace(tmp_path, final_path)
+        # Invalidate the ticker-ranges cache so the next /api/ticker-ranges
+        # call re-scans and picks up this brand-new ticker. Without this,
+        # the UI only sees newly-seeded tickers after the cache is
+        # explicitly refreshed (or on seeder completion).
+        global _TICKER_RANGES_CACHE
+        _TICKER_RANGES_CACHE = None
+        return "downloaded"
+    except Exception as e:
+        with _seed_lock:
+            _seed_state["last_error"] = f"{ticker}: {e}"
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+        return "failed"
+
+
+def _seed_run():
+    """Worker loop: process every manifest entry through a thread pool."""
+    tickers = _seed_manifest_tickers()
+    dest = STOCKS_DIRS[0]
+    os.makedirs(dest, exist_ok=True)
+    with _seed_lock:
+        _seed_state["running"] = True
+        _seed_state["total"] = len(tickers)
+        _seed_state["remaining"] = len(tickers)
+
+    if not tickers:
+        with _seed_lock:
+            _seed_state["running"] = False
+        return
+
+    from concurrent.futures import ThreadPoolExecutor
+    def _one(t):
+        outcome = _seed_download_one(t, dest)
+        with _seed_lock:
+            if outcome == "skipped":
+                _seed_state["skipped"] += 1
+            elif outcome == "downloaded":
+                _seed_state["downloaded"] += 1
+            else:
+                _seed_state["failed"] += 1
+            _seed_state["remaining"] -= 1
+
+    try:
+        with ThreadPoolExecutor(max_workers=SEED_WORKER_COUNT) as pool:
+            list(pool.map(_one, tickers))
+    finally:
+        # Invalidate ticker-ranges cache so freshly-seeded tickers show up
+        # in the UI without a server restart.
+        global _TICKER_RANGES_CACHE
+        _TICKER_RANGES_CACHE = None
+        with _seed_lock:
+            _seed_state["running"] = False
+
+
+def _seed_start_once():
+    """Kick off the seeder in a daemon thread. Safe to call multiple times."""
+    with _seed_lock:
+        if _seed_state["started"]:
+            return
+        _seed_state["started"] = True
+    t = threading.Thread(target=_seed_run, name="chart-data-seeder", daemon=True)
+    t.start()
+
+# Ticker CSVs may be plain .csv or gzip-compressed .csv.gz. Shipping the
+# dist with a few hundred MB of bundled history is a lot lighter as .gz
+# (CSVs compress ~5-6x; decode overhead is trivial). All read paths go
+# through _open_csv so the two formats are interchangeable.
+def _open_csv(path, mode="r"):
+    if path.endswith(".gz"):
+        # Text mode on gzip so csv.reader sees str rows, same as plain open.
+        gmode = "rt" if mode == "r" else "wt"
+        return gzip.open(path, gmode, encoding="utf-8", errors="replace", newline="")
+    return open(path, mode, encoding="utf-8", errors="replace", newline="")
+
 
 def _normalize_date_maybe(raw):
     s = str(raw or "").strip()
@@ -105,63 +287,10 @@ def _parse_volume_maybe(x):
     except (ValueError, TypeError):
         return 0.0
 
-def _load_spy_bars():
-    global _SPY_BARS_CACHE
-    if _SPY_BARS_CACHE is not None:
-        return _SPY_BARS_CACHE
-
-    if not os.path.exists(SPY_HIST_CSV):
-        _SPY_BARS_CACHE = []
-        return _SPY_BARS_CACHE
-
-    bars = []
-    try:
-        with open(SPY_HIST_CSV, "r", encoding="utf-8-sig", newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                # Support both:
-                # - Date, Price, Open, High, Low, Vol.
-                # - DateTime, Open, High, Low, Close, Volume
-                raw_date = row.get("Date") or row.get("DateTime")
-                date_str = _normalize_date_maybe(raw_date)
-                if not date_str:
-                    continue
-                o = _parse_float_maybe(row.get("Open"))
-                h = _parse_float_maybe(row.get("High"))
-                l = _parse_float_maybe(row.get("Low"))
-                c = _parse_float_maybe(row.get("Close"))
-                if c is None:
-                    c = _parse_float_maybe(row.get("Price"))
-                v = _parse_volume_maybe(row.get("Volume"))
-                if not v:
-                    v = _parse_volume_maybe(row.get("Vol."))
-                if c is None or c <= 0:
-                    continue
-                if o is None or h is None or l is None:
-                    continue
-                bars.append({
-                    "time": date_str,
-                    "open": o,
-                    "high": h,
-                    "low": l,
-                    "close": c,
-                    "volume": v,
-                })
-    except Exception:
-        bars = []
-
-    bars.sort(key=lambda x: x.get("time") or "")
-    _SPY_BARS_CACHE = bars
-    return _SPY_BARS_CACHE
-
-
 def _resolve_index_html_path():
-    # Check the new name first; fall back to the legacy name so a dev
-    # running against a pre-rebrand working copy still boots.
-    for name in ("pivbo.html", "momentum_trading_simulator.html"):
-        p = os.path.join(SCRIPT_DIR, name)
-        if os.path.exists(p):
-            return p
+    p = os.path.join(RESOURCE_DIR, "pivbo.html")
+    if os.path.exists(p):
+        return p
     return None
 
 
@@ -169,10 +298,132 @@ def _resolve_index_html_path():
 def index():
     html_path = _resolve_index_html_path()
     if not html_path:
-        return f"pivbo.html not found in {SCRIPT_DIR}", 404
+        return f"pivbo.html not found in {RESOURCE_DIR}", 404
     with open(html_path, "r", encoding="utf-8") as f:
         content = f.read()
-    return Response(content, mimetype="text/html")
+    # Never let the browser cache the shell HTML. Without this, a user
+    # upgrading from an old build can end up running NEW server code
+    # against OLD cached pivbo.html, which breaks anything that relies
+    # on new server endpoints or JS. Static sub-resources (CSS, JS) are
+    # inlined in pivbo.html itself so no cache-busting needed there.
+    resp = Response(content, mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
+
+
+@app.route("/api/version")
+def api_version():
+    return jsonify({"version": VERSION})
+
+
+PREFS_FILE = os.path.join(USER_DATA_DIR, "preferences.json")
+
+_DEFAULT_PREFS = {
+    "port": 5051,
+    "autoOpenBrowser": True,
+    "email": "",
+    "alias": "",
+    "theme": "dark",
+    "autoCheckForUpdates": True,
+    "autoApplyUpdates": False,
+    "defaultStartingCapital": 100000,
+    "vsSymbol": "SPY",
+    "equityMode": "trades",  # "trades" | "timeline"
+}
+
+
+def _load_prefs():
+    try:
+        with open(PREFS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return dict(_DEFAULT_PREFS)
+        merged = dict(_DEFAULT_PREFS)
+        merged.update(data)
+        return merged
+    except (FileNotFoundError, json.JSONDecodeError):
+        return dict(_DEFAULT_PREFS)
+
+
+def _save_prefs(patch):
+    current = _load_prefs()
+    if isinstance(patch, dict):
+        current.update(patch)
+    os.makedirs(os.path.dirname(PREFS_FILE), exist_ok=True)
+    with open(PREFS_FILE, "w", encoding="utf-8") as f:
+        json.dump(current, f, indent=2)
+    return current
+
+
+@app.route("/api/preferences", methods=["GET", "PUT"])
+def api_preferences():
+    if request.method == "GET":
+        return jsonify(_load_prefs())
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"error": "body must be a JSON object"}), 400
+    return jsonify(_save_prefs(body))
+
+
+@app.route("/api/userdata")
+def api_userdata():
+    return jsonify({"path": USER_DATA_DIR})
+
+
+@app.route("/api/seed/status")
+def api_seed_status():
+    """Return the current state of the chart-data seeder.
+
+    Frontend polls this every few seconds to show the "One-time Download"
+    banner during first-launch seeding. Once `remaining` hits 0 and
+    `running` is False, the banner can hide itself permanently.
+    """
+    with _seed_lock:
+        return jsonify(dict(_seed_state))
+
+
+@app.route("/api/updates/check")
+def api_updates_check():
+    # Placeholder until the GitHub-release poll is wired up. Shape of the
+    # response is final — the client just keys off `updateAvailable`.
+    return jsonify({
+        "current": VERSION,
+        "latest": VERSION,
+        "updateAvailable": False,
+        "message": "Update channel not yet connected.",
+        "releasedAt": None,
+        "url": None,
+    })
+
+
+@app.route("/api/server/stop", methods=["POST"])
+def api_server_stop():
+    server_thread = getattr(app, "_pivbo_server_thread", None)
+
+    def _later():
+        time.sleep(0.25)
+        if server_thread is not None:
+            try:
+                server_thread.shutdown()
+                return
+            except Exception:
+                pass
+        os._exit(0)
+
+    threading.Thread(target=_later, daemon=True).start()
+    return jsonify({"status": "stopping"})
+
+
+@app.route("/api/server/quit", methods=["POST"])
+def api_server_quit():
+    def _later():
+        time.sleep(0.25)
+        os._exit(0)
+
+    threading.Thread(target=_later, daemon=True).start()
+    return jsonify({"status": "quitting"})
 
 
 @app.route("/api/ohlcv")
@@ -181,30 +432,16 @@ def api_ohlcv():
     if not symbol:
         return jsonify({"error": "symbol required"}), 400
 
-    # Special-case SPY: serve from SPY Historical Data.csv
-    if symbol == "SPY":
-        try:
-            return jsonify(_load_spy_bars())
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-
-    # Search configured directories
-    path = None
-    for d in STOCKS_DIRS:
-        for fname in [f"{symbol}.csv", f"{symbol.lower()}.csv"]:
-            c = os.path.join(d, fname)
-            if os.path.exists(c):
-                path = c
-                break
-        if path:
-            break
+    # Search configured directories. Prefer compressed .csv.gz over plain
+    # .csv so a freshly-downloaded ticker wins over a stale legacy copy.
+    path = _find_existing_ticker_csv(symbol)
 
     if not path:
         return jsonify({"error": f"{symbol}.csv not found in any configured directory"}), 404
 
     bars = []
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
+        with _open_csv(path, "r") as f:
             reader = csv.reader(f)
             header = next(reader, None)
             if not header:
@@ -265,7 +502,7 @@ def api_ohlcv():
     return jsonify(bars)
 
 
-DRAWINGS_FILE = os.path.join(SCRIPT_DIR, "drawings.json")
+DRAWINGS_FILE = os.path.join(USER_DATA_DIR, "drawings.json")
 
 
 @app.route("/api/drawings", methods=["GET", "POST"])
@@ -302,14 +539,18 @@ def _load_ticker_ranges():
         if not os.path.isdir(d):
             continue
         for fname in os.listdir(d):
-            if not fname.lower().endswith(".csv"):
+            lower = fname.lower()
+            if lower.endswith(".csv.gz"):
+                symbol = fname[:-7].upper()
+            elif lower.endswith(".csv"):
+                symbol = fname[:-4].upper()
+            else:
                 continue
-            symbol = fname[:-4].upper()
             fpath = os.path.join(d, fname)
             try:
                 first_date = None
                 last_date = None
-                with open(fpath, "r", encoding="utf-8", errors="replace") as f:
+                with _open_csv(fpath, "r") as f:
                     reader = csv.reader(f)
                     header = next(reader, None)
                     if not header:
@@ -1342,7 +1583,6 @@ def _render_equity_png(analysis, width_in=7.5, height_in=2.6):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.dates import DateFormatter, AutoDateLocator
-    import matplotlib.dates as mdates
     from datetime import datetime as _dt
 
     raw = [(p.get("date"), p.get("balance")) for p in (analysis.get("equityCurve") or []) if p.get("date")]
@@ -1552,7 +1792,7 @@ def _build_analysis_pdf(a):
     from reportlab.lib.units import inch
     from reportlab.lib.colors import HexColor
     from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Image,
-                                    Table, TableStyle, PageBreak, KeepTogether)
+                                    Table, TableStyle, PageBreak)
     from reportlab.lib.styles import ParagraphStyle
 
     st = _pdf_styles()
@@ -2424,13 +2664,21 @@ def _yahoo_fetch_bars(symbol, start_iso, end_iso):
 
 
 def _ticker_csv_path(symbol):
-    return os.path.join(PRIMARY_STOCKS_DIR, f"{symbol.upper()}.csv")
+    # New downloads go to .csv.gz. An existing plain .csv is still read (see
+    # _find_existing_ticker_csv) but the next write will consolidate to .gz
+    # and remove the legacy file.
+    return os.path.join(PRIMARY_STOCKS_DIR, f"{symbol.upper()}.csv.gz")
 
 
 def _find_existing_ticker_csv(symbol):
-    """Return path if a CSV for symbol exists in any configured dir, else None."""
+    """Return path if a CSV for symbol exists in any configured dir, else None.
+
+    Prefers .csv.gz so an upgraded (compressed) copy wins over a legacy
+    plain .csv that may still linger from a pre-compression checkout.
+    """
+    u, lo = symbol.upper(), symbol.lower()
     for d in STOCKS_DIRS:
-        for fname in (f"{symbol.upper()}.csv", f"{symbol.lower()}.csv"):
+        for fname in (f"{u}.csv.gz", f"{lo}.csv.gz", f"{u}.csv", f"{lo}.csv"):
             p = os.path.join(d, fname)
             if os.path.exists(p):
                 return p
@@ -2444,7 +2692,7 @@ def _read_ticker_bars(symbol):
         return []
     bars = []
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
+        with _open_csv(path, "r") as f:
             reader = csv.reader(f)
             header = next(reader, None)
             if not header:
@@ -2478,8 +2726,14 @@ def _read_ticker_bars(symbol):
 
 
 def _write_ticker_csv_new_format(path, bars):
-    """Write bars in the 'new' format: Unnamed: 0,DateTime,Open,High,Low,Close,Volume."""
-    with open(path, "w", encoding="utf-8", newline="") as f:
+    """Write bars in the 'new' format: Unnamed: 0,DateTime,Open,High,Low,Close,Volume.
+
+    Honors the .gz suffix of `path` — writes gzipped if requested. After a
+    successful write to .csv.gz, any sibling plain .csv for the same symbol
+    is removed so we don't end up with two copies.
+    """
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with _open_csv(path, "w") as f:
         w = csv.writer(f)
         w.writerow(["Unnamed: 0", "DateTime", "Open", "High", "Low", "Close", "Volume"])
         for i, b in enumerate(bars):
@@ -2491,6 +2745,13 @@ def _write_ticker_csv_new_format(path, bars):
                 round(float(b["close"]),4),
                 int(b["volume"]) if b["volume"] is not None else 0,
             ])
+    if path.endswith(".csv.gz"):
+        legacy = path[:-3]  # strip the ".gz"
+        try:
+            if os.path.exists(legacy):
+                os.remove(legacy)
+        except OSError:
+            pass
 
 
 def _merge_bars(existing, new_bars):
@@ -2510,9 +2771,13 @@ def _download_and_save(symbol, start_iso, end_iso, mode="merge"):
     symbol = symbol.upper()
     new_bars = _yahoo_fetch_bars(symbol, start_iso, end_iso)
 
-    path = _find_existing_ticker_csv(symbol) or _ticker_csv_path(symbol)
+    # READ from whatever the existing CSV is (.csv or .csv.gz); WRITE
+    # always to .csv.gz so re-downloads migrate legacy plain CSVs to
+    # compressed form and remove the stale plain copy.
+    existing_path = _find_existing_ticker_csv(symbol)
+    write_path = _ticker_csv_path(symbol)
 
-    if mode == "overwrite" or not os.path.exists(path):
+    if mode == "overwrite" or not existing_path:
         final = new_bars
     else:
         existing = _read_ticker_bars(symbol)
@@ -2521,14 +2786,14 @@ def _download_and_save(symbol, start_iso, end_iso, mode="merge"):
     if not final:
         return {"symbol": symbol, "bars_fetched": len(new_bars), "bars_total": 0, "first": None, "last": None, "written": False}
 
-    _write_ticker_csv_new_format(path, final)
+    _write_ticker_csv_new_format(write_path, final)
     # invalidate ranges cache so UI sees new bounds
     global _TICKER_RANGES_CACHE
     _TICKER_RANGES_CACHE = None
 
     return {
         "symbol": symbol,
-        "path": os.path.relpath(path, SCRIPT_DIR),
+        "path": os.path.relpath(write_path, USER_DATA_DIR),
         "bars_fetched": len(new_bars),
         "bars_total": len(final),
         "first": final[0]["time"],
@@ -2577,7 +2842,7 @@ def api_yahoo_info():
             "first": local_bars[0]["time"],
             "last": local_bars[-1]["time"],
             "bars": len(local_bars),
-            "path": os.path.relpath(_find_existing_ticker_csv(symbol), SCRIPT_DIR),
+            "path": os.path.relpath(_find_existing_ticker_csv(symbol), USER_DATA_DIR),
         }
     else:
         local = {"exists": False}
@@ -2620,8 +2885,11 @@ def _list_local_tickers():
         if not os.path.isdir(d):
             continue
         for f in os.listdir(d):
-            if f.lower().endswith(".csv"):
-                syms.add(os.path.splitext(f)[0].upper())
+            lower = f.lower()
+            if lower.endswith(".csv.gz"):
+                syms.add(f[:-7].upper())
+            elif lower.endswith(".csv"):
+                syms.add(f[:-4].upper())
     return sorted(syms)
 
 
@@ -2834,6 +3102,15 @@ if __name__ == "__main__":
     _ensure_sim_dir()
     _ensure_templates_dir()
 
+    # Kick off the chart-data seeder before the web server starts so the
+    # /api/seed/status endpoint reports in-progress state the moment the
+    # browser opens. Already-seeded users just get a near-instant no-op
+    # (931 stat() calls, then the banner stays hidden).
+    try:
+        _seed_start_once()
+    except Exception:
+        pass
+
     _reap_stale_servers(PORT)
 
     signal.signal(signal.SIGINT, _handle_shutdown_signal)
@@ -2847,16 +3124,24 @@ if __name__ == "__main__":
         except (AttributeError, ValueError):
             pass
 
-    print(f"PivotBreakout (PivBo): http://localhost:{PORT}/   (PID {os.getpid()})")
+    print(f"PivotBreakout (PivBO): http://localhost:{PORT}/   (PID {os.getpid()})")
     yahoo_routes = sorted(str(r) for r in app.url_map.iter_rules() if "/api/yahoo" in str(r))
     print(f"Yahoo data routes ({len(yahoo_routes)}):")
     for rt in yahoo_routes:
         print(f"  {rt}")
+    # Waitress is a production-grade pure-Python WSGI server. Replaces
+    # Flask's built-in dev server (which prints the "do not use in
+    # production" warning on startup). Thread count scales with the
+    # host CPU count so laptops and workstations both get a sensible
+    # default without us hardcoding a number.
+    from waitress import serve
+    thread_count = os.cpu_count() or 4
     try:
-        app.run(host="127.0.0.1", port=PORT, debug=False, threaded=True)
+        serve(app, host="127.0.0.1", port=PORT, threads=thread_count, ident="pivbo")
     except KeyboardInterrupt:
         pass
     finally:
         _cancel_all_jobs()
-        # ensure the process truly exits even if werkzeug leaves threads behind
+        # Ensure the process truly exits even if waitress leaves worker
+        # threads lingering after a signal.
         os._exit(0)

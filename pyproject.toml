@@ -1,0 +1,78 @@
+# PivotBreakout (PivBO) — Briefcase packaging config.
+#
+# This file drives `briefcase create / build / package`. The GitHub Actions
+# release workflow under .github/workflows/release.yml runs these commands
+# on Windows/macOS/Linux runners whenever a v* tag is pushed.
+#
+# Resource files (pivbo.html, assets/, collected_stocks/, SPY Historical
+# Data.csv, README.md, LICENSE) are NOT yet listed here. First `briefcase
+# build` will surface what needs to be added and we'll iterate. Briefcase
+# picks up static files that live inside the `pivbo/` package directly;
+# the current layout keeps them at the repo root for dev convenience.
+
+[build-system]
+requires = ["briefcase"]
+
+[tool.briefcase]
+project_name = "PivotBreakout"
+bundle = "com.pivbo"
+version = "0.0.1"
+url = "https://github.com/mbelgin/PivBO"
+license.file = "LICENSE"
+author = "Mehmet Belgin"
+author_email = "mbelgin@gmail.com"
+
+[tool.briefcase.app.pivbo]
+formal_name = "PivBO"
+description = "Bar-by-bar momentum trading simulator"
+long_description = """PivBO is a self-hosted, bar-by-bar trading simulator
+for studying momentum setups on historical US equity data. Runs entirely
+on your own machine, offline."""
+icon = "pivbo/assets/pivbo"
+sources = [
+    "pivbo",
+    "pivbo_server.py",
+]
+test_sources = []
+
+requires = [
+    "flask>=3.0",
+    "waitress>=3.0",
+    "platformdirs>=4.0",
+    "reportlab>=4.0",
+    "matplotlib>=3.8",
+    "toga-core>=0.4",
+]
+
+# --- macOS ---
+[tool.briefcase.app.pivbo.macOS]
+universal_build = true
+requires = [
+    "std-nslog>=1.0.0",
+    "toga-cocoa>=0.4",
+]
+
+# --- Linux ---
+[tool.briefcase.app.pivbo.linux]
+requires = [
+    "toga-gtk>=0.4",
+]
+
+[tool.briefcase.app.pivbo.linux.system.debian]
+system_requires = []
+system_runtime_requires = []
+
+[tool.briefcase.app.pivbo.linux.system.rhel]
+system_requires = []
+system_runtime_requires = []
+
+[tool.briefcase.app.pivbo.linux.flatpak]
+flatpak_runtime = "org.freedesktop.Platform"
+flatpak_runtime_version = "23.08"
+flatpak_sdk = "org.freedesktop.Sdk"
+
+# --- Windows ---
+[tool.briefcase.app.pivbo.windows]
+requires = [
+    "toga-winforms>=0.4",
+]

@@ -1,174 +1,171 @@
-# PivotBreakout (PivBo)
+# PivBO — PivotBreakout
 
-_Formerly known as Momentum Trading Simulator._
+A bar-by-bar trading simulator for studying momentum setups on historical
+US equity data. Runs entirely on your own machine, offline. No account,
+no subscription, no data sent to the cloud.
 
-A self-hosted, bar-by-bar trading simulator for studying momentum setups on
-historical US equity data. Runs entirely on your own machine, offline.
+Built for traders who want to replay charts one bar at a time, place
+trades, manage positions, and evaluate their edge — including head-to-head
+against a friend in Duel Mode.
 
-Built for traders who want to replay charts one bar at a time, place trades,
-manage positions, and evaluate their edge — without paying for a platform,
-subscribing to data, or sending any activity to the cloud.
+## Download and install
 
-## Features
+Pick the file for your operating system from the [latest release][rel]:
+
+- **Windows** — `PivBO-windows.zip`
+- **macOS** — `PivBO-macos.zip`
+- **Linux** — `PivBO-x86_64.AppImage`
+
+Each download is a self-contained bundle. No Python, no terminal, no
+separate installer.
+
+[rel]: https://github.com/mbelgin/PivBO/releases/latest
+
+### Windows
+
+1. Download `PivBO-windows.zip`.
+2. Right-click the zip → **Extract All** to any folder (Desktop, Documents, a USB stick — it doesn't matter).
+3. Open the extracted folder, double-click **`PivBO.exe`**.
+4. The first time you run it, Windows may show a blue "Windows protected
+   your PC" screen. Click **More info**, then **Run anyway**. This only
+   happens the first time.
+5. A small PivBO window opens and your browser launches the app at
+   `http://localhost:5051/`.
+
+To uninstall, just delete the extracted folder.
+
+### macOS
+
+1. Download `PivBO-macos.zip`.
+2. Double-click to unzip (Finder does this automatically).
+3. Drag **PivBO.app** into your **Applications** folder (or leave it in
+   Downloads — it runs from anywhere).
+4. The first time you launch it, macOS will say "PivBO cannot be
+   opened because the developer cannot be verified." Close that dialog,
+   then **right-click** (or Control-click) PivBO → **Open** → **Open**
+   in the confirmation dialog. This only happens the first time.
+5. The app window opens and your browser launches the interface.
+
+### Linux
+
+1. Download `PivBO-x86_64.AppImage`.
+2. Make it executable:
+   - In your file manager: right-click → **Properties** → **Permissions**
+     → tick **Allow executing as program**.
+   - Or in a terminal: `chmod +x PivBO-x86_64.AppImage`.
+3. Double-click (or `./PivBO-x86_64.AppImage` in a terminal).
+
+## First-launch setup
+
+On the very first launch, PivBO fetches a bundle of historical chart
+data for ~930 US tickers. You'll see a small **"One-time Download"**
+banner at the top of the interface showing progress. You can use the
+app normally while it runs — tickers become available as each file
+lands. The download is a few minutes on a typical connection.
+
+The data is stored per user:
+- **Windows**: `%APPDATA%\PivBO\`
+- **macOS**: `~/Library/Application Support/PivBO/`
+- **Linux**: `~/.local/share/PivBO/`
+
+Re-installing or upgrading never touches this folder. Any tickers
+you've downloaded additional history for are preserved.
+
+## What's inside
 
 **Charting**
-- Candlestick + OHLC modes, daily / weekly / monthly timeframes
-- Configurable EMA / SMA overlays
-- ADR(x) and ATR(x) indicators in the crosshair info bar (editable periods)
+- Candlestick + OHLC, daily / weekly / monthly timeframes
+- Configurable EMA / SMA overlays (add, remove, color)
+- ADR(x), ATR(x) in the crosshair info bar (editable periods)
 - Log / linear price scale
-- Drawing tools: h-line, line, ray, segment, text, measure, note
-- Optional secondary chart above the main chart, date-synced (e.g. overlay
-  QQQ on your trade ticker for market context)
+- Drawing tools: horizontal line, line, ray, segment, text, measure, note
+- Optional secondary chart above the main one, date-synced (e.g. QQQ
+  overlay while you trade an individual name)
+- Optional volume pane
+- Optional equity curve pane during simulations
 
 **Simulation engine**
-- Bar-by-bar playback with arrow keys (`←` / `→`)
+- Bar-by-bar playback with arrow keys: `→` advances, `←` retreats
 - Jump to start / end
 - Retreating past a trade's creation bar permanently undoes it
-- Stop-loss fill: strict touch of the bar's low/high (long/short) triggers
-  the stop, filling at SL or at the open if the bar gapped past SL
-- Optional "Flexed opening-bar SL" toggle: on the bar a trade enters,
-  only the bar's close is used to check SL and any fill is capped at SL —
-  prevents impossible fills when the bar opens past SL, rallies to trigger
-  your entry, dips back, then closes above SL
+- Stop-loss fill logic matches real brokers: strict touch of the bar's
+  low/high triggers, filling at SL or at the open on a gap
+- Optional "Flex open-bar SL" for same-bar entries, so an unrealistic
+  fill can't appear when a bar opens past SL, rallies to trigger entry,
+  and closes above SL
 
 **Trade management**
-- Market + limit orders (limit orders can have a max gap%; stop-limit behavior)
-- Stop loss with drag-to-adjust on the chart (pre-entry)
-- Partial close via quick fractions (1/4, 1/3, 1/2, 3/4, ALL) or manual shares
-- Reverse position, flatten all (`F`)
-- Position sizing from risk% of current equity (auto-computes shares)
-- R-multiple stats use the risk frozen at entry (immune to SL moves)
+- Market and limit orders (limits can carry a max-gap%, stop-limit style)
+- Drag-to-adjust stop loss on the chart
+- Partial close via quick fractions (¼, ⅓, ½, ¾, ALL) or manual shares
+- Flatten all (`F`), reverse position
+- Position sizing from risk% of current equity, shares auto-computed
+- R-multiples use the risk frozen at entry — moving your SL later
+  doesn't skew your stats
 
 **Analytics**
 - Realized / unrealized / total P/L in $, % of starting capital, and R
 - Batting average, average win, average loss, total R
-- Trade history with indexed + dated cards
+- Per-trade cards with indexed + dated entries and exits
+- HTML + PDF analysis and compare reports
 
 **Saved simulations**
-- JSON file per simulation in `simulations/`
-- Rename, Save As (duplicate), bulk delete, bulk export (ZIP), import
-- Templates: save current chart/indicator/secondary-chart config as a reusable
-  preset for new simulations
+- One JSON per sim, browsable from the Simulations page
+- Rename, duplicate, bulk delete, export to ZIP, import from ZIP
+- Templates: save a chart/indicator/secondary-chart layout as a preset
+  for new simulations
+
+**Duel Mode (1v1, remote)**
+- Enter the same duel with a friend on their own machine
+- Both players see the same ticker at the same bar
+- Per-bar decision timer, honor code, live opponent equity curve
+- Post-duel compare report with both sides' stats
 
 **Data**
-- Local daily CSVs in `collected_stocks/`
-- Optional Yahoo Finance download integration for fetching / updating tickers
+- Local compressed CSVs, auto-populated on first launch
+- Yahoo Finance download integration for fetching / updating individual
+  tickers from inside the app
 
-## Quickstart
+## Stopping the app
 
-This guide assumes you've never used a terminal before. Follow it line by line.
+- **Windows / macOS**: close the PivBO launcher window (it'll stop the
+  server cleanly).
+- **Linux AppImage**: close the launcher window or the terminal you
+  ran it from.
 
-### 1. Install the two tools you need
+If you close only the browser tab, the app is still running in the
+background — you can reopen it at `http://localhost:5051/` anytime.
 
-You only need to do this once.
+## Reporting bugs / requesting features
 
-1. **Python** (version 3.9 or newer): download and install from
-   [python.org/downloads](https://www.python.org/downloads/). On Windows, during
-   the install, tick the box that says **"Add Python to PATH"**.
-2. **Git**: download and install from
-   [git-scm.com/downloads](https://git-scm.com/downloads). Accept all the
-   default settings.
+Open an issue on [github.com/mbelgin/PivBO/issues][iss]. Include:
 
-### 2. Open a terminal
+- Your OS (Windows / macOS / Linux version)
+- What you were trying to do
+- What happened instead
+- A screenshot if the bug is visual
 
-- **Windows**: press the Windows key, type `cmd`, press Enter.
-- **macOS**: press `Cmd + Space`, type `Terminal`, press Enter.
-- **Linux**: you already know.
-
-A black (or white) window opens with a blinking cursor. This is where you
-type commands. Each line below is one command: type it, then press Enter.
-
-### 3. First time only: download the project
-
-Pick a folder where the project will live, for example your Documents folder.
-Change into it:
-
-```bash
-cd Documents
-```
-
-Then download the project:
-
-```bash
-git clone https://bitbucket.org/mbelgin/momentum_trading_simulator.git pivbo
-cd pivbo
-```
-
-You now have a new folder called `pivbo` with all the code inside.
-
-### 4. Install the project's dependencies
-
-Still in the terminal, still inside the project folder, run:
-
-```bash
-pip install -r requirements.txt
-```
-
-This downloads the few Python packages the simulator uses. You only need to
-do this once (and again if `requirements.txt` ever changes).
-
-### 5. Run the simulator
-
-```bash
-python pivbo_server.py
-```
-
-Leave this terminal window open. Now open your web browser and go to:
-
-```
-http://localhost:5051/
-```
-
-That's it. You can start clicking around.
-
-To stop the server, click back into the terminal window and press `Ctrl + C`.
-
-### Coming back later (updating to the latest version)
-
-Next time you want to run the simulator, open your terminal and:
-
-```bash
-cd Documents/pivbo
-git pull
-pip install -r requirements.txt
-python pivbo_server.py
-```
-
-`git pull` downloads any updates since you last ran it. The
-`pip install -r requirements.txt` line is only needed if dependencies
-changed (running it when nothing changed is harmless).
-
-## Data format
-
-Stock CSVs live in `collected_stocks/`. Each file is named `{SYMBOL}.csv`.
-The server supports a couple of column layouts; the Yahoo downloader writes
-a consistent format:
-
-```
-index,date,open,high,low,close,volume
-0,2020-01-02,74.06,75.15,73.80,75.09,135480400
-...
-```
-
-Add your own CSVs directly to `collected_stocks/`, or use the in-app Yahoo
-downloader (⬇ Data button on the chart) to fetch/update.
+[iss]: https://github.com/mbelgin/PivBO/issues
 
 ## Acknowledgments
 
-This project was inspired by and started as a fork of
+Inspired by and originally forked from
 **[big_movers](https://github.com/willhjw/big_movers)** by Will Hu — a
-self-hosted charting tool built around the Qullamaggie breakout methodology.
-The simulator grew from that foundation into a full trading-practice
-platform: bar-by-bar playback, order types, trade management, analytics,
-persistence, templates, and date-synced multi-chart layouts.
+self-hosted charting tool built around the Qullamaggie breakout
+methodology. PivBO grew from that foundation into a full
+trading-practice platform.
 
-Charts are rendered with [TradingView's lightweight-charts](https://github.com/tradingview/lightweight-charts) (v3.8).
+Charts are rendered with
+[TradingView's lightweight-charts](https://github.com/tradingview/lightweight-charts).
+Duel Mode relies on the public
+[HiveMQ](https://www.hivemq.com/mqtt/public-mqtt-broker/) MQTT broker
+for peer-to-peer messaging.
 
 ## Disclaimer
 
-This is a simulator. Historical results are not predictive of live outcomes.
-Data may be incomplete or inaccurate; verify independently before making any
-actual trading decisions.
+This is a simulator. Historical results are not predictive of live
+outcomes. Data may be incomplete or inaccurate; verify independently
+before making any actual trading decisions.
 
 ## License
 
