@@ -53,24 +53,29 @@ requires = [
 ]
 
 # --- Linux ---
+# The dependency picture here is tightly constrained by three
+# interlocking version facts:
+#   - toga-gtk 0.4.7+ requires pygobject>=3.50 (girepository-2.0 only)
+#   - pygobject 3.46+ requires gobject-introspection>=1.64
+#   - pygobject 3.50+ requires girepository-2.0 (g-i 1.80+, unreleased
+#     on any stable manylinux base)
+# The only path that builds: toga-gtk 0.4.0-0.4.6 + pygobject 3.46-3.49.
 [tool.briefcase.app.pivbo.linux]
 requires = [
-    "toga-gtk>=0.4",
-    # PyGObject 3.46+ switched to a meson build that insists on finding
-    # `gobject-introspection-1.0.pc` via pkg-config; even with
-    # gobject-introspection-devel installed, the manylinux_2_28 image
-    # doesn't surface it the way meson expects. 3.42.x is still on the
-    # legacy setup.py flow and sidesteps the problem.
-    "pygobject==3.42.2",
+    # 0.4.7+ bumped pygobject to 3.50 which needs girepository-2.0
+    # (g-i 1.80+); manylinux bases don't have it. Cap at 0.4.6.
+    "toga-gtk>=0.4.4,<0.4.7",
+    # 3.46+ requires g-i >= 1.64; 3.50+ requires girepository-2.0.
+    # AlmaLinux 9 (manylinux_2_34) has g-i 1.70 — satisfies 3.46-3.49.
+    "pygobject>=3.46,<3.50",
 ]
 
-# AppImage builds run inside a minimal manylinux container (RHEL-8
-# derived). Pycairo and PyGObject compile from source, so the container
-# needs C build tooling plus cairo / GTK / GObject-introspection headers.
-# Without these the container fails `pip install` with "pkg-config not
-# found" and "cairo.pc missing" when building pycairo.
+# AppImage builds run inside a manylinux Docker container. The default
+# manylinux_2_28 (AlmaLinux 8) has gobject-introspection 1.56 — too
+# old for any pygobject >= 3.46. Bump to manylinux_2_34 (AlmaLinux 9,
+# g-i 1.70), which satisfies pygobject 3.46-3.49.
 [tool.briefcase.app.pivbo.linux.appimage]
-manylinux = "manylinux_2_28"
+manylinux = "manylinux_2_34"
 system_requires = [
     # Build toolchain
     "pkgconf-pkg-config",
