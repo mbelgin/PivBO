@@ -159,6 +159,12 @@ jobs:
   build-linux:
     name: Build Linux (AppImage)
     runs-on: ubuntu-latest
+    # AppImage builds inside manylinux are brittle for GTK apps (GTK
+    # dev-package availability drifts with base-image updates). Don't
+    # gate the whole release on Linux succeeding — Windows + macOS ship
+    # either way, and Linux users can fall back to running from source
+    # until we sort it out.
+    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -244,7 +250,7 @@ jobs:
 
             - **Windows** — [PivBO-windows.zip](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PivBO-windows.zip)
             - **macOS** — [PivBO-macos.zip](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PivBO-macos.zip)
-            - **Linux** — [PivBO-x86_64.AppImage](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PivBO-x86_64.AppImage)
+            - **Linux** — AppImage build is work-in-progress for this release. In the meantime, Linux users can run from source: see [DEVELOPER_README.md](https://github.com/${{ github.repository }}/blob/main/DEVELOPER_README.md#clone--run-in-dev). If the AppImage built successfully on this tag, you'll also see `PivBO-x86_64.AppImage` attached below.
 
             See the [README](https://github.com/${{ github.repository }}/blob/main/README.md) for first-launch instructions and the one-time OS warning clickthrough.
 
