@@ -56,6 +56,11 @@ requires = [
 [tool.briefcase.app.pivbo.linux]
 requires = [
     "toga-gtk>=0.4",
+    # PyGObject 3.53+ dropped support for girepository-1.0 in favor of
+    # girepository-2.0, which only exists in gobject-introspection 2.80+
+    # (too new for manylinux_2_28's RHEL 8 base, which ships 1.68). Pin
+    # to the last 3.4x version that still builds against the 1.0 ABI.
+    "pygobject<3.50",
 ]
 
 # AppImage builds run inside a minimal manylinux container (RHEL-8
