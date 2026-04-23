@@ -58,6 +58,27 @@ requires = [
     "toga-gtk>=0.4",
 ]
 
+# AppImage builds run inside a minimal manylinux container (RHEL-8
+# derived). Pycairo and PyGObject compile from source, so the container
+# needs C build tooling plus cairo / GTK / GObject-introspection headers.
+# Without these the container fails `pip install` with "pkg-config not
+# found" and "cairo.pc missing" when building pycairo.
+[tool.briefcase.app.pivbo.linux.appimage]
+manylinux = "manylinux_2_28"
+system_requires = [
+    # Build toolchain
+    "pkgconf-pkg-config",
+    "cmake",
+    "gcc",
+    # Python headers
+    "python3-devel",
+    # GTK3 + GObject-introspection + cairo + pango — pulls glib as dep
+    "cairo-devel",
+    "gobject-introspection-devel",
+    "pango-devel",
+    "gtk3-devel",
+]
+
 [tool.briefcase.app.pivbo.linux.system.debian]
 system_requires = []
 system_runtime_requires = []
