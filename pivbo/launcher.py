@@ -8,6 +8,7 @@ hunting through the terminal.
 """
 
 import os
+import socket
 import threading
 import webbrowser
 
@@ -16,7 +17,27 @@ from toga.style import Pack
 from toga.style.pack import COLUMN, ROW
 from waitress import create_server
 
-DEFAULT_HOST = "127.0.0.1"
+LOOPBACK_HOST = "127.0.0.1"
+LAN_HOST = "0.0.0.0"
+
+
+def _detect_lan_ip():
+    """Best-effort detection of the LAN IP this machine would advertise
+    on its primary interface. The UDP socket trick lets the OS pick the
+    interface that would route traffic to a non-local address, without
+    actually sending anything. Falls back to loopback if offline.
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))
+        return s.getsockname()[0]
+    except Exception:
+        return "127.0.0.1"
+    finally:
+        try:
+            s.close()
+        except Exception:
+            pass
 
 
 class _ServerThread(threading.Thread):
@@ -101,7 +122,19 @@ class PivBOLauncher(toga.App):
             "Open browser on start",
             value=bool(self._prefs.get("autoOpenBrowser", True)),
             on_change=self._on_auto_open_toggled,
-            style=Pack(padding_bottom=10),
+            style=Pack(padding_bottom=4),
+        )
+
+        self._lan_switch = toga.Switch(
+            "Listen on local network (other devices on your Wi-Fi can connect)",
+            value=bool(self._prefs.get("listenOnLan", False)),
+            on_change=self._on_lan_toggled,
+            style=Pack(padding_bottom=2),
+        )
+
+        self._lan_caution = toga.Label(
+            "Use only on networks you trust. Do not enable on public Wi-Fi.",
+            style=Pack(font_size=9, color="#a04020", padding_bottom=10),
         )
 
         self._start_btn = toga.Button("Start", on_press=self._on_start, style=Pack(width=80, padding_right=6))
@@ -117,11 +150,21 @@ class PivBOLauncher(toga.App):
         quit_btn = toga.Button("Quit", on_press=self._on_quit, style=Pack(width=100))
 
         main_box = toga.Box(
-            children=[title, subtitle, self._status, port_row, self._auto_open_switch, button_row, quit_btn],
-            style=Pack(direction=COLUMN, alignment="center", padding=18),
+            children=[
+                title,
+                subtitle,
+                self._status,
+                port_row,
+                self._auto_open_switch,
+                self._lan_switch,
+                self._lan_caution,
+                button_row,
+                quit_btn,
+            ],
+            style=Pack(direction=COLUMN, alignment="left", padding=18),
         )
 
-        self.main_window = toga.MainWindow(title=self.formal_name, size=(440, 300))
+        self.main_window = toga.MainWindow(title=self.formal_name, size=(520, 380))
         self.main_window.content = main_box
         self.main_window.show()
 
@@ -137,6 +180,9 @@ class PivBOLauncher(toga.App):
         self._stop_btn.enabled = running
         self._open_btn.enabled = running
         self._port_input.enabled = not running
+        # The bind host is fixed at server-creation time, so toggling the
+        # switch while running would mislead. Disable until Stop+Start.
+        self._lan_switch.enabled = not running
 
     def _start_server(self):
         if self._server_thread is not None:
@@ -163,8 +209,11 @@ class PivBOLauncher(toga.App):
         except Exception:
             pass
 
+        listen_on_lan = bool(self._lan_switch.value)
+        host = LAN_HOST if listen_on_lan else LOOPBACK_HOST
+
         try:
-            self._server_thread = _ServerThread(self._flask_app, DEFAULT_HOST, port)
+            self._server_thread = _ServerThread(self._flask_app, host, port)
             # Expose the thread on the Flask app so /api/server/stop can
             # reach into the launcher and shut down gracefully without
             # killing the whole process.
@@ -187,7 +236,14 @@ class PivBOLauncher(toga.App):
         except Exception:
             pass
 
-        self._status.text = f"running on http://localhost:{port}"
+        if listen_on_lan:
+            lan_ip = _detect_lan_ip()
+            self._status.text = (
+                f"running on http://localhost:{port} "
+                f"and http://{lan_ip}:{port} (LAN)"
+            )
+        else:
+            self._status.text = f"running on http://localhost:{port}"
         self._set_running(True)
 
         if not self._auto_opened and self._prefs.get("autoOpenBrowser", True):
@@ -246,6 +302,14 @@ class PivBOLauncher(toga.App):
         self._prefs["autoOpenBrowser"] = val
         try:
             self._pivbo_server._save_prefs({"autoOpenBrowser": val})
+        except Exception:
+            pass
+
+    def _on_lan_toggled(self, widget):
+        val = bool(widget.value)
+        self._prefs["listenOnLan"] = val
+        try:
+            self._pivbo_server._save_prefs({"listenOnLan": val})
         except Exception:
             pass
 

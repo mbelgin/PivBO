@@ -336,6 +336,7 @@ PREFS_FILE = os.path.join(USER_DATA_DIR, "preferences.json")
 _DEFAULT_PREFS = {
     "port": 5051,
     "autoOpenBrowser": True,
+    "listenOnLan": False,
     "email": "",
     "alias": "",
     "theme": "dark",
