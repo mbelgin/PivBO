@@ -169,6 +169,26 @@
   [data-theme="light"] .home-coffee-box .coffee-line strong{color:#b8822f;}
   [data-theme="light"] .home-subtitle-coffee .coffeeware-link{color:#b8822f;}
   [data-theme="light"] .home-subtitle-coffee .coffeeware-link:hover{color:#8f6424;}
+  /* Preferences → License: expandable full-text block. Uses native
+     <details>/<summary> so it works with zero JS and inherits focus /
+     keyboard accessibility automatically. */
+  .license-details summary{cursor:pointer;user-select:none;color:var(--text);}
+  .license-details summary:hover{color:var(--accent);}
+  .license-details[open] summary{margin-bottom:8px;}
+  .license-body{
+    font-family:var(--mono);
+    font-size:11px;
+    line-height:1.5;
+    color:var(--muted);
+    background:var(--bg);
+    border:1px solid var(--border);
+    border-radius:4px;
+    padding:10px 12px;
+    margin:0;
+    white-space:pre-wrap;
+    max-height:260px;
+    overflow-y:auto;
+  }
   [data-theme="light"] .kofi-btn{background:#fde3cf;color:#7a4a2a !important;border-color:rgba(184,130,47,0.3);}
   [data-theme="light"] .kofi-btn:hover{background:#fbd2af;color:#5a3518 !important;}
   .vsep{width:1px;height:20px;background:var(--border);flex-shrink:0;}
@@ -2578,7 +2598,8 @@
 </div>
 
 <div class="hidden" id="page-preferences" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:300;overflow-y:auto;padding:40px 20px;">
-  <div style="max-width:720px;margin:0 auto;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:24px;box-shadow:0 10px 40px rgba(0,0,0,0.5);">
+  <div style="max-width:720px;margin:0 auto;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:24px;box-shadow:0 10px 40px rgba(0,0,0,0.5);position:relative;">
+    <button id="prefs-close-x" title="Close (Esc)" aria-label="Close preferences" style="position:absolute;top:12px;right:12px;background:transparent;border:1px solid var(--border);color:var(--muted);width:28px;height:28px;border-radius:4px;cursor:pointer;font-family:var(--mono);font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;">×</button>
     <h2 style="font-family:var(--mono);font-size:15px;color:var(--accent);margin-bottom:16px;">Preferences</h2>
 
     <div class="prefs-tabs">
@@ -2672,9 +2693,30 @@
       <div class="prefs-section">
         <h3>License</h3>
         <div style="font-size:12px;line-height:1.8;">
-          MIT License — free to use, modify, and share.<br>
-          Also informally <a href="https://ko-fi.com/mbelgin" target="_blank" rel="noopener" class="coffeeware-link" title="A tongue-in-cheek software license. Free to use — but if it helped you, buy the author a coffee.">coffeeware</a>: if it helps your trading, the author takes tips in caffeine form (see below).<br>
-          Historical data for practice only. Not financial advice.
+          <details class="license-details">
+            <summary><strong>MIT License</strong> — free to use, modify, and share. (click to view full text)</summary>
+<pre class="license-body">MIT License
+
+Copyright (c) 2026 Mehmet Belgin
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</pre>
+          </details>
         </div>
       </div>
       <div class="prefs-section">
@@ -2695,8 +2737,8 @@
     <div id="prefs-status" style="font-size:11px;color:var(--muted);margin-top:14px;min-height:14px;"></div>
 
     <div style="margin-top:20px;display:flex;gap:8px;">
-      <button class="sim-btn primary" id="prefs-save-btn">Save</button>
-      <button class="sim-btn" id="prefs-cancel-btn">Back</button>
+      <button class="sim-btn primary" id="prefs-save-btn" disabled>Save</button>
+      <button class="sim-btn" id="prefs-cancel-btn">Close Preferences</button>
     </div>
   </div>
 </div>
@@ -5664,7 +5706,7 @@ let _bankruptState=null;  // null | 'loser' | 'winner' | 'tie' — tracks which 
 let _bankruptOppCap=null; // cached opp final capital so a winner→tie transition triggered by our own recalc (no new opp info in that call) still renders the opp number
 let simTradeIdCtr=0;
 // Undo works via _createdAtIdx on trades — no snapshots needed
-let simAnalytics={currentCapital:0,totalPL:0,totalTrades:0,wins:0,losses:0,totalWinPL:0,totalLossPL:0,totalWinDays:0,totalLossDays:0,totalWinR:0,totalLossR:0};
+let simAnalytics={currentCapital:0,totalPL:0,realizedPL:0,unrealizedPL:0,realizedR:0,unrealizedR:0,totalR:0,totalTrades:0,wins:0,losses:0,totalWinPL:0,totalLossPL:0,totalWinDays:0,totalLossDays:0,totalWinR:0,totalLossR:0};
 let simId=null;      // server-side simulation id
 let simRLevels=6;    // configurable R-level count for active trades indicator
 let simGapLimitPct=5;// max gap % for limit orders
@@ -6677,7 +6719,9 @@ function simCloseTradeNow(tradeId,shares){
 // Analytics UI
 function simUpdateStatsUI(){
   const a=simAnalytics;
-  const fmt=v=>v>=0?`$${v.toFixed(0)}`:`-$${Math.abs(v).toFixed(0)}`;
+  // Defensive: `Number.isFinite` filters out undefined / null / NaN so a
+  // stale or half-initialized analytics record can never render as "-$NaN".
+  const fmt=v=>!Number.isFinite(v)?'$0':(v>=0?`$${v.toFixed(0)}`:`-$${Math.abs(v).toFixed(0)}`);
   const cap0=simConfig?.startingCapital||1;
   // Duel: publish our current equity to the opp, throttled to 1/s. Covers
   // bar advances, trade open/close, SL moves — every meaningful update
@@ -7366,7 +7410,7 @@ async function simStart(config){
   simTrades=[];simPending=[];simTradeIdCtr=0;_simReviewId=null;simTradePrefs=null;_bankruptShown=false;_bankruptState=null;_bankruptOppCap=null;
   // New sim starts with empty drawings — don't inherit global per-symbol drawings
   drawings[config.ticker]=[];
-  simAnalytics={currentCapital:config.startingCapital,totalPL:0,totalTrades:0,wins:0,losses:0,totalWinPL:0,totalLossPL:0,totalWinDays:0,totalLossDays:0,totalWinR:0,totalLossR:0};
+  simAnalytics={currentCapital:config.startingCapital,totalPL:0,realizedPL:0,unrealizedPL:0,realizedR:0,unrealizedR:0,totalR:0,totalTrades:0,wins:0,losses:0,totalWinPL:0,totalLossPL:0,totalWinDays:0,totalLossDays:0,totalWinR:0,totalLossR:0};
   // Reset notes for new sim
   const _notesEl=document.getElementById('sim-notes');
   if(_notesEl)_notesEl.value='';
@@ -8839,6 +8883,8 @@ async function openPrefsPage(){
     document.querySelectorAll('.prefs-tab').forEach(t=>t.classList.toggle('active',t.dataset.prefsTab==='profile'));
     document.querySelectorAll('.prefs-panel').forEach(p2=>p2.classList.toggle('active',p2.dataset.prefsPanel==='profile'));
     document.getElementById('prefs-update-status').textContent='';
+    // Fresh snapshot = current server state → Save button disabled until user edits.
+    try { window._prefsResetBaseline && window._prefsResetBaseline(); } catch(_){}
   }catch(e){
     status.textContent='Failed to load preferences: '+e.message;
   }
@@ -8980,19 +9026,61 @@ async function openPrefsPage(){
 
   const cancelBtn=document.getElementById('prefs-cancel-btn');
   if(cancelBtn) cancelBtn.addEventListener('click',closePrefsOverlay);
+  const closeXBtn=document.getElementById('prefs-close-x');
+  if(closeXBtn) closeXBtn.addEventListener('click',closePrefsOverlay);
 
-  // Click outside the panel (on the dimmed backdrop) or press Escape to
-  // dismiss, both of which just close the overlay — underlying page is
-  // left exactly as it was.
+  // Persistent modal: backdrop click does NOT dismiss. Only Esc and the
+  // explicit close buttons (× and "Close Preferences") close it. Prevents
+  // accidental data loss when the user reaches for a field near the edge.
   const prefsEl = document.getElementById('page-preferences');
-  if(prefsEl) prefsEl.addEventListener('click', e => {
-    if(e.target === prefsEl) closePrefsOverlay();
-  });
   document.addEventListener('keydown', e => {
     if(e.key === 'Escape' && !prefsEl.classList.contains('hidden')){
       closePrefsOverlay();
     }
   });
+
+  // Save-button dirty-state tracking:
+  //  * disabled on open (nothing changed vs. loaded values)
+  //  * enabled the instant any input diverges from the baseline snapshot
+  //  * disabled again after a successful save (snapshot refreshed)
+  //  * Esc/close-x without saving just discards the edits (the underlying
+  //    snapshot is rebuilt next time preferences opens from server state)
+  const _prefsFieldIds = [
+    'prefs-email','prefs-alias','prefs-theme','prefs-port','prefs-vs-symbol',
+    'prefs-default-capital','prefs-auto-open-browser','prefs-auto-update-check',
+    'prefs-auto-update-apply',
+  ];
+  function _prefsSnapshot(){
+    const out = {};
+    for(const id of _prefsFieldIds){
+      const el = document.getElementById(id);
+      if(!el) continue;
+      out[id] = (el.type === 'checkbox') ? !!el.checked : String(el.value ?? '');
+    }
+    return out;
+  }
+  let _prefsBaseline = _prefsSnapshot();
+  function _prefsIsDirty(){
+    const now = _prefsSnapshot();
+    for(const k in _prefsBaseline){ if(_prefsBaseline[k] !== now[k]) return true; }
+    for(const k in now){ if(!(k in _prefsBaseline)) return true; }
+    return false;
+  }
+  function _refreshSaveBtnState(){
+    const btn = document.getElementById('prefs-save-btn');
+    if(!btn) return;
+    btn.disabled = !_prefsIsDirty();
+  }
+  // Expose the baseline-reset hook so the load + save paths can call it.
+  window._prefsResetBaseline = function(){
+    _prefsBaseline = _prefsSnapshot();
+    _refreshSaveBtnState();
+  };
+  // Delegate listener on the entire preferences panel — picks up all form edits.
+  if(prefsEl){
+    prefsEl.addEventListener('input', _refreshSaveBtnState);
+    prefsEl.addEventListener('change', _refreshSaveBtnState);
+  }
 
   const saveBtn=document.getElementById('prefs-save-btn');
   if(saveBtn) saveBtn.addEventListener('click',async()=>{
@@ -9026,6 +9114,8 @@ async function openPrefsPage(){
         vsSymbol=vs; spyBars=null; try{ updateSpyOverlay(); }catch(_){}
       }
       status.textContent='Saved.';
+      // Accept the just-saved values as the new baseline → Save disabled again.
+      try { window._prefsResetBaseline && window._prefsResetBaseline(); } catch(_){}
     }catch(e){
       status.textContent='Save failed: '+e.message;
     }

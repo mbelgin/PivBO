@@ -49,3 +49,5 @@ dist/
 .DS_Store
 Thumbs.db
 .git_github_backup/
+preferences.json
+DISTRO_README.md

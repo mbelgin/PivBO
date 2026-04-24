@@ -23,7 +23,12 @@ import urllib.parse
 from datetime import datetime, timezone
 from flask import Flask, jsonify, send_from_directory, request, Response, send_file
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# realpath() follows symlinks so SCRIPT_DIR always resolves to the REAL
+# bundle location, even when the exe is launched via a winget-generated
+# shell alias or symlink (common in portable package manager installs).
+# Without realpath, symlinked launches resolved paths relative to the
+# symlink's directory, which doesn't contain the bundled resources.
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 # Bundled app resources (pivbo.html, assets, SPY CSV) live inside the
 # pivbo/ package so Briefcase picks them up automatically. Flask serves
