@@ -1,0 +1,45 @@
+name: Deploy website
+
+# Publishes the static site under web/ to GitHub Pages on every push
+# to main that touches web/. The site is served at https://pivbo.com
+# (the CNAME file in web/ binds the deployment to that domain).
+# No build step: web/ is HTML + CSS + JS + assets, uploaded as-is.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload web/ as Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./web
+
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
