@@ -357,10 +357,9 @@ python pivbo_server.py</code></pre>
       </summary>
       <div class="accordion-body">
         <p>
-          Launching PivBO opens a tiny control window and your default
+          Launching PivBO opens a small control window and your default
           browser at <code>http://localhost:5051/</code>. The app runs
-          as a local Flask server on your own machine. Nothing
-          ever leaves it.
+          as a local server on your own machine. Nothing ever leaves it.
         </p>
         <p>
           On the very first launch a banner at the top of the page says
@@ -373,11 +372,19 @@ python pivbo_server.py</code></pre>
           it if you don't need today's close.
         </p>
         <p>
+          <strong>Windows + winget tip:</strong> a winget install does not
+          create a Start menu shortcut (winget portable packages can't).
+          Open a terminal once and type <code>pivbo</code>; when the icon
+          appears in the taskbar, right-click it and choose
+          <strong>Pin to taskbar</strong>. After that it's a permanent
+          one-click launcher. Same idea works for Pin to Start.
+        </p>
+        <p>
           Your user data (simulations, templates, analyses,
           preferences) lives in a platform-appropriate folder:
         </p>
         <ul>
-          <li><strong>Windows</strong>: <code>%APPDATA%\PivBO\</code></li>
+          <li><strong>Windows</strong>: <code>%LOCALAPPDATA%\PivBO\</code></li>
           <li><strong>macOS</strong>: <code>~/Library/Application Support/PivBO/</code></li>
           <li><strong>Linux</strong>: <code>~/.local/share/PivBO/</code></li>
         </ul>
