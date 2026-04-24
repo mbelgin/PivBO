@@ -53,13 +53,16 @@ requires = [
 ]
 
 # --- Linux ---
-# The dependency picture here is tightly constrained by three
+# The dependency picture here is tightly constrained by four
 # interlocking version facts:
 #   - toga-gtk 0.4.7+ requires pygobject>=3.50 (girepository-2.0 only)
 #   - pygobject 3.46+ requires gobject-introspection>=1.64
 #   - pygobject 3.50+ requires girepository-2.0 (g-i 1.80+, unreleased
 #     on any stable manylinux base)
-# The only path that builds: toga-gtk 0.4.0-0.4.6 + pygobject 3.46-3.49.
+#   - Travertino 0.5+ is incompatible with Toga <= 0.4.8 (import-time
+#     deprecation warnings, eventual hard break)
+# The only path that builds: toga-gtk 0.4.0-0.4.6 + pygobject 3.46-3.49
+# + travertino < 0.5.
 [tool.briefcase.app.pivbo.linux]
 requires = [
     # 0.4.7+ bumped pygobject to 3.50 which needs girepository-2.0
@@ -68,6 +71,9 @@ requires = [
     # 3.46+ requires g-i >= 1.64; 3.50+ requires girepository-2.0.
     # AlmaLinux 9 (manylinux_2_34) has g-i 1.70 — satisfies 3.46-3.49.
     "pygobject>=3.46,<3.50",
+    # Travertino 0.5.0 moved declaration → style/properties modules;
+    # Toga 0.4.x still imports the old path. Keep Travertino on 0.4.x.
+    "travertino<0.5",
 ]
 
 # AppImage builds run inside a manylinux Docker container. The default
@@ -76,6 +82,12 @@ requires = [
 # g-i 1.70), which satisfies pygobject 3.46-3.49.
 [tool.briefcase.app.pivbo.linux.appimage]
 manylinux = "manylinux_2_34"
+# linuxdeploy's GTK plugin bundles the GTK3 runtime (libgdk, libgtk,
+# cairo, pango, gdk-pixbuf, gobject-introspection + typelibs) INTO
+# the AppImage so PyGObject can load them on end-user systems. Without
+# this the AppImage builds but crashes at startup with
+# "Namespace Gdk not available".
+linuxdeploy_plugins = ["DEPLOY_GTK_VERSION=3 gtk"]
 system_requires = [
     # Build toolchain
     "pkgconf-pkg-config",
