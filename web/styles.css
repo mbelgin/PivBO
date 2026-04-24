@@ -918,12 +918,25 @@ a:hover {
 }
 
 .os-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px -22px;
+  padding: 0 22px;
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.os-divider::before,
+.os-divider::after {
+  content: '';
+  flex: 1;
   height: 1px;
   background: var(--border);
-  /* margin-top:auto pushes the divider (and everything after it) to the
-     bottom of the card, so dividers align across cards with different
-     step-list heights. */
-  margin: auto -22px 0;
 }
 
 .os-subhead {
@@ -938,7 +951,9 @@ a:hover {
 .pkg-note {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+  min-height: 104px;
+  justify-content: center;
 }
 
 .pkg-soon {
@@ -956,15 +971,23 @@ a:hover {
 
 .pkg-cmd {
   display: block;
-  margin-top: 2px;
-  padding: 10px 12px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  padding: 14px 16px;
+  background: rgba(0, 212, 170, 0.08);
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 13px;
-  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  text-align: center;
+  letter-spacing: 0.3px;
   user-select: all;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.pkg-cmd:hover {
+  background: rgba(0, 212, 170, 0.14);
+  border-color: var(--accent);
 }
 
 .pkg-hint {
@@ -972,7 +995,8 @@ a:hover {
   font-size: 11px;
   color: var(--muted);
   line-height: 1.5;
-  margin: 4px 0 0;
+  margin: 0;
+  text-align: center;
 }
 
 .pkg-hint code {
