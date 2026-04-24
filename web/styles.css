@@ -951,8 +951,8 @@ a:hover {
 .pkg-note {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-height: 104px;
+  gap: 6px;
+  min-height: 128px;
   justify-content: center;
 }
 
@@ -994,9 +994,13 @@ a:hover {
   font-family: var(--sans);
   font-size: 11px;
   color: var(--muted);
-  line-height: 1.5;
+  line-height: 1.45;
   margin: 0;
   text-align: center;
+}
+
+.pkg-hint + .pkg-hint {
+  margin-top: -2px;
 }
 
 .pkg-hint code {
