@@ -374,10 +374,22 @@ python pivbo_server.py</code></pre>
         <p>
           <strong>Windows + winget tip:</strong> a winget install does not
           create a Start menu shortcut (winget portable packages can't).
-          Open a terminal once and type <code>pivbo</code>; when the icon
-          appears in the taskbar, right-click it and choose
-          <strong>Pin to taskbar</strong>. After that it's a permanent
-          one-click launcher. Same idea works for Pin to Start.
+          Open a <em>fresh</em> command prompt or PowerShell and type
+          <code>pivbo</code>. (A pre-existing terminal will not see the
+          new shim until restarted.) When the icon appears in the
+          taskbar, right-click it and choose <strong>Pin to taskbar</strong>.
+          After that it's a permanent one-click launcher. Same idea works
+          for Pin to Start.
+        </p>
+        <p>
+          <strong>Sharing PivBO with another device on your Wi-Fi:</strong>
+          the launcher window has a <strong>Listen on local network</strong>
+          switch. Flip it on (then click Stop, then Start) and the status
+          line shows both the loopback URL and an
+          <code>http://&lt;your-LAN-IP&gt;:5051</code> address. Open that
+          on a phone or laptop on the same network and you get the same
+          PivBO. The choice is remembered across launches. Use only on
+          networks you trust; do not enable on public Wi-Fi.
         </p>
         <p>
           Your user data (simulations, templates, analyses,
@@ -709,8 +721,8 @@ python pivbo_server.py</code></pre>
           To actually stop the server, use the small PivBO control
           window that opens with the app: click <strong>Stop</strong>
           (pauses, keeps the launcher open) or <strong>Quit</strong>
-          (closes everything). On Linux AppImage you can also just
-          Ctrl-C the terminal you launched from.
+          (closes everything). If you launched from a terminal, you
+          can also Ctrl-C that terminal.
         </p>
       </div>
     </details>
@@ -759,7 +771,7 @@ python pivbo_server.py</code></pre>
       </summary>
       <div class="accordion-body">
         <p>
-          Nowhere. PivBO runs a local Flask server on <code>localhost</code>. Every simulation, trade,
+          Nowhere. PivBO runs as a local server on your own machine. Every simulation, trade,
           preference, and analysis stays in your user data directory. No cloud, no accounts, no tracking.
         </p>
       </div>
@@ -823,7 +835,8 @@ python pivbo_server.py</code></pre>
       </summary>
       <div class="accordion-body">
         <p>
-          The Simulations interface lets you export and import simulations in JSON format.
+          The Simulations interface lets you export selected sims as a
+          <code>.zip</code> bundle, and import a previously-exported zip on any other PivBO install.
         </p>
       </div>
     </details>
