@@ -12,16 +12,16 @@ US equity data. Self-hosted, offline, free.
 
 ## Acknowledgments
 
-Inspired by and originally forked from
-[big_movers](https://github.com/willhjw/big_movers) by Will Hu, a
-self-hosted charting tool built around the Qullamaggie breakout
-methodology.
-
-Charts rendered with
-[TradingView lightweight-charts](https://github.com/tradingview/lightweight-charts).
-Duel Mode coordinates over the public
-[HiveMQ](https://www.hivemq.com/mqtt/public-mqtt-broker/) MQTT broker.
-App icon by [Freepik / Flaticon](https://www.flaticon.com/free-icons/trading).
+- Inspired by and originally forked from
+  [big_movers](https://github.com/willhjw/big_movers) by Will Hu, a
+  self-hosted charting tool built around the
+  [Qullamaggie](https://qullamaggie.com/) breakout methodology.
+- Charts rendered with
+  [TradingView lightweight-charts](https://github.com/tradingview/lightweight-charts).
+- Duel Mode coordinates over the public
+  [HiveMQ](https://www.hivemq.com/mqtt/public-mqtt-broker/) MQTT broker.
+- App icon by
+  [Freepik / Flaticon](https://www.flaticon.com/free-icons/trading).
 
 ## Disclaimer
 
