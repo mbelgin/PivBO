@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PivBO: Pivot BreakOut | Bar-by-bar trading simulator</title>
+<meta name="description" content="A free, offline, bar-by-bar trading simulator for studying momentum setups on historical US equity data. Replay any ticker, manage risk, and duel a friend.">
+<meta name="theme-color" content="#0a0c0f">
+<link rel="icon" type="image/png" href="assets/pivbo.png">
+<link rel="stylesheet" href="styles.css">
+
+<meta property="og:title" content="PivBO: Pivot BreakOut">
+<meta property="og:description" content="A free, offline, bar-by-bar trading simulator for studying momentum setups on historical US equity data.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://pivbo.com/">
+<meta property="og:image" content="https://pivbo.com/assets/pivbo.png">
+<meta name="twitter:card" content="summary">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="#top" title="PivBO: Pivot BreakOut">
+      <img src="assets/pivbo.png" alt="" aria-hidden="true">
+      <span>PivBO</span>
+    </a>
+    <div class="nav-links">
+      <a class="nav-link" href="#features">Features</a>
+      <a class="nav-link" href="#download">Download</a>
+      <a class="nav-link" href="#docs">Docs</a>
+      <a class="nav-link" href="#faq">FAQ</a>
+      <a class="nav-link" href="https://github.com/mbelgin/PivBO" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <a class="nav-cta" href="https://ko-fi.com/mbelgin" target="_blank" rel="noopener" title="Buy me a coffee on Ko-fi">
+      <span aria-hidden="true">&#9749;</span> Coffee
+    </a>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle color theme" title="Toggle theme">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>
+    </button>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="hero-inner">
+    <img class="hero-icon" src="assets/pivbo.png" alt="" aria-hidden="true">
+    <div class="hero-eyebrow">Master the art of trading, one bar at a time</div>
+    <h1 class="hero-title">
+      PivBO: Pivot BreakOut<span class="hero-title-beta">beta</span>
+    </h1>
+    <p class="hero-coffee">
+      PivBO is &ldquo;<a href="https://ko-fi.com/mbelgin" target="_blank" rel="noopener" class="coffeeware-link" title="Coffeeware (n.): a tongue-in-cheek software license. Free to use, but if it helped you, buy the author a coffee.">coffeeware</a>&rdquo;:
+      completely <strong>FREE</strong> and open source, running purely on donated caffeine.
+    </p>
+    <p class="hero-tagline">
+      Study momentum setups on historical US equities. Replay any ticker one bar at a time,
+      manage positions with full risk discipline, and challenge a friend to a timed head-to-head duel.
+    </p>
+    <div class="hero-ctas">
+      <a class="btn primary" href="#download">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        Download
+      </a>
+      <a class="btn" href="https://github.com/mbelgin/PivBO" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.78 5.45.78 11.73c0 4.96 3.22 9.16 7.69 10.65.56.1.77-.24.77-.54 0-.27-.01-1.16-.02-2.1-3.13.68-3.79-1.33-3.79-1.33-.51-1.3-1.25-1.65-1.25-1.65-1.02-.7.08-.68.08-.68 1.13.08 1.72 1.16 1.72 1.16 1 1.72 2.63 1.22 3.27.93.1-.72.39-1.22.7-1.5-2.5-.28-5.12-1.25-5.12-5.55 0-1.23.44-2.23 1.15-3.02-.12-.28-.5-1.42.11-2.97 0 0 .94-.3 3.08 1.15.89-.25 1.85-.37 2.8-.37.95 0 1.91.12 2.8.37 2.14-1.45 3.08-1.15 3.08-1.15.61 1.55.23 2.69.11 2.97.72.79 1.15 1.79 1.15 3.02 0 4.31-2.63 5.27-5.13 5.55.4.35.76 1.02.76 2.07 0 1.49-.01 2.69-.01 3.06 0 .3.2.65.78.54 4.47-1.49 7.68-5.69 7.68-10.65C23.22 5.45 18.27.5 12 .5z"></path></svg>
+        View on GitHub
+      </a>
+    </div>
+  </div>
+</header>
+
+<section class="section" id="features">
+  <div class="section-head">
+    <div class="section-kicker">What&rsquo;s inside</div>
+    <h2 class="section-title">Four tools, one workbench</h2>
+    <p class="section-lede">
+      A self-hosted environment for everything before you put real money on a setup:
+      chart it, replay it, duel it, and own the data.
+    </p>
+  </div>
+
+  <div class="cards">
+    <article class="card">
+      <div class="card-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="21" x2="21" y2="21"></line>
+          <polyline points="3,15 8,9 13,12 21,4"></polyline>
+          <polyline points="16,4 21,4 21,9"></polyline>
+        </svg>
+      </div>
+      <h3 class="card-title">Chart</h3>
+      <p class="card-desc">
+        Browse any ticker, any timeframe. Configurable moving averages, ADR and ATR overlays,
+        secondary chart for market context, drawing tools, log/linear scale.
+      </p>
+    </article>
+
+    <article class="card">
+      <div class="card-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5,3 19,12 5,21"></polygon>
+        </svg>
+      </div>
+      <h3 class="card-title">Simulator</h3>
+      <p class="card-desc">
+        Replay charts bar-by-bar. Place market and limit orders, set stop losses, take partials,
+        track R-multiples and batting average. Save, resume, and analyze every session.
+      </p>
+    </article>
+
+    <article class="card duel">
+      <div class="card-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path>
+          <path d="M13 19l6-6"></path>
+          <path d="M5 14l-1.5 1.5"></path>
+          <path d="M16 16l5 5"></path>
+          <path d="M19 21l2-2"></path>
+        </svg>
+      </div>
+      <h3 class="card-title">Duel Mode</h3>
+      <p class="card-desc">
+        Head-to-head practice against a friend. Same ticker, same bars, synchronized countdowns.
+        Trade blind or visible. Side-by-side comparison report at the end.
+      </p>
+    </article>
+
+    <article class="card">
+      <div class="card-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+          <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5"></path>
+          <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6"></path>
+        </svg>
+      </div>
+      <h3 class="card-title">Data</h3>
+      <p class="card-desc">
+        Browse your local chart data. Add new tickers, download fresh bars from Yahoo Finance,
+        bulk-update the whole library, and check coverage ranges per symbol.
+      </p>
+    </article>
+  </div>
+</section>
+
+<section class="coffee" id="support">
+  <div class="coffee-inner">
+    <div class="coffee-kicker">Coffeeware</div>
+    <h2 class="coffee-title">Free forever. Fueled by coffee.</h2>
+    <p class="coffee-body">
+      PivBO is <strong>coffeeware</strong>: no ads, no tracking, no paywall, no subscription.
+      Every new feature is written between sips.<br>
+      If it saved you from a bad trade or taught you something new, fuel the next feature.
+    </p>
+    <a class="kofi-btn" href="https://ko-fi.com/mbelgin" target="_blank" rel="noopener">
+      <span class="mug" aria-hidden="true">&#9749;</span> Buy me a coffee
+    </a>
+    <div class="coffee-footnote">Optional. No login, no subscription. One-click tip if you feel like it.</div>
+  </div>
+</section>
+
+<section class="section" id="download">
+  <div class="section-head">
+    <div class="section-kicker">Download</div>
+    <h2 class="section-title">Get PivBO</h2>
+    <div class="release-line">
+      Latest release: <strong data-pivbo-version>latest</strong>
+      <span class="release-line-sep">&middot;</span>
+      <a href="https://github.com/mbelgin/PivBO/releases/latest" data-pivbo-dl="page" target="_blank" rel="noopener">Release notes</a>
+    </div>
+  </div>
+
+  <div class="os-grid">
+    <article class="os-card">
+      <div class="os-card-head">
+        <div class="os-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 5.5L10.5 4.4v7.1H3V5.5zm0 7.5h7.5v7.1L3 18.5V13zm8.5-9.2L21 3v8.5h-9.5V3.8zm0 9.2H21V21l-9.5-1.3V13z"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="os-name">Windows</div>
+          <div class="os-sub">10 &middot; 11 &middot; x64</div>
+        </div>
+      </div>
+
+      <a class="btn primary os-dl-btn" data-pivbo-dl="windows" href="https://github.com/mbelgin/PivBO/releases/latest" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        Direct download
+      </a>
+      <div class="os-filename"><span data-pivbo-asset-name="windows">PivBO-windows.zip</span> &middot; <span data-pivbo-asset-size="windows">self-contained</span></div>
+
+      <ol class="os-steps">
+        <li>Extract the .zip anywhere.</li>
+        <li>Double-click <code>PivBO.exe</code>.</li>
+        <li>First launch: on the SmartScreen prompt, click <strong>More info</strong> &rarr; <strong>Run anyway</strong>.</li>
+      </ol>
+
+      <div class="os-divider"></div>
+      <div class="pkg-note">
+        <span class="os-subhead">Package manager</span>
+        <span class="pkg-soon">winget in review &middot; <em>coming soon</em></span>
+      </div>
+    </article>
+
+    <article class="os-card">
+      <div class="os-card-head">
+        <div class="os-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M17.3 13.1c0-2.4 2-3.5 2.1-3.6-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.1-2.9.9-3.6.9-.7 0-1.9-.9-3.2-.9-1.6 0-3.2 1-4 2.5-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.7 2.5 2.9 2.4 1.2 0 1.6-.7 3-.7 1.4 0 1.8.7 3 .7 1.2 0 2-1.2 2.8-2.3.9-1.3 1.2-2.6 1.2-2.7-.1 0-2.3-.9-2.3-3.5zM14.9 6c.6-.7 1.1-1.7 1-2.7-.9 0-2 .6-2.7 1.4-.6.6-1.1 1.7-1 2.7 1 0 2.1-.5 2.7-1.4z"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="os-name">macOS</div>
+          <div class="os-sub">Intel &middot; Apple Silicon</div>
+        </div>
+      </div>
+
+      <a class="btn orange os-dl-btn" href="#run-from-source">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+        Run From Source
+      </a>
+      <div class="os-filename">Any OS &middot; Python 3.10+ &middot; git</div>
+      <p class="os-coming-note">
+        The packaged .app is paused while a chart-rendering issue is investigated.
+        Running from source works today.
+      </p>
+
+      <!--
+        macOS download is hidden while a chart-rendering issue is investigated.
+        Restore the block below (and remove the Run-From-Source fallback above)
+        once the issue is resolved.
+
+      <a class="btn primary os-dl-btn" data-pivbo-dl="macos" href="https://github.com/mbelgin/PivBO/releases/latest" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        Direct download
+      </a>
+      <div class="os-filename"><span data-pivbo-asset-name="macos">PivBO-macos.zip</span> &middot; <span data-pivbo-asset-size="macos">self-contained</span></div>
+
+      <ol class="os-steps">
+        <li>Double-click the .zip to unzip.</li>
+        <li>Drag <code>PivBO.app</code> into <strong>Applications</strong>.</li>
+        <li>First launch: macOS will block the app with an "unidentified developer" warning. Open <strong>System Settings &rarr; Privacy &amp; Security</strong>, scroll to the <strong>Security</strong> section, and click <strong>Open Anyway</strong>. See <a href="https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac" target="_blank" rel="noopener">Apple's guide to opening an app from an unknown developer</a>.</li>
+      </ol>
+      -->
+
+      <div class="os-divider"></div>
+      <div class="pkg-note">
+        <span class="os-subhead">Package manager</span>
+        <span class="pkg-soon"><em>coming soon</em></span>
+      </div>
+    </article>
+
+    <article class="os-card">
+      <div class="os-card-head">
+        <div class="os-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12.5 2c-1.5 0-2.8 1-3.1 2.4-.2.8-.2 1.8 0 2.6.2.8.3 1.6.1 2.4-.2.6-.5 1.2-.9 1.7-.9 1.1-1.9 2.2-2.2 3.6-.3 1.2-.2 2.5.2 3.7.3.9.8 1.7 1.3 2.5.2.3.5.5.8.6.4.1.8 0 1.1-.2-.2.4-.2.9 0 1.3.3.5.9.8 1.4.8.6 0 1.1-.3 1.5-.7.4.4.9.7 1.5.7.5 0 1-.3 1.4-.8.2-.4.3-.9 0-1.3.3.2.7.3 1.1.2.3-.1.6-.3.8-.6.5-.8 1-1.6 1.3-2.5.4-1.2.5-2.5.2-3.7-.3-1.4-1.3-2.5-2.2-3.6-.4-.5-.7-1.1-.9-1.7-.2-.8-.1-1.6.1-2.4.2-.8.2-1.8 0-2.6C15.3 3 14 2 12.5 2zm-1.1 3.8c.4 0 .7.4.7 1s-.3 1-.7 1-.7-.4-.7-1 .3-1 .7-1zm2.2 0c.4 0 .7.4.7 1s-.3 1-.7 1-.7-.4-.7-1 .3-1 .7-1zm-1.1 2.5c1 0 2 .5 2 1.3 0 .4-.4.7-1 .9-.3.1-.5.2-.7.4-.2.2-.3.4-.3.6 0 .1 0 .1.1.2h-.2c.1-.1.1-.1.1-.2 0-.2-.1-.4-.3-.6-.2-.2-.4-.3-.7-.4-.6-.2-1-.5-1-.9 0-.8 1-1.3 2-1.3z"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="os-name">Linux</div>
+          <div class="os-sub">x86_64 &middot; AppImage</div>
+        </div>
+      </div>
+
+      <a class="btn orange os-dl-btn" href="#run-from-source">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+        Run From Source
+      </a>
+      <div class="os-filename">Any OS &middot; Python 3.10+ &middot; git</div>
+      <p class="os-coming-note">
+        The AppImage is paused while a packaging issue is resolved.
+        Running from source works today.
+      </p>
+
+      <!--
+        Linux AppImage download is hidden while a build issue is resolved.
+        Restore the block below (and remove the Run-From-Source fallback above)
+        once the AppImage is building cleanly again.
+
+      <a class="btn primary os-dl-btn" data-pivbo-dl="linux" href="https://github.com/mbelgin/PivBO/releases/latest" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        Direct download
+      </a>
+      <div class="os-filename"><span data-pivbo-asset-name="linux">PivBO-x86_64.AppImage</span> &middot; <span data-pivbo-asset-size="linux">self-contained</span></div>
+
+      <ol class="os-steps">
+        <li>Save the <code>.AppImage</code> anywhere.</li>
+        <li>Make it executable: <code>chmod +x PivBO-x86_64.AppImage</code> (or right-click &rarr; <strong>Allow executing</strong>).</li>
+        <li>Double-click it, or run <code>./PivBO-x86_64.AppImage</code>.</li>
+      </ol>
+
+      <p class="os-tip">
+        Tip: <a href="https://github.com/mijorus/gearlever" target="_blank" rel="noopener">Gear Lever</a>
+        adds AppImages to your app menu and keeps them updated.
+      </p>
+      -->
+
+      <div class="os-divider"></div>
+      <div class="pkg-note">
+        <span class="os-subhead">Package manager</span>
+        <span class="pkg-soon"><em>coming soon</em></span>
+      </div>
+    </article>
+  </div>
+
+  <div class="source-block" id="run-from-source">
+    <div class="source-head">
+      <div class="section-kicker">Any OS</div>
+      <h3 class="source-title">Run from source</h3>
+      <p class="source-lede">
+        For developers, or anyone who'd rather run directly from the code.
+        Requires Python 3.10+ and git.
+      </p>
+    </div>
+    <pre class="code-block"><code><span class="code-comment"># Clone the repo</span>
+git clone https://github.com/mbelgin/PivBO.git
+cd PivBO
+
+<span class="code-comment"># Install dependencies (a venv is recommended)</span>
+python -m venv .venv
+<span class="code-comment"># Windows:</span>  .venv\Scripts\activate
+<span class="code-comment"># macOS/Linux:</span>  source .venv/bin/activate
+pip install -r requirements.txt
+
+<span class="code-comment"># Start the server (opens at http://localhost:5051/)</span>
+python pivbo_server.py</code></pre>
+    <p class="source-footnote">
+      On first launch PivBO seeds a library of historical bars from the repo;
+      after that it runs fully offline. Your simulations, templates, and
+      analyses live under your user data directory and are never uploaded.
+    </p>
+  </div>
+</section>
+
+<section class="section docs-section" id="docs">
+  <div class="section-head">
+    <div class="section-kicker">Documentation</div>
+    <h2 class="section-title">Docs</h2>
+    <p class="section-lede">
+      A concise tour of what's in PivBO and how to use it. Expand any section below.
+    </p>
+  </div>
+
+  <div class="accordion">
+
+    <details class="accordion-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">First launch</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          Launching PivBO opens a tiny control window and your default
+          browser at <code>http://localhost:5051/</code>. The app runs
+          as a local Flask server on your own machine. Nothing
+          ever leaves it.
+        </p>
+        <p>
+          On the very first launch a banner at the top of the page says
+          <strong>One-time Download</strong> and progresses through
+          ~930 compressed historical CSVs pulled from the project's
+          GitHub repo. Tickers become available in the sidebar as each
+          file lands; the whole seed takes a few minutes on a typical
+          connection. When it finishes, PivBO offers to refresh each
+          ticker with the most recent bars from Yahoo Finance. Skip
+          it if you don't need today's close.
+        </p>
+        <p>
+          Your user data (simulations, templates, analyses,
+          preferences) lives in a platform-appropriate folder:
+        </p>
+        <ul>
+          <li><strong>Windows</strong>: <code>%APPDATA%\PivBO\</code></li>
+          <li><strong>macOS</strong>: <code>~/Library/Application Support/PivBO/</code></li>
+          <li><strong>Linux</strong>: <code>~/.local/share/PivBO/</code></li>
+        </ul>
+        <p>
+          Reinstalling or upgrading never touches that folder. Any
+          ticker you downloaded with a wider date range is preserved
+          across updates.
+        </p>
+      </div>
+    </details>
+
+    <details class="accordion-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">Chart view</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          The left sidebar lists every ticker you have data for, with
+          its first and last bar date. Click any row to chart it.
+        </p>
+        <p>
+          Top-of-chart controls cover the usual axes:
+        </p>
+        <ul>
+          <li><strong>Candles / OHLC / Line</strong> mode toggle.</li>
+          <li><strong>Daily / Weekly / Monthly</strong> timeframe.</li>
+          <li><strong>Log / Linear</strong> price scale.</li>
+          <li><strong>MAs</strong> button for moving-average overlays:
+            add, remove, color, swap SMA/EMA, edit period per MA.</li>
+          <li><strong>ADR / ATR</strong> in the crosshair info bar, with
+            editable lookback periods.</li>
+          <li><strong>Panels</strong> popover toggles optional sub-panes:
+            a secondary chart above the main one (e.g. QQQ for market
+            context, date-synced), a volume pane, and (during
+            simulations) an equity curve pane.</li>
+        </ul>
+        <p>
+          Drawing tools are on the left edge: horizontal line, line,
+          ray, segment, text, measure, freeform note. Drawings are
+          per-ticker and persist across sessions.
+        </p>
+      </div>
+    </details>
+
+    <details class="accordion-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">Running a simulation</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          From the <strong>Simulations</strong> page click
+          <strong>+ New Simulation</strong>. Fill in a name, starting
+          capital, and optionally the &ldquo;skip to first bar with an
+          N-period MA&rdquo; warmup offset. Then pick one of two modes:
+        </p>
+        <ul>
+          <li><strong>Pick a Ticker</strong>: type the symbol and a
+            start date (or tick &ldquo;use first available bar&rdquo;).</li>
+          <li><strong>Surprise Me</strong>: set a minimum years-of-history
+            and average ADR% filter, PivBO picks a random matching ticker
+            and a random start bar.</li>
+        </ul>
+        <p>
+          Click <strong>Start Simulation</strong>. The chart switches to
+          sim mode: only bars up to the current one are visible, the
+          right side becomes a trade panel, and playback controls appear
+          at the bottom.
+        </p>
+        <p>
+          Navigate bar-by-bar with the arrow keys:
+        </p>
+        <ul>
+          <li><kbd>&rarr;</kbd> advance one bar.</li>
+          <li><kbd>&larr;</kbd> retreat one bar. Retreating past a
+            trade's creation bar permanently undoes it.</li>
+          <li><strong>Jump to start / end</strong> buttons on the
+            playback bar.</li>
+        </ul>
+        <p>
+          A sim auto-saves after every meaningful event (trade,
+          advance, retreat, SL move). You can close the tab and come
+          back. The sim resumes exactly where you left it.
+        </p>
+      </div>
+    </details>
+
+    <details class="accordion-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">Placing and managing trades</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          Click <strong>Long</strong> or <strong>Short</strong> on the
+          trade panel. The entry form lets you specify:
+        </p>
+        <ul>
+          <li><strong>Entry</strong>: leave blank for market-at-close,
+            or type a price for a limit order.</li>
+          <li><strong>Stop loss</strong>: a price. Preview levels
+            appear on the chart; drag them to adjust before submitting.</li>
+          <li><strong>Size</strong>: either a <strong>Risk %</strong> of
+            current equity (PivBO computes shares so the distance to SL
+            equals that risk), or an explicit share count.</li>
+          <li><strong>Limit</strong> toggle with an optional
+            <strong>max gap%</strong>: the order stays live until the
+            bar's touch matches; gaps past the limit by more than N%
+            cancel the order rather than filling at the unrealistic
+            open.</li>
+          <li><strong>Flex open-bar SL</strong>: on the bar a trade
+            enters, uses only the bar's close to check SL and caps any
+            fill at the SL price. Prevents impossible fills when a bar
+            opens past SL, rallies to trigger entry, dips back, and
+            closes above SL.</li>
+        </ul>
+        <p>
+          Once a trade is open, the chart shows entry and SL levels as
+          live lines. The trade panel flips to show open positions:
+        </p>
+        <ul>
+          <li>Drag the SL line on the chart to move it (use the
+            <strong>B/E</strong> button for a one-click breakeven).</li>
+          <li>Partial-close buttons: <strong>&frac14;</strong>,
+            <strong>&frac13;</strong>, <strong>&frac12;</strong>,
+            <strong>&frac34;</strong>, <strong>ALL</strong>, or type an
+            exact share count.</li>
+          <li><strong>Flatten</strong> (<kbd>F</kbd>) closes every open
+            position at the current bar's close.</li>
+        </ul>
+        <p>
+          R-multiples use the risk frozen at entry, so moving your SL
+          later doesn't skew the R stats. Analytics refresh live as you
+          advance bars.
+        </p>
+      </div>
+    </details>
+
+    <details class="accordion-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">Saving, resuming, comparing</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          The <strong>Simulations</strong> page lists every sim you've
+          started, with its name, ticker, date range, open P/L, and
+          last-modified time. Select one to resume where you left off.
+          Multi-select enables:
+        </p>
+        <ul>
+          <li><strong>Rename</strong> / <strong>Save As</strong>
+            (duplicate) / <strong>Delete</strong>.</li>
+          <li><strong>Export ZIP</strong>: bundles selected sims as JSON
+            for backup or transfer.</li>
+          <li><strong>Import</strong>: restores sims from a ZIP.</li>
+          <li><strong>Analysis</strong>: per-sim HTML report with the
+            equity curve, trade timeline, win/loss distribution, and
+            optional PDF export.</li>
+          <li><strong>Compare</strong>: side-by-side report for 2-5
+            selected sims, with identical sections stacked.</li>
+        </ul>
+        <p>
+          <strong>Templates</strong>: save the current chart and
+          indicator setup (MAs, secondary-chart symbol, volume/equity
+          panes, etc.) as a named preset. New simulations can start
+          from a template instead of the default layout. Manage them
+          from the Templates button on the sim panel.
+        </p>
+      </div>
+    </details>
+
+    <details class="accordion-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">Duel Mode</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          A 1v1 remote simulation where two traders race the same
+          ticker from their own machines. Signaling is done over a
+          public MQTT broker; a 6-character room code scopes the match.
+          No accounts, no servers you have to run.
+        </p>
+        <p>
+          From the <strong>Duel</strong> tab:
+        </p>
+        <ul>
+          <li><strong>Host</strong>: pick the filters (ticker universe,
+            min years of history, min average ADR%, decision timeout
+            per bar), optionally hide the ticker until the end, share
+            the generated room code with your opponent.</li>
+          <li><strong>Join</strong>: paste the code you received.</li>
+        </ul>
+        <p>
+          Flow:
+        </p>
+        <ol>
+          <li><strong>Honor code</strong>: both players accept.</li>
+          <li><strong>Preparation</strong>: both set up their
+            indicators, drawings, equity pane, then click
+            <strong>READY</strong>.</li>
+          <li><strong>Active</strong>: a per-bar countdown starts. Each
+            bar, every player either trades, modifies a position, or
+            presses <kbd>&rarr;</kbd> to lock in no-action. The bar
+            advances when both have locked in (or the timer expires).
+            Retreating is disabled for the duration of the duel.</li>
+          <li>The opponent's equity curve is visible inside the equity
+            pane (dotted when they have an open position), but no other
+            trade details are exposed: no entry, SL, size, or
+            side.</li>
+          <li>Either side can pause or call <strong>End Duel</strong>
+            (forfeit).</li>
+          <li>At the last bar, all open positions close at that bar's
+            close. Both players see a <strong>Compare</strong> report
+            side-by-side. Ticker is unmasked in the report if it was
+            hidden during the duel.</li>
+        </ol>
+        <p>
+          A dropped connection triggers an auto-pause for up to 3
+          minutes; if the peer reconnects within that window, the duel
+          resumes cleanly. Refreshing a tab mid-duel also restores
+          state on reconnect.
+        </p>
+      </div>
+    </details>
+
+    <details class="accordion-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">Data: downloading and updating tickers</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          Click <strong>Data</strong> in the topbar to open the ticker
+          downloader. You can:
+        </p>
+        <ul>
+          <li><strong>Download a single ticker</strong>: type the
+            symbol, pick a date range (or let PivBO use Yahoo's full
+            available history), click <strong>Download</strong>. The
+            resulting bars are written as a compressed CSV under your
+            user data directory.</li>
+          <li><strong>Update All</strong>: for every ticker already on
+            disk, fetch any missing dates since the last local bar.
+            Progress bar shows ticker-by-ticker status. Cancellable at
+            any time. Typically a few minutes for the full ~930-ticker
+            seed.</li>
+          <li><strong>Import bulk</strong>: drag-drop or pick a ZIP of
+            CSVs.</li>
+        </ul>
+        <p>
+          The update path only fetches <em>missing</em> dates from
+          Yahoo; it never re-downloads entire histories. Existing wider
+          date ranges are always preserved. A re-run of the
+          first-launch seeder never overwrites a file you already have.
+        </p>
+      </div>
+    </details>
+
+    <details class="accordion-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">Preferences</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          Open the gear icon top-right. The main settings:
+        </p>
+        <ul>
+          <li><strong>Profile</strong>: your email (used only for Duel
+            Mode display names and tournament identity: the
+            local-part before <code>@</code> becomes your name, and the
+            full email never leaves your machine).</li>
+          <li><strong>Theme</strong>: dark or light.</li>
+          <li><strong>Default starting capital</strong>: pre-fills the
+            New Simulation form.</li>
+          <li><strong>VS symbol</strong>: the ticker used for the
+            benchmark overlay in analysis reports.</li>
+          <li><strong>Port</strong>: the local server port. Change this
+            if 5051 collides with something else, or to run two
+            instances side-by-side for self-duel testing.</li>
+          <li><strong>Auto-open browser</strong>: launch the browser
+            tab on startup, or skip it and leave the launcher quiet.</li>
+          <li><strong>Updates</strong>: toggles and a manual
+            &ldquo;Check now&rdquo; button. The toggles and the
+            check-endpoint are wired, but the auto-download-and-swap
+            pipeline is planned, not live. For now, download the
+            latest release from the <a href="#download">Download</a>
+            section and replace your installation.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="accordion-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">Stopping and quitting</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          Closing the browser tab only closes the UI. PivBO is
+          still running in the background. Reopen the tab at
+          <code>http://localhost:5051/</code> anytime.
+        </p>
+        <p>
+          To actually stop the server, use the small PivBO control
+          window that opens with the app: click <strong>Stop</strong>
+          (pauses, keeps the launcher open) or <strong>Quit</strong>
+          (closes everything). On Linux AppImage you can also just
+          Ctrl-C the terminal you launched from.
+        </p>
+      </div>
+    </details>
+
+  </div>
+</section>
+
+<section class="section faq-section" id="faq">
+  <div class="section-head">
+    <div class="section-kicker">FAQ</div>
+    <h2 class="section-title">Frequently asked questions</h2>
+    <p class="section-lede">
+      The short answers. For deeper detail, see the <a href="#docs">Docs</a>.
+    </p>
+  </div>
+
+  <div class="accordion">
+    <!--
+      FAQ items use the same accordion pattern as Docs. Add more by
+      duplicating any <details class="accordion-item faq-item"> block below.
+    -->
+
+    <details class="accordion-item faq-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">Is PivBO really free?</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          Yes. MIT-licensed, open source, no ads, no tracking, no accounts.
+          It's <strong>coffeeware</strong>: free forever, with an optional
+          <a href="https://ko-fi.com/mbelgin" target="_blank" rel="noopener">Ko-fi tip</a>
+          if it helped you.
+        </p>
+      </div>
+    </details>
+
+    <details class="accordion-item faq-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">Where does my data go?</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          Nowhere. PivBO runs a local Flask server on <code>localhost</code>. Every simulation, trade,
+          preference, and analysis stays in your user data directory. No cloud, no accounts, no tracking.
+        </p>
+      </div>
+    </details>
+
+    <details class="accordion-item faq-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">Why is the first launch slow?</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          First launch pulls a prebuilt library of historical daily bars (around 900 US tickers, ~50 MB)
+          from the project repo so you can start trading immediately. Happens once. After that, PivBO
+          runs fully offline unless you ask it to fetch more data.
+        </p>
+      </div>
+    </details>
+
+    <details class="accordion-item faq-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">What trading style is PivBO inspired by?</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          PivBO leans heavily into <a href="https://qullamaggie.com/" target="_blank" rel="noopener">Qullamaggie</a>-style
+          momentum trading, but it works for any approach. You get the core price and volume
+          action, plus a small set of key indicators (MAs, ATR, ADR).
+        </p>
+      </div>
+    </details>
+
+    <details class="accordion-item faq-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">Can you add indicator XYZ?</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          The indicator set is intentionally lean, so attention stays on price and volume action.
+          I'll consider adding commonly-requested ones when caffeine levels permit. File requests on the
+          <a href="https://github.com/mbelgin/PivBO/issues" target="_blank" rel="noopener">GitHub repo</a>.
+          High-quality PRs for indicators are also welcome.
+        </p>
+      </div>
+    </details>
+
+    <details class="accordion-item faq-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">How can I share or back up my simulations?</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          The Simulations interface lets you export and import simulations in JSON format.
+        </p>
+      </div>
+    </details>
+
+    <details class="accordion-item faq-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">What are some good tips to make the best of PivBO?</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>Depends on what you want from it, but three patterns I find especially useful:</p>
+        <ol>
+          <li>
+            <strong>Controlled A/B comparisons.</strong>
+            Re-run the same ticker and date range multiple times, changing one rule per run, then compare
+            the analyses side-by-side (up to 5 sims).
+          </li>
+          <li>
+            <strong>Duel a friend.</strong>
+            Live competition surfaces the real-trading psychology that a solo echo-chamber simulation
+            simply can't.
+          </li>
+          <li>
+            <strong>Build a model book.</strong>
+            Click any trade in the history list to review it. Draw, annotate, and screenshot key setups
+            for an ever-growing reference.
+          </li>
+        </ol>
+      </div>
+    </details>
+
+    <details class="accordion-item faq-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">How can I contact you for bugs or feature requests?</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          Open an issue on GitHub:
+          <a href="https://github.com/mbelgin/PivBO/issues" target="_blank" rel="noopener">github.com/mbelgin/PivBO/issues</a>.
+        </p>
+      </div>
+    </details>
+
+    <details class="accordion-item faq-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">How can I help make PivBO better?</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>Thanks for asking. This is not a one-person job. A few ways to pitch in:</p>
+        <ul>
+          <li>
+            <strong>Send a pull request.</strong> Small, focused PRs with a clear description,
+            tests where they make sense, and no unrelated churn are the easiest to review and merge.
+            Follow the existing code style and open an issue first if the change is non-trivial.
+          </li>
+          <li>
+            <strong>Report issues, request features.</strong>
+            Use
+            <a href="https://github.com/mbelgin/PivBO/issues" target="_blank" rel="noopener">GitHub Issues</a>.
+            A short repro and a screenshot go a long way.
+          </li>
+          <li>
+            <strong>Spread the word.</strong> A
+            <a href="https://github.com/mbelgin/PivBO" target="_blank" rel="noopener">star on the repo</a>
+            and a mention to other traders on social puts PivBO in front of people who'd use it.
+          </li>
+          <li>
+            <strong>Donate caffeine.</strong> Every
+            <a href="https://ko-fi.com/mbelgin" target="_blank" rel="noopener">Ko-fi tip</a>
+            funds the next feature.
+          </li>
+        </ul>
+      </div>
+    </details>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-disclaimer">
+      <span id="site-version">PivBO</span> &middot; Historical data for practice only. Not financial advice.
+    </div>
+    <div class="footer-links">
+      <a href="https://github.com/mbelgin/PivBO" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/mbelgin/PivBO/releases/latest" target="_blank" rel="noopener">Releases</a>
+      <a href="https://ko-fi.com/mbelgin" target="_blank" rel="noopener">Ko-fi</a>
+      <a href="https://github.com/mbelgin/PivBO#acknowledgments" target="_blank" rel="noopener">Acknowledgements</a>
+      <a href="https://github.com/mbelgin/PivBO/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+    </div>
+  </div>
+</footer>
+
+<button class="to-top" id="toTop" type="button" aria-label="Back to top" title="Back to top">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <polyline points="18 15 12 9 6 15"></polyline>
+  </svg>
+</button>
+
+<script src="release.js"></script>
+<script>
+  (function(){
+    var root = document.documentElement;
+    var KEY = 'pivbo-web-theme';
+    var saved = null;
+    try { saved = localStorage.getItem(KEY); } catch(e){}
+    if(saved === 'light' || saved === 'dark'){
+      root.setAttribute('data-theme', saved);
+    }
+    var btn = document.getElementById('themeToggle');
+    if(btn){
+      btn.addEventListener('click', function(){
+        var cur = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+        var next = cur === 'light' ? 'dark' : 'light';
+        root.setAttribute('data-theme', next);
+        try { localStorage.setItem(KEY, next); } catch(e){}
+      });
+    }
+
+    var toTop = document.getElementById('toTop');
+    if(toTop){
+      var onScroll = function(){
+        if(window.scrollY > 600){ toTop.classList.add('visible'); }
+        else { toTop.classList.remove('visible'); }
+      };
+      window.addEventListener('scroll', onScroll, { passive:true });
+      onScroll();
+      toTop.addEventListener('click', function(){
+        window.scrollTo({ top:0, behavior:'smooth' });
+      });
+    }
+  })();
+</script>
+</body>
+</html>
