@@ -346,6 +346,7 @@ _DEFAULT_PREFS = {
     "vsSymbol": "SPY",
     "equityMode": "trades",   # "trades" | "timeline"
     "rMultipleMode": "adjusted",  # "adjusted" (position-weighted, $ P/L based) | "simple" (per-share R at final exit)
+    "defaultFlexOpenBarSL": True,  # default value of the New-Simulation modal's "Flexed opening-bar SL" checkbox
 }
 
 
@@ -942,7 +943,7 @@ def api_simulations_create():
     _ensure_sim_dir()
     data = request.get_json(silent=True) or {}
     sim_id = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    now = _iso_now()
 
     sim = {
         "id": sim_id,
@@ -1008,7 +1009,7 @@ def api_simulation_update(sim_id):
                      "tradePrefs", "notes", "duelState"):
             if key in data:
                 sim[key] = data[key]
-        sim["modified"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        sim["modified"] = _iso_now()
         with open(path, "w", encoding="utf-8") as f:
             json.dump(sim, f, ensure_ascii=False, indent=2)
         _rebuild_sim_index()
@@ -1101,7 +1102,10 @@ def _analysis_path(sim_id):
 
 
 def _iso_now():
-    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    # datetime.utcnow() is deprecated in 3.12+; use a tz-aware UTC datetime
+    # and strip the +00:00 suffix so the produced string still ends in "Z"
+    # (the format the rest of the codebase already writes/reads).
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds") + "Z"
 
 
 def _safe_div(a, b):
@@ -2480,7 +2484,7 @@ def api_simulation_duplicate(sim_id):
         data = request.get_json(silent=True) or {}
         new_name = data.get("name") or f"{sim.get('name', 'Untitled')} (copy)"
         new_id = str(uuid.uuid4())
-        now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        now = _iso_now()
         sim["id"] = new_id
         sim["name"] = new_name
         sim["created"] = now
@@ -2524,7 +2528,7 @@ def api_simulations_export_batch():
             fname = f"{_safe_filename(s.get('name', s.get('id')))}.json"
             zf.writestr(fname, json.dumps(s, ensure_ascii=False, indent=2))
     buf.seek(0)
-    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     return send_file(buf, mimetype="application/zip", as_attachment=True,
                      download_name=f"simulations_{ts}.zip")
 
@@ -2558,7 +2562,7 @@ def api_simulations_import():
             name = f"{orig_name} ({n})"
         sim["name"] = name
         existing_names.add(name)
-        now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        now = _iso_now()
         sim["modified"] = now
         if not sim.get("created"):
             sim["created"] = now
@@ -2637,7 +2641,7 @@ def api_templates_create():
     _ensure_templates_dir()
     data = request.get_json(silent=True) or {}
     tid = str(uuid.uuid4())
-    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    now = _iso_now()
     tpl = {
         "id": tid,
         "name": data.get("name", "Untitled"),
@@ -2670,7 +2674,7 @@ def api_template_update(tid):
     with open(p, "r", encoding="utf-8") as f:
         existing = json.load(f)
     data = request.get_json(silent=True) or {}
-    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    now = _iso_now()
     existing["name"] = data.get("name", existing.get("name", "Untitled"))
     existing["modified"] = now
     existing["chartState"] = data.get("chartState", existing.get("chartState", {}))
@@ -3264,10 +3268,6 @@ if __name__ == "__main__":
             pass
 
     print(f"PivotBreakout (PivBO): http://localhost:{PORT}/   (PID {os.getpid()})")
-    yahoo_routes = sorted(str(r) for r in app.url_map.iter_rules() if "/api/yahoo" in str(r))
-    print(f"Yahoo data routes ({len(yahoo_routes)}):")
-    for rt in yahoo_routes:
-        print(f"  {rt}")
     # Waitress is a production-grade pure-Python WSGI server. Replaces
     # Flask's built-in dev server (which prints the "do not use in
     # production" warning on startup). Thread count scales with the

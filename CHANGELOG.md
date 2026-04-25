@@ -8,6 +8,28 @@ The newest version is at the top.
 
 ## Unreleased
 
+- **Listen-on-LAN preference in the web UI**. Already exposed in the
+  desktop launcher window; now also a toggle in Preferences → Server,
+  marked "(takes effect after restart)." Same underlying pref key
+  (`listenOnLan`), so toggling it in the web UI lights up the launcher's
+  switch on next launch and vice versa.
+- **Flex open-bar SL default in Preferences → Trading**. New checkbox
+  pre-sets the New Simulation modal's "Flexed opening-bar SL" each time
+  it opens. Per-sim override still works.
+- **Stop Server button removed from Preferences → Server**. It was a
+  one-way trip with no path back from a closed browser tab. Use the
+  launcher's own Stop / Start, or Quit-App to shut down the whole stack.
+- **MA-driven stop-loss as an exit strategy**. New `SL→MA` row in the
+  open-trade card (under the existing SL row): pick a period, SMA or EMA,
+  and an unsigned tolerance %. Click Apply and the trade's SL value is
+  re-evaluated each bar against the chosen MA, with the tolerance applied
+  in whichever direction hurts the trade. The existing red SL line on the
+  chart tracks the MA value bar-by-bar; no separate overlay is drawn (add
+  the MA as a regular indicator if you want to see it). Apply disables
+  with a why-tooltip when the prospective level would instantly stop the
+  trade. Last-used period / type / tolerance persist across trades and
+  sessions. Manual Set or B/E reverts the trade to fixed-price SL. R is
+  unaffected — still anchored to initial risk frozen at entry.
 - **R-multiple display mode preference (Adjusted vs Simple)**. Preferences →
   Trading → "R-multiple display." Adjusted (default) is today's behavior:
   total realized $ P/L ÷ initial $ risk, partial closes weighted by share

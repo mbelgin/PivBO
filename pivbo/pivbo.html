@@ -2685,11 +2685,15 @@
     <div class="prefs-panel" data-prefs-panel="management">
       <div class="prefs-section">
         <h3>Server</h3>
-        <label>Port (takes effect after restart)</label>
+        <label>Port <span style="color:var(--muted);font-weight:400;">(takes effect after restart)</span></label>
         <input type="number" id="prefs-port" min="1024" max="65535" step="1" style="width:120px;">
         <label style="margin-top:12px;"><input type="checkbox" id="prefs-auto-open-browser" style="margin-right:6px;">Open browser automatically on launch</label>
+        <label style="margin-top:12px;"><input type="checkbox" id="prefs-listen-on-lan" style="margin-right:6px;">Listen on local network <span style="color:var(--muted);font-weight:400;">(takes effect after restart)</span></label>
+        <div style="margin-top:4px;margin-left:22px;font-size:10px;color:#a04020;line-height:1.5;">
+          When on, other devices on your Wi-Fi can reach PivBO via your machine's
+          LAN address. Use only on networks you trust; do not enable on public Wi-Fi.
+        </div>
         <div style="margin-top:14px;display:flex;gap:8px;">
-          <button class="sim-btn" id="prefs-stop-server-btn">Stop server</button>
           <button class="sim-btn danger" id="prefs-quit-app-btn">Quit app</button>
         </div>
       </div>
@@ -2710,6 +2714,21 @@
           <input type="text" id="prefs-vs-symbol" placeholder="SPY" style="width:100px;text-transform:uppercase;">
           <button type="button" class="sim-btn sim-btn-sm" id="prefs-vs-dl" title="Download all available historical data from Yahoo Finance for this ticker. Merges with any bars you already have.">Download all</button>
           <span id="prefs-vs-dl-status" style="font-size:11px;color:var(--muted);"></span>
+        </div>
+      </div>
+
+      <div class="prefs-section">
+        <h3>New simulation defaults</h3>
+        <label>
+          <input type="checkbox" id="prefs-flex-sl-default" style="margin-right:6px;">
+          Flex open-bar SL is on by default
+        </label>
+        <div style="margin-top:4px;margin-left:22px;font-size:11px;color:var(--muted);line-height:1.5;">
+          When a new simulation starts, the New Simulation modal's
+          <em>Flexed opening-bar SL</em> checkbox is pre-set to this value.
+          You can still flip it per sim. Recommended on: prevents impossible
+          fills on bars where price gaps past your SL, rallies to trigger
+          entry, and closes back inside.
         </div>
       </div>
 
@@ -9118,6 +9137,11 @@ async function openNewSimModal(){
     const p=await r.json();
     const cap=document.getElementById('sim-capital');
     if(cap&&Number.isFinite(p.defaultStartingCapital))cap.value=p.defaultStartingCapital;
+    // Flex open-bar SL: default value comes from prefs (defaults to true).
+    // The user can still flip it per-sim; this just controls the initial
+    // checkbox state when the modal opens.
+    const flexBox=document.getElementById('sim-entry-bar-protect');
+    if(flexBox) flexBox.checked = (p.defaultFlexOpenBarSL !== false);
   }catch(_){}
   document.getElementById('sim-name').focus();
   simTickerValidate();
@@ -9162,6 +9186,14 @@ async function openPrefsPage(){
     document.getElementById('prefs-port').value=Number.isFinite(p.port)?p.port:5051;
     document.getElementById('prefs-auto-open-browser').checked=(p.autoOpenBrowser!==false);
     document.getElementById('prefs-auto-update-check').checked=!!p.autoCheckForUpdates;
+    {
+      const lan=document.getElementById('prefs-listen-on-lan');
+      if(lan) lan.checked=!!p.listenOnLan;
+    }
+    {
+      const fx=document.getElementById('prefs-flex-sl-default');
+      if(fx) fx.checked=(p.defaultFlexOpenBarSL!==false);
+    }
     {
       const rMode=(p.rMultipleMode==='simple')?'simple':'adjusted';
       const adj=document.getElementById('prefs-r-mode-adjusted');
@@ -9345,6 +9377,7 @@ async function openPrefsPage(){
   const _prefsFieldIds = [
     'prefs-email','prefs-alias','prefs-theme','prefs-port','prefs-vs-symbol',
     'prefs-default-capital','prefs-auto-open-browser','prefs-auto-update-check',
+    'prefs-listen-on-lan','prefs-flex-sl-default',
     'prefs-r-mode-adjusted','prefs-r-mode-simple',
   ];
   function _prefsSnapshot(){
@@ -9394,6 +9427,8 @@ async function openPrefsPage(){
       port:port,
       autoOpenBrowser:document.getElementById('prefs-auto-open-browser').checked,
       autoCheckForUpdates:document.getElementById('prefs-auto-update-check').checked,
+      listenOnLan:!!document.getElementById('prefs-listen-on-lan')?.checked,
+      defaultFlexOpenBarSL:!!document.getElementById('prefs-flex-sl-default')?.checked,
       rMultipleMode:(document.getElementById('prefs-r-mode-simple')?.checked?'simple':'adjusted'),
       defaultStartingCapital:cap,
       vsSymbol:vs,
@@ -9428,12 +9463,10 @@ async function openPrefsPage(){
     }
   });
 
-  const stopBtn=document.getElementById('prefs-stop-server-btn');
-  if(stopBtn) stopBtn.addEventListener('click',async()=>{
-    if(!confirm('Stop the server? The browser tab will disconnect. The desktop launcher stays open and you can restart from there.')) return;
-    try{ await fetch('/api/server/stop',{method:'POST'}); }catch(_){}
-    document.getElementById('prefs-status').textContent='Server stopping. This tab will no longer be reachable.';
-  });
+  // Stop-server button removed: stopping from the web UI was a one-way trip
+  // (no path to restart from a closed browser tab). Use the launcher's own
+  // Stop / Start controls or Quit-app from this panel.
+
 
   const quitBtn=document.getElementById('prefs-quit-app-btn');
   if(quitBtn) quitBtn.addEventListener('click',async()=>{
