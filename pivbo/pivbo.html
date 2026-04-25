@@ -2210,6 +2210,10 @@
           <label style="margin-top:0;">Min average ADR%</label>
           <input type="number" id="sim-surprise-adr" value="2" min="0" max="20" step="0.1">
         </div>
+        <div>
+          <label style="margin-top:0;" title="Minimum closing price at the chosen start date. Filters out penny stocks.">Min price ($)</label>
+          <input type="number" id="sim-surprise-minprice" value="5" min="0" max="10000" step="1">
+        </div>
       </div>
     </div>
 
@@ -2683,6 +2687,18 @@
           <span id="prefs-vs-dl-status" style="font-size:11px;color:var(--muted);"></span>
         </div>
       </div>
+
+      <div class="prefs-section">
+        <h3>R-multiple display</h3>
+        <label style="display:flex;align-items:flex-start;gap:6px;margin-top:0;">
+          <input type="radio" name="prefs-r-mode" id="prefs-r-mode-adjusted" value="adjusted" style="margin-top:3px;">
+          <span><strong>Adjusted</strong> &mdash; total realized $ P/L &divide; initial $ risk. Partial closes weighted by share fraction. Reflects actual money outcome.</span>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:6px;margin-top:8px;">
+          <input type="radio" name="prefs-r-mode" id="prefs-r-mode-simple" value="simple" style="margin-top:3px;">
+          <span><strong>Simple</strong> &mdash; per-share R at the trade's final exit price. Independent of partial-close timing or sizing. Reflects "the R the setup ran to."</span>
+        </label>
+      </div>
     </div>
 
     <div class="prefs-panel" data-prefs-panel="about">
@@ -2834,6 +2850,56 @@ let spyOverlayEnabled=false;
 let spyOverlayMode='line'; // 'line' | 'candle' | 'bar'
 let spyBars=null; // cached benchmark bars (var is 'spy*' for history but the ticker is configurable)
 let vsSymbol='SPY'; // benchmark ticker for the "VS" overlay. User-configurable via preferences.
+// R-multiple display mode. "adjusted" = position-weighted, dollar-P/L based
+// (each partial close contributes its $ P/L to total R; reflects actual money).
+// "simple"   = per-share R at the trade's final exit price (or current MTM if
+// still open); independent of partial-close timing/sizing; reflects "the R the
+// setup ran to". User-configurable via Preferences → Trading.
+let rMultipleMode='adjusted';
+
+// Compute the R contributions of a single trade under the active rMultipleMode.
+// Returns {realizedR, unrealizedR, isClosed} where:
+//   - realizedR is what closed-fully trades contribute to running stats
+//   - unrealizedR is what still-open trades contribute (mark-to-market)
+//   - isClosed is true when totalEntryShares are all exited
+// In "adjusted" mode, realized/unrealized split mirrors today's behavior:
+// per-exit $ P/L summed and divided by initial $ risk.
+// In "simple" mode, the split routes the single per-share R into realized when
+// the trade is fully closed (so it lands in win/loss buckets) and into
+// unrealized while still open. There's no partial split because Simple R is
+// one number per trade by definition.
+function computeTradeR(t, visibleExits, totalEntryShares, avgEntry, curPrice){
+  const ir = t._initialRisk > 0 ? t._initialRisk : (t.riskPerShare > 0 ? t.riskPerShare : 0);
+  if (ir <= 0) return { realizedR: 0, unrealizedR: 0, isClosed: false };
+  const sign = t.direction === 'long' ? 1 : -1;
+  const exitShares = visibleExits.reduce((s, e) => s + e.shares, 0);
+  const remainShares = totalEntryShares - exitShares;
+  const isClosed = exitShares >= totalEntryShares;
+  if (rMultipleMode === 'simple') {
+    // Per-share R at the final close. Open positions use current bar's price.
+    let finalPrice = null;
+    if (remainShares > 0 && curPrice != null) {
+      finalPrice = curPrice;
+    } else if (visibleExits.length > 0) {
+      finalPrice = visibleExits[visibleExits.length - 1].price;
+    }
+    if (finalPrice == null) return { realizedR: 0, unrealizedR: 0, isClosed };
+    const r = sign * (finalPrice - avgEntry) / ir;
+    return isClosed
+      ? { realizedR: r, unrealizedR: 0, isClosed: true }
+      : { realizedR: 0, unrealizedR: r, isClosed: false };
+  }
+  // Adjusted mode (default): position-weighted, dollar-P/L based.
+  let realizedPL = 0;
+  for (const ex of visibleExits) realizedPL += sign * (ex.price - avgEntry) * ex.shares;
+  const realizedR = realizedPL / (ir * totalEntryShares);
+  let unrealizedR = 0;
+  if (remainShares > 0 && curPrice != null) {
+    const unrealPL = sign * (curPrice - avgEntry) * remainShares;
+    unrealizedR = unrealPL / (ir * totalEntryShares);
+  }
+  return { realizedR, unrealizedR, isClosed };
+}
 let spyVisibleFromTime=null, spyVisibleToTime=null; // used to normalize the overlay to 100 at the left edge
 let chartType='candle'; // 'candle' | 'ohlc'
 let priceColors = { up: '#26a69a', down: '#ef5350' };
@@ -6259,23 +6325,20 @@ function simRecalcAnalytics(){
       realizedPL+=sign*(ex.price-avgEntry)*ex.shares;
     }
     simAnalytics.realizedPL+=realizedPL;
-    // R-multiples use the ORIGINAL risk at entry (_initialRisk), never the
-    // current riskPerShare (which mutates when user moves SL — and becomes
-    // 0 when moved to breakeven, excluding winners from R stats entirely).
-    const initRisk=t._initialRisk>0?t._initialRisk:(t.riskPerShare>0?t.riskPerShare:0);
-    if(initRisk>0){
-      simAnalytics.realizedR+=realizedPL/(initRisk*totalEntryShares);
-    }
+    // R-multiples come from computeTradeR(), which honors rMultipleMode and
+    // always uses the ORIGINAL risk at entry (_initialRisk). SL movement
+    // never changes R; only the chosen mode does.
+    const rContrib = computeTradeR(t, visibleExits, totalEntryShares, avgEntry, curPrice);
+    simAnalytics.realizedR += rContrib.realizedR;
+    simAnalytics.unrealizedR += rContrib.unrealizedR;
     const exitShares=visibleExits.reduce((s,e)=>s+e.shares,0);
     const remainShares=totalEntryShares-exitShares;
     if(remainShares>0&&curPrice){
       const unrealPL=sign*(curPrice-avgEntry)*remainShares;
       simAnalytics.unrealizedPL+=unrealPL;
-      if(initRisk>0){
-        simAnalytics.unrealizedR+=unrealPL/(initRisk*totalEntryShares);
-      }
     }
-    // If fully closed, count as completed trade for stats
+    // If fully closed, count as completed trade for stats. Win/loss R buckets
+    // use the trade's chosen-mode R (rContrib.realizedR when fully closed).
     if(exitShares>=totalEntryShares){
       simAnalytics.totalTrades++;
       const entryDate=t.entries[0].date;
@@ -6283,10 +6346,10 @@ function simRecalcAnalytics(){
       const holdDays=Math.round((new Date(lastExDate)-new Date(entryDate))/86400000)||1;
       if(realizedPL>=0){
         simAnalytics.wins++;simAnalytics.totalWinPL+=realizedPL;simAnalytics.totalWinDays+=holdDays;
-        if(initRisk>0)simAnalytics.totalWinR+=realizedPL/(initRisk*totalEntryShares);
+        simAnalytics.totalWinR+=rContrib.realizedR;
       }else{
         simAnalytics.losses++;simAnalytics.totalLossPL+=realizedPL;simAnalytics.totalLossDays+=holdDays;
-        if(initRisk>0)simAnalytics.totalLossR+=realizedPL/(initRisk*totalEntryShares);
+        simAnalytics.totalLossR+=rContrib.realizedR;
       }
     }
   }
@@ -6846,14 +6909,19 @@ function simRenderTradesList(){
     let pl=0,plR='';
     if(isOpen&&curPrice){
       pl=sign*(curPrice-avgEntry)*remainShares;
-      const ir=t._initialRisk>0?t._initialRisk:(t.riskPerShare>0?t.riskPerShare:0);
-      if(ir>0&&remainShares)plR=` (${(pl/(ir*remainShares)).toFixed(1)}R)`;
     }else{
       let closedPL=0;
       for(const ex of visExits){closedPL+=sign*(ex.price-avgEntry)*ex.shares;}
       pl=closedPL;
+    }
+    // R label honors rMultipleMode. Adjusted = today's behavior (open trades
+    // show MTM-on-remainder R; closed trades show realized $ ÷ initial $ risk).
+    // Simple = per-share R at the trade's last price, regardless of partials.
+    {
+      const r=computeTradeR(t,visExits,totalShares,avgEntry,isOpen?curPrice:null);
+      const total=(r.realizedR||0)+(r.unrealizedR||0);
       const ir=t._initialRisk>0?t._initialRisk:(t.riskPerShare>0?t.riskPerShare:0);
-      if(ir>0&&totalShares)plR=` (${(pl/(ir*totalShares)).toFixed(1)}R)`;
+      if(ir>0) plR=` (${total.toFixed(1)}R)`;
     }
     const plStr=pl>=0?`+$${pl.toFixed(0)}`:`-$${Math.abs(pl).toFixed(0)}`;
     const plClass=pl>=0?'pos':'neg';
@@ -7405,6 +7473,7 @@ function readTickerFilters(ids){
   return {
     years: Math.max(1, parseInt(byId(ids.years)?.value, 10) || 2),
     minAdr: num(ids.adr, 0, 0),
+    minPrice: ids.minPrice ? num(ids.minPrice, 0, 0) : 0,
     skipMaEnabled: !!byId(ids.skipMaEnabled)?.checked,
     skipMaPeriod: Math.max(1, parseInt(byId(ids.skipMaPeriod)?.value, 10) || 50),
   };
@@ -8898,6 +8967,13 @@ async function openPrefsPage(){
     document.getElementById('prefs-port').value=Number.isFinite(p.port)?p.port:5051;
     document.getElementById('prefs-auto-open-browser').checked=(p.autoOpenBrowser!==false);
     document.getElementById('prefs-auto-update-check').checked=!!p.autoCheckForUpdates;
+    {
+      const rMode=(p.rMultipleMode==='simple')?'simple':'adjusted';
+      const adj=document.getElementById('prefs-r-mode-adjusted');
+      const sim=document.getElementById('prefs-r-mode-simple');
+      if(adj) adj.checked=(rMode==='adjusted');
+      if(sim) sim.checked=(rMode==='simple');
+    }
     document.getElementById('prefs-default-capital').value=Number.isFinite(p.defaultStartingCapital)?p.defaultStartingCapital:100000;
     document.getElementById('prefs-vs-symbol').value=(p.vsSymbol||'SPY').toUpperCase();
     document.getElementById('prefs-data-dir').textContent=ud.path||'(unknown)';
@@ -9074,6 +9150,7 @@ async function openPrefsPage(){
   const _prefsFieldIds = [
     'prefs-email','prefs-alias','prefs-theme','prefs-port','prefs-vs-symbol',
     'prefs-default-capital','prefs-auto-open-browser','prefs-auto-update-check',
+    'prefs-r-mode-adjusted','prefs-r-mode-simple',
   ];
   function _prefsSnapshot(){
     const out = {};
@@ -9122,6 +9199,7 @@ async function openPrefsPage(){
       port:port,
       autoOpenBrowser:document.getElementById('prefs-auto-open-browser').checked,
       autoCheckForUpdates:document.getElementById('prefs-auto-update-check').checked,
+      rMultipleMode:(document.getElementById('prefs-r-mode-simple')?.checked?'simple':'adjusted'),
       defaultStartingCapital:cap,
       vsSymbol:vs,
     };
@@ -9136,6 +9214,16 @@ async function openPrefsPage(){
       }catch(_){}
       if(vs !== (vsSymbol||'SPY').toUpperCase()){
         vsSymbol=vs; spyBars=null; try{ updateSpyOverlay(); }catch(_){}
+      }
+      // R-mode change re-renders all R numbers using the helper (analytics
+      // panel, trade-card R labels). Server-side analyses recompute next time
+      // the user runs an analysis report.
+      const newRMode = body.rMultipleMode || 'adjusted';
+      if (newRMode !== rMultipleMode) {
+        rMultipleMode = newRMode;
+        try { simRecalcAnalytics(); } catch(_){}
+        try { simUpdateStatsUI(); } catch(_){}
+        try { simRenderTradesList(); } catch(_){}
       }
       status.textContent='Saved.';
       // Accept the just-saved values as the new baseline → Save disabled again.
@@ -9250,6 +9338,7 @@ document.getElementById('sim-modal-start').addEventListener('click',async()=>{
         const filters = readTickerFilters({
           years: 'sim-surprise-years',
           adr:   'sim-surprise-adr',
+          minPrice: 'sim-surprise-minprice',
           skipMaEnabled: 'sim-skip-to-ma',
           skipMaPeriod:  'sim-skip-ma-period',
         });
@@ -11578,6 +11667,9 @@ window.addEventListener('load',async()=>{
     const pj = await pr.json();
     if(pj && typeof pj.vsSymbol === 'string' && pj.vsSymbol.trim()){
       vsSymbol = pj.vsSymbol.trim().toUpperCase();
+    }
+    if(pj && typeof pj.rMultipleMode === 'string'){
+      rMultipleMode = (pj.rMultipleMode === 'simple') ? 'simple' : 'adjusted';
     }
     if(pj && pj.autoCheckForUpdates){
       // Non-blocking: don't await. If the network is slow or offline,

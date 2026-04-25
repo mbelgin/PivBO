@@ -344,7 +344,8 @@ _DEFAULT_PREFS = {
     "autoApplyUpdates": False,
     "defaultStartingCapital": 100000,
     "vsSymbol": "SPY",
-    "equityMode": "trades",  # "trades" | "timeline"
+    "equityMode": "trades",   # "trades" | "timeline"
+    "rMultipleMode": "adjusted",  # "adjusted" (position-weighted, $ P/L based) | "simple" (per-share R at final exit)
 }
 
 
@@ -718,6 +719,10 @@ def api_duel_pick_ticker():
         min_adr = max(0.0, float(body.get("minAdr") or 0.0))
     except (TypeError, ValueError):
         min_adr = 0.0
+    try:
+        min_price = max(0.0, float(body.get("minPrice") or 0.0))
+    except (TypeError, ValueError):
+        min_price = 0.0
     skip_enabled = bool(body.get("skipMaEnabled"))
     try:
         skip_period = max(1, int(body.get("skipMaPeriod") or 1))
@@ -740,7 +745,7 @@ def api_duel_pick_ticker():
         adr = _avg_adr_pct(bars)
         if adr < min_adr:
             continue
-        eligible.append({"sym": sym, "len": len(bars), "adr": adr})
+        eligible.append({"sym": sym, "len": len(bars), "adr": adr, "bars": bars})
 
     if not eligible:
         return jsonify({
@@ -748,15 +753,46 @@ def api_duel_pick_ticker():
             "eligibleCount": 0,
         }), 404
 
-    chosen = random.choice(eligible)
+    # Pick a candidate AND a start index together, retrying until we find one
+    # whose close at the start bar meets the min_price floor. Penny stocks get
+    # filtered here per-bar rather than ticker-wide because a ticker may have
+    # been a penny stock years ago and a $50 stock today (or vice versa).
+    attempts_left = max(50, len(eligible))
+    chosen = None
+    start_idx = 0
+    end_idx = 0
+    bars_chosen = None
+    while attempts_left > 0:
+        attempts_left -= 1
+        c = random.choice(eligible)
+        bars_c = c["bars"]
+        total_c = c["len"]
+        min_s = warmup
+        max_s = total_c - duel_bars - 1
+        si = random.randint(min_s, max_s) if max_s > min_s else min_s
+        if min_price > 0:
+            try:
+                price_at_start = float(bars_c[si].get("close") or 0)
+            except (TypeError, ValueError):
+                price_at_start = 0.0
+            if price_at_start < min_price:
+                continue
+        chosen = c
+        start_idx = si
+        end_idx = min(si + duel_bars, total_c - 1)
+        bars_chosen = bars_c
+        break
+
+    if chosen is None:
+        return jsonify({
+            "error": (f"No tickers match those filters at the chosen start (lowest acceptable price ${min_price:g}). "
+                      "Relax the criteria and try again."),
+            "eligibleCount": len(eligible),
+        }), 404
+
     sym = chosen["sym"]
     total_bars = chosen["len"]
-    bars = _read_ticker_bars(sym)
-
-    min_start = warmup
-    max_start = total_bars - duel_bars - 1
-    start_idx = random.randint(min_start, max_start) if max_start > min_start else min_start
-    end_idx = min(start_idx + duel_bars, total_bars - 1)
+    bars = bars_chosen if bars_chosen is not None else _read_ticker_bars(sym)
 
     return jsonify({
         "ticker": sym,
@@ -1117,7 +1153,15 @@ def _analyze_trade(trade):
 
     init_risk = trade.get("_initialRisk") or trade.get("riskPerShare") or 0
     dollar_risk = abs(init_risk) * total_shares if init_risk else 0
-    r_mult = (pl / dollar_risk) if dollar_risk > 0 else None
+    # R-multiple computed in the user's preferred mode (Adjusted = $ P/L /
+    # initial $ risk; Simple = per-share R at the trade's final exit price).
+    # SL movement never affects either mode (denominator = initial risk).
+    mode = (_load_prefs() or {}).get("rMultipleMode", "adjusted")
+    if mode == "simple" and abs(init_risk) > 0:
+        final_price = exits[-1]["price"]
+        r_mult = (sign * (final_price - avg_entry)) / abs(init_risk)
+    else:
+        r_mult = (pl / dollar_risk) if dollar_risk > 0 else None
 
     entry_date = entries[0]["date"]
     exit_date = exits[-1]["date"]
@@ -2058,7 +2102,12 @@ def _build_analysis_pdf(a):
             ]
             data.append(row)
 
-        col_widths = [0.35, 0.45, 0.95, 0.95, 0.5, 0.6, 0.8, 1.0, 0.7]
+        # Widths in inches for [#, Dir, EntryDate, ExitDate, Hold, Shares,
+        # AvgEntry, P/L, R]. Dir bumped from 0.45 to 0.6 so "SHORT" fits on
+        # one line; the two Date cols shrink from 0.95 to 0.875 each (10-char
+        # ISO dates rendered in mono fit comfortably in 0.875") to keep the
+        # total table width unchanged.
+        col_widths = [0.35, 0.60, 0.875, 0.875, 0.5, 0.6, 0.8, 1.0, 0.7]
         col_widths = [c * inch for c in col_widths]
         tbl = Table(data, colWidths=col_widths, repeatRows=1)
         style_cmds = [
