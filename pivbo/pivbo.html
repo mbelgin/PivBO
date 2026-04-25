@@ -198,7 +198,7 @@
   .filters label{font-size:11px;color:var(--muted);font-family:var(--mono);}
   .stat-badge{font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--bg3);border:1px solid var(--border);padding:3px 10px;border-radius:3px;white-space:nowrap;}
   .stat-badge span{color:var(--accent);}
-  .main{display:grid;grid-template-columns:clamp(320px,30vw,480px) 1fr;overflow:hidden;}
+  .main{display:grid;grid-template-columns:clamp(320px,30vw,480px) 1fr;grid-template-rows:minmax(0,1fr);overflow:hidden;}
   .main.sim-active{grid-template-columns:1fr clamp(300px,24vw,400px);}
   .main.sim-active .table-panel{display:none;}
   .trade-panel{border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;font-family:var(--mono);font-size:11px;position:relative;}
@@ -1368,7 +1368,9 @@
   .update-banner-label{font-weight:700;color:var(--yellow);letter-spacing:0.5px;text-transform:uppercase;font-size:10px;padding:2px 6px;border:1px solid color-mix(in srgb,var(--yellow) 60%,var(--border));border-radius:3px;white-space:nowrap;}
   .update-banner-text{color:var(--text);}
   .update-banner-text a{color:var(--yellow);text-decoration:underline;}
-  .update-banner-dismiss{margin-left:auto;background:transparent;border:0;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:2px 6px;}
+  .update-banner-cta{margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:4px 12px;background:var(--yellow);color:#151208;font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;border-radius:3px;text-decoration:none;border:1px solid var(--yellow);}
+  .update-banner-cta:hover{background:#ffd86b;border-color:#ffd86b;}
+  .update-banner-dismiss{background:transparent;border:0;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:2px 6px;}
   .update-banner-dismiss:hover{color:var(--text);}
   .seed-banner-label{font-weight:700;color:var(--accent);letter-spacing:0.5px;text-transform:uppercase;font-size:10px;padding:2px 6px;border:1px solid color-mix(in srgb,var(--accent) 60%,var(--border));border-radius:3px;white-space:nowrap;}
   .seed-banner-text{color:var(--muted);white-space:nowrap;}
@@ -1583,6 +1585,7 @@
   <div id="update-banner" class="update-banner hidden" role="status" aria-live="polite">
     <span class="update-banner-label">Update available</span>
     <span class="update-banner-text" id="update-banner-text">A newer version is available.</span>
+    <a id="update-banner-cta" class="update-banner-cta" href="#" target="_blank" rel="noopener">Update now</a>
     <button class="update-banner-dismiss" id="update-banner-dismiss" aria-label="Dismiss">&times;</button>
   </div>
   <div id="seed-banner" class="seed-banner hidden" role="status" aria-live="polite">
@@ -2663,15 +2666,6 @@
       </div>
 
       <div class="prefs-section">
-        <h3>Updates</h3>
-        <label><input type="checkbox" id="prefs-auto-update-check" style="margin-right:6px;">Check for updates on launch</label>
-        <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
-          <button class="sim-btn" id="prefs-check-updates-btn">Check for updates now</button>
-          <span id="prefs-update-status" style="font-size:11px;color:var(--muted);"></span>
-        </div>
-      </div>
-
-      <div class="prefs-section">
         <h3>Local Data Folder</h3>
         <div style="font-family:var(--mono);font-size:11px;color:var(--text);word-break:break-all;" id="prefs-data-dir">—</div>
       </div>
@@ -2698,6 +2692,15 @@
           Version <span id="prefs-about-version" style="font-family:var(--mono);color:var(--accent);">—</span><br>
           A self-hosted, bar-by-bar trading simulator for studying momentum setups on historical US equity data.<br>
           Runs entirely on your own machine.
+        </div>
+      </div>
+
+      <div class="prefs-section">
+        <h3>Updates</h3>
+        <label><input type="checkbox" id="prefs-auto-update-check" style="margin-right:6px;">Check for updates on launch</label>
+        <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
+          <button class="sim-btn" id="prefs-check-updates-btn">Check for updates now</button>
+          <span id="prefs-update-status" style="font-size:11px;color:var(--muted);"></span>
         </div>
       </div>
       <div class="prefs-section">
@@ -11585,11 +11588,13 @@ window.addEventListener('load',async()=>{
           if(!j || !j.updateAvailable) return;
           const banner = document.getElementById('update-banner');
           const text   = document.getElementById('update-banner-text');
+          const cta    = document.getElementById('update-banner-cta');
           const dismiss = document.getElementById('update-banner-dismiss');
           if(!banner || !text) return;
           const ver = j.latest ? `v${j.latest}` : 'a newer version';
           const link = j.url || 'https://github.com/mbelgin/PivBO/releases/latest';
-          text.innerHTML = `${ver} is available. <a href="${link}" target="_blank" rel="noopener">Download</a> or visit <a href="https://pivbo.com" target="_blank" rel="noopener">pivbo.com</a>.`;
+          text.innerHTML = `${ver} is available (you have v${j.current||'—'}).`;
+          if(cta) cta.href = link;
           banner.classList.remove('hidden');
           if(dismiss) dismiss.addEventListener('click', () => banner.classList.add('hidden'), { once: true });
         })
