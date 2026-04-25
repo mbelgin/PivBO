@@ -9155,9 +9155,9 @@ async function openPrefsPage(){
       const r=await fetch('/api/updates/check');
       const j=await r.json();
       if(j.updateAvailable){
-        out.innerHTML=`Update available: <strong>v${j.latest}</strong>${j.url?` — <a href="${j.url}" target="_blank" rel="noopener">release notes</a>`:''}`;
+        out.innerHTML=`Update available: <strong>v${j.latest}</strong>${j.url?` <a href="${j.url}" target="_blank" rel="noopener">release notes</a>`:''}`;
       }else if(j.message){
-        out.textContent=`${j.message} (current v${j.current||'—'})`;
+        out.textContent=j.message;
       }else{
         out.textContent=`Up to date (v${j.current||'—'})`;
       }
