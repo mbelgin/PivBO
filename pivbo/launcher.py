@@ -98,7 +98,7 @@ class PivBOLauncher(toga.App):
             style=Pack(font_size=14, font_weight="bold", padding_bottom=2),
         )
         subtitle = toga.Label(
-            "bar-by-bar trading simulator",
+            "Open Source bar-by-bar trading simulator",
             style=Pack(font_size=9, color="#666", padding_bottom=12),
         )
         self._status = toga.Label(
