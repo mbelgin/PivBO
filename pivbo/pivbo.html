@@ -61,6 +61,7 @@
      landing doesn't need a symbol filter / nav / theme toggle cluttering
      the composition. */
   #page-home{position:absolute;inset:0;background:var(--bg);z-index:50;overflow-y:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;}
+  .home-prefs-btn{position:absolute;top:18px;right:18px;z-index:3;}
   #page-home::before{content:'';position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgba(0,212,170,0.035) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,170,0.035) 1px,transparent 1px);background-size:48px 48px;mask-image:radial-gradient(ellipse at center,black 10%,transparent 70%);-webkit-mask-image:radial-gradient(ellipse at center,black 10%,transparent 70%);}
   #page-home::after{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 20% 0%,rgba(0,212,170,0.12),transparent 50%),radial-gradient(ellipse at 80% 100%,rgba(255,107,53,0.08),transparent 50%);}
   .home-inner{position:relative;z-index:1;width:100%;max-width:1100px;display:flex;flex-direction:column;align-items:center;}
@@ -2495,6 +2496,12 @@
 <!-- Saved Simulations Page -->
 <!-- Landing / Home Page — shown on first load when no sim is active -->
 <div class="hidden" id="page-home">
+  <button id="home-prefs-btn" class="global-prefs-btn home-prefs-btn" title="Preferences" aria-label="Preferences">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"></circle>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+    </svg>
+  </button>
   <div class="home-inner">
     <div class="home-hero">
       <img class="home-brand-icon" src="assets/pivbo.png" alt="" aria-hidden="true">
@@ -8907,6 +8914,8 @@ async function openPrefsPage(){
 (function(){
   const gear=document.getElementById('global-prefs-btn');
   if(gear) gear.addEventListener('click',()=>openPrefsPage());
+  const homeGear=document.getElementById('home-prefs-btn');
+  if(homeGear) homeGear.addEventListener('click',()=>openPrefsPage());
 
   // Panels popover — single place to toggle optional chart panes.
   const panBtn = document.getElementById('panels-btn');
