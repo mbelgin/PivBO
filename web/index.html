@@ -377,34 +377,24 @@ python pivbo_server.py</code></pre>
           create a Start menu shortcut (winget portable packages can't).
           Open a <em>fresh</em> command prompt or PowerShell and type
           <code>pivbo</code>. (A pre-existing terminal will not see the
-          new shim until restarted.) When the icon appears in the
-          taskbar, right-click it and choose <strong>Pin to taskbar</strong>.
-          After that it's a permanent one-click launcher. Same idea works
-          for Pin to Start.
+          new <code>pivbo</code> command until restarted.) When the icon
+          appears in the taskbar, right-click it and choose
+          <strong>Pin to taskbar</strong>. After that it's a permanent
+          one-click launcher. Same idea works for Pin to Start.
         </p>
         <p>
-          <strong>Sharing PivBO with another device on your Wi-Fi:</strong>
+          <strong>Sharing PivBO with another machine on your Wi-Fi:</strong>
           the launcher window has a <strong>Listen on local network</strong>
           switch. Flip it on (then click Stop, then Start) and the status
           line shows both the loopback URL and an
           <code>http://&lt;your-LAN-IP&gt;:5051</code> address. Open that
-          on a phone or laptop on the same network and you get the same
+          on another computer on the same network and you get the same
           PivBO. The choice is remembered across launches. Use only on
           networks you trust; do not enable on public Wi-Fi.
         </p>
         <p>
-          Your user data (simulations, templates, analyses,
-          preferences) lives in a platform-appropriate folder:
-        </p>
-        <ul>
-          <li><strong>Windows</strong>: <code>%LOCALAPPDATA%\PivBO\</code></li>
-          <li><strong>macOS</strong>: <code>~/Library/Application Support/PivBO/</code></li>
-          <li><strong>Linux</strong>: <code>~/.local/share/PivBO/</code></li>
-        </ul>
-        <p>
-          Reinstalling or upgrading never touches that folder. Any
-          ticker you downloaded with a wider date range is preserved
-          across updates.
+          Where your data lives and how it's organized: see the
+          <strong>Your data</strong> section below.
         </p>
       </div>
     </details>
@@ -509,18 +499,24 @@ python pivbo_server.py</code></pre>
             appear on the chart; drag them to adjust before submitting.</li>
           <li><strong>Size</strong>: either a <strong>Risk %</strong> of
             current equity (PivBO computes shares so the distance to SL
-            equals that risk), or an explicit share count.</li>
+            equals that risk), or a <strong>Position Size %</strong> of
+            current capital (PivBO computes shares to deploy that fraction
+            of equity into the trade).</li>
           <li><strong>Limit</strong> toggle with an optional
             <strong>max gap%</strong>: the order stays live until the
             bar's touch matches; gaps past the limit by more than N%
             cancel the order rather than filling at the unrealistic
             open.</li>
-          <li><strong>Flex open-bar SL</strong>: on the bar a trade
-            enters, uses only the bar's close to check SL and caps any
-            fill at the SL price. Prevents impossible fills when a bar
-            opens past SL, rallies to trigger entry, dips back, and
-            closes above SL.</li>
         </ul>
+        <p>
+          <strong>Flex open-bar SL.</strong> A separate toggle that solves
+          a specific same-bar fill problem. When enabled: on the bar a
+          trade enters, PivBO uses only the bar's close to check the stop
+          loss, and caps any fill at the SL price. Without it, you can get
+          impossible fills on bars that open past SL, rally to trigger
+          entry, dip back, and close above SL. Recommended on. See the
+          FAQ for a worked example.
+        </p>
         <p>
           Once a trade is open, the chart shows entry and SL levels as
           live lines. The trade panel flips to show open positions:
@@ -575,6 +571,53 @@ python pivbo_server.py</code></pre>
           panes, etc.) as a named preset. New simulations can start
           from a template instead of the default layout. Manage them
           from the Templates button on the sim panel.
+        </p>
+      </div>
+    </details>
+
+    <details class="accordion-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">Your data: where it lives</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          PivBO keeps everything you generate in a single per-user folder
+          on your own machine. No cloud sync. No accounts. No upload of
+          any kind.
+        </p>
+        <ul>
+          <li><strong>Windows</strong>: <code>%LOCALAPPDATA%\PivBO\</code></li>
+          <li><strong>macOS</strong>: <code>~/Library/Application Support/PivBO/</code></li>
+          <li><strong>Linux</strong>: <code>~/.local/share/PivBO/</code></li>
+        </ul>
+        <p>What's inside:</p>
+        <ul>
+          <li><code>collected_stocks/</code> &mdash; the historical
+            ticker CSVs (around 900 daily-bar files seeded on first launch,
+            plus anything you've downloaded since).</li>
+          <li><code>simulations/</code> &mdash; one JSON per saved sim.</li>
+          <li><code>templates/</code> &mdash; saved chart-and-indicator
+            presets.</li>
+          <li><code>analyses/</code> &mdash; saved Analysis and Compare
+            reports.</li>
+          <li><code>preferences.json</code> &mdash; your gear-icon settings.</li>
+          <li><code>drawings.json</code> &mdash; per-ticker drawings.</li>
+        </ul>
+        <p>
+          <strong>Reinstalling or upgrading never touches this folder.</strong>
+          Wider date ranges you've pulled for individual tickers are
+          preserved across updates. If you ever want to start over, close
+          PivBO and delete the folder; the next launch re-seeds from
+          scratch.
+        </p>
+        <p>
+          Backup is whatever your normal disk-backup is. To move PivBO to
+          a new machine, copy the folder over before first launch on the
+          new machine; PivBO will skip the seeder and pick up exactly
+          where you left off.
         </p>
       </div>
     </details>
@@ -695,12 +738,13 @@ python pivbo_server.py</code></pre>
           <li><strong>Port</strong>: the local server port. Change this
             if 5051 collides with something else, or to run two
             instances side-by-side for self-duel testing.</li>
-          <li><strong>Updates</strong>: toggles and a manual
-            &ldquo;Check now&rdquo; button. The toggles and the
-            check-endpoint are wired, but the auto-download-and-swap
-            pipeline is planned, not live. For now, download the
-            latest release from the <a href="#download">Download</a>
-            section and replace your installation.</li>
+          <li><strong>Updates</strong>: a <strong>Check for updates</strong>
+            button (queries the GitHub Releases API and tells you whether
+            a newer version exists), plus a <strong>Check on launch</strong>
+            toggle (silently checks at startup and surfaces a banner if a
+            newer version is available). PivBO does not auto-download or
+            replace itself; if a newer version exists, the banner links
+            you to the <a href="#download">Download</a> section.</li>
         </ul>
       </div>
     </details>
@@ -772,8 +816,14 @@ python pivbo_server.py</code></pre>
       </summary>
       <div class="accordion-body">
         <p>
-          Nowhere. PivBO runs as a local server on your own machine. Every simulation, trade,
-          preference, and analysis stays in your user data directory. No cloud, no accounts, no tracking.
+          Nowhere. PivBO runs as a local server on your own machine. Every
+          simulation, trade, preference, and analysis stays in a per-user
+          folder on your disk: <code>%LOCALAPPDATA%\PivBO\</code> on Windows,
+          <code>~/Library/Application Support/PivBO/</code> on macOS,
+          <code>~/.local/share/PivBO/</code> on Linux. Reinstalling or upgrading
+          never touches it. No cloud, no accounts, no tracking. See the
+          <a href="#docs">Docs &rarr; Your data</a> section for what's inside
+          and how to back it up.
         </p>
       </div>
     </details>
@@ -806,6 +856,46 @@ python pivbo_server.py</code></pre>
           PivBO leans heavily into <a href="https://qullamaggie.com/" target="_blank" rel="noopener">Qullamaggie</a>-style
           momentum trading, but it works for any approach. You get the core price and volume
           action, plus a small set of key indicators (MAs, ATR, ADR).
+        </p>
+      </div>
+    </details>
+
+    <details class="accordion-item faq-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">What is &ldquo;Flex open-bar SL&rdquo; and should I leave it on?</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p>
+          A toggle in the trade form that fixes a specific
+          same-bar-entry edge case. Recommended on by default.
+        </p>
+        <p>
+          <strong>The problem it solves.</strong> Imagine you submit a
+          long limit at $100 with a stop at $98, mid-day on bar X. The
+          rest of bar X then prints: open $97 (already below SL), high
+          $103 (touches your limit so the order fills), low $96 (would
+          retrigger SL), close $101. Without Flex, the simulator could
+          fill you at the limit AND register the low as a stop-out on
+          the same bar. In a real market that sequence is rarely
+          tradable as written; you'd more likely have skipped the
+          entry entirely once price gapped under your stop.
+        </p>
+        <p>
+          <strong>What Flex does on the entry bar.</strong> It checks
+          your stop only against the bar's <em>close</em>, and caps any
+          exit at the SL price. So in the example: you fill at $100,
+          and the bar closes at $101 above your stop. Your trade is
+          live and the SL just hasn't triggered yet. The next bar
+          processes normally.
+        </p>
+        <p>
+          <strong>Cost.</strong> A small percentage of trades that the
+          unconstrained engine would have stopped out on the entry bar
+          stay open instead. In practice this is negligible compared to
+          the impossible-fill artifacts it prevents.
         </p>
       </div>
     </details>

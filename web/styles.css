@@ -122,6 +122,14 @@ a:hover {
   flex: 1 1 auto;
 }
 
+/* On narrow viewports the nav links wrap underneath the brand and
+   shove the hero down. Hide them entirely below 720px; users can
+   reach Features/Download/Docs/FAQ via the page itself, or the
+   GitHub button via direct URL. Brand + Coffee + theme toggle stay. */
+@media (max-width: 720px) {
+  .nav-links { display: none; }
+}
+
 .nav-link {
   padding: 7px 12px;
   font-family: var(--sans);
