@@ -398,18 +398,94 @@ def api_seed_status():
         return jsonify(dict(_seed_state))
 
 
+_UPDATE_CHECK_URL = "https://api.github.com/repos/mbelgin/PivBO/releases/latest"
+_UPDATE_RELEASES_PAGE = "https://github.com/mbelgin/PivBO/releases/latest"
+_UPDATE_CACHE = {"at": 0.0, "data": None}
+_UPDATE_CACHE_TTL_SEC = 600  # 10 minutes; light enough to be near-realtime, heavy enough to avoid rate-limit
+
+
+def _semver_tuple(s):
+    """Parse "0.0.2" → (0, 0, 2). Returns None on anything unparseable so
+    the caller can fall back to string compare. Strips a leading 'v'."""
+    if not s:
+        return None
+    s = s.lstrip("vV").split("-")[0].split("+")[0]  # drop pre-release / build metadata
+    try:
+        parts = tuple(int(x) for x in s.split("."))
+    except ValueError:
+        return None
+    # Pad to at least 3 parts so 0.1 < 0.1.1 etc.
+    while len(parts) < 3:
+        parts = parts + (0,)
+    return parts
+
+
+def _semver_gt(a, b):
+    """Return True if a is strictly newer than b in semver patch ordering."""
+    ta, tb = _semver_tuple(a), _semver_tuple(b)
+    if ta is None or tb is None:
+        return (a or "") > (b or "")
+    return ta > tb
+
+
 @app.route("/api/updates/check")
 def api_updates_check():
-    # Placeholder until the GitHub-release poll is wired up. Shape of the
-    # response is final — the client just keys off `updateAvailable`.
-    return jsonify({
-        "current": VERSION,
-        "latest": VERSION,
-        "updateAvailable": False,
-        "message": "Update channel not yet connected.",
-        "releasedAt": None,
-        "url": None,
-    })
+    """Compare the installed VERSION against the latest GitHub Release tag.
+    Cached for ~10 min so refreshing the Preferences panel doesn't hammer
+    GitHub's API. Errors return updateAvailable=False with a human-readable
+    `message` so the UI can show "could not check" without breaking.
+    """
+    force = request.args.get("force") in ("1", "true", "yes")
+    now = time.time()
+    if not force and _UPDATE_CACHE["data"] is not None and (now - _UPDATE_CACHE["at"]) < _UPDATE_CACHE_TTL_SEC:
+        return jsonify(_UPDATE_CACHE["data"])
+    try:
+        req = urllib.request.Request(
+            _UPDATE_CHECK_URL,
+            headers={
+                "User-Agent": f"PivBO-update-checker/{VERSION}",
+                "Accept": "application/vnd.github+json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        latest_tag = (payload.get("tag_name") or "").lstrip("vV")
+        update_available = bool(latest_tag) and _semver_gt(latest_tag, VERSION)
+        if update_available:
+            message = f"Update available: v{latest_tag} (you have v{VERSION})."
+        elif latest_tag:
+            message = f"You're on the latest version (v{VERSION})."
+        else:
+            message = "Could not parse the latest release tag."
+        result = {
+            "current": VERSION,
+            "latest": latest_tag or None,
+            "updateAvailable": update_available,
+            "message": message,
+            "releasedAt": payload.get("published_at"),
+            "url": payload.get("html_url") or _UPDATE_RELEASES_PAGE,
+        }
+    except (urllib.error.URLError, urllib.error.HTTPError) as e:
+        result = {
+            "current": VERSION,
+            "latest": None,
+            "updateAvailable": False,
+            "message": f"Could not reach GitHub: {e}",
+            "releasedAt": None,
+            "url": _UPDATE_RELEASES_PAGE,
+        }
+    except Exception as e:
+        result = {
+            "current": VERSION,
+            "latest": None,
+            "updateAvailable": False,
+            "message": f"Update check failed: {e}",
+            "releasedAt": None,
+            "url": _UPDATE_RELEASES_PAGE,
+        }
+    _UPDATE_CACHE["at"] = now
+    _UPDATE_CACHE["data"] = result
+    return jsonify(result)
 
 
 @app.route("/api/server/stop", methods=["POST"])

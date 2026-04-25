@@ -1362,6 +1362,13 @@
      left as tickers land. */
   .seed-banner{display:flex;align-items:center;gap:12px;padding:6px 14px;background:color-mix(in srgb,var(--accent) 10%,var(--bg2));border-bottom:1px solid color-mix(in srgb,var(--accent) 40%,var(--border));font-family:var(--mono);font-size:11px;color:var(--text);}
   .seed-banner.hidden{display:none!important;}
+  .update-banner{display:flex;align-items:center;gap:12px;padding:6px 14px;background:color-mix(in srgb,var(--yellow) 10%,var(--bg2));border-bottom:1px solid color-mix(in srgb,var(--yellow) 40%,var(--border));font-family:var(--mono);font-size:11px;color:var(--text);}
+  .update-banner.hidden{display:none!important;}
+  .update-banner-label{font-weight:700;color:var(--yellow);letter-spacing:0.5px;text-transform:uppercase;font-size:10px;padding:2px 6px;border:1px solid color-mix(in srgb,var(--yellow) 60%,var(--border));border-radius:3px;white-space:nowrap;}
+  .update-banner-text{color:var(--text);}
+  .update-banner-text a{color:var(--yellow);text-decoration:underline;}
+  .update-banner-dismiss{margin-left:auto;background:transparent;border:0;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:2px 6px;}
+  .update-banner-dismiss:hover{color:var(--text);}
   .seed-banner-label{font-weight:700;color:var(--accent);letter-spacing:0.5px;text-transform:uppercase;font-size:10px;padding:2px 6px;border:1px solid color-mix(in srgb,var(--accent) 60%,var(--border));border-radius:3px;white-space:nowrap;}
   .seed-banner-text{color:var(--muted);white-space:nowrap;}
   .seed-banner-bar{flex:1 1 200px;height:6px;background:color-mix(in srgb,var(--border) 80%,var(--bg));border-radius:3px;overflow:hidden;min-width:120px;}
@@ -1568,6 +1575,15 @@
          1. Seeding      — progress bar + "N of 931" counter
          2. Prompt       — "Bundled data refreshed. Update to today?" + buttons
          3. Updating     — progress bar + live job counter -->
+  <!-- Update banner. Visible only when /api/updates/check returns
+       updateAvailable=true at launch AND the user has the
+       autoCheckForUpdates pref on. Dismissable for the session;
+       persistent across launches (next launch re-checks). -->
+  <div id="update-banner" class="update-banner hidden" role="status" aria-live="polite">
+    <span class="update-banner-label">Update available</span>
+    <span class="update-banner-text" id="update-banner-text">A newer version is available.</span>
+    <button class="update-banner-dismiss" id="update-banner-dismiss" aria-label="Dismiss">&times;</button>
+  </div>
   <div id="seed-banner" class="seed-banner hidden" role="status" aria-live="polite">
     <span class="seed-banner-label" id="seed-banner-label">One-time Download</span>
     <span class="seed-banner-text" id="seed-banner-text">Fetching chart data for <span id="seed-banner-total">—</span> tickers.</span>
@@ -2642,7 +2658,6 @@
       <div class="prefs-section">
         <h3>Updates</h3>
         <label><input type="checkbox" id="prefs-auto-update-check" style="margin-right:6px;">Check for updates on launch</label>
-        <label style="margin-top:6px;"><input type="checkbox" id="prefs-auto-update-apply" style="margin-right:6px;">Apply updates automatically when available</label>
         <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
           <button class="sim-btn" id="prefs-check-updates-btn">Check for updates now</button>
           <span id="prefs-update-status" style="font-size:11px;color:var(--muted);"></span>
@@ -8873,7 +8888,6 @@ async function openPrefsPage(){
     document.getElementById('prefs-port').value=Number.isFinite(p.port)?p.port:5051;
     document.getElementById('prefs-auto-open-browser').checked=(p.autoOpenBrowser!==false);
     document.getElementById('prefs-auto-update-check').checked=!!p.autoCheckForUpdates;
-    document.getElementById('prefs-auto-update-apply').checked=!!p.autoApplyUpdates;
     document.getElementById('prefs-default-capital').value=Number.isFinite(p.defaultStartingCapital)?p.defaultStartingCapital:100000;
     document.getElementById('prefs-vs-symbol').value=(p.vsSymbol||'SPY').toUpperCase();
     document.getElementById('prefs-data-dir').textContent=ud.path||'(unknown)';
@@ -9048,7 +9062,6 @@ async function openPrefsPage(){
   const _prefsFieldIds = [
     'prefs-email','prefs-alias','prefs-theme','prefs-port','prefs-vs-symbol',
     'prefs-default-capital','prefs-auto-open-browser','prefs-auto-update-check',
-    'prefs-auto-update-apply',
   ];
   function _prefsSnapshot(){
     const out = {};
@@ -9097,7 +9110,6 @@ async function openPrefsPage(){
       port:port,
       autoOpenBrowser:document.getElementById('prefs-auto-open-browser').checked,
       autoCheckForUpdates:document.getElementById('prefs-auto-update-check').checked,
-      autoApplyUpdates:document.getElementById('prefs-auto-update-apply').checked,
       defaultStartingCapital:cap,
       vsSymbol:vs,
     };
@@ -11547,12 +11559,32 @@ window.addEventListener('load',async()=>{
     if(el && j && j.version) el.textContent = `PivBO v${j.version}`;
   }catch(_){}
   // Load app-wide preferences so the VS overlay, default capital, etc.
-  // reflect the user's choice from the first render.
+  // reflect the user's choice from the first render. Also kick off the
+  // launch-time update check if the user opted in.
   try{
     const pr = await fetch('/api/preferences');
     const pj = await pr.json();
     if(pj && typeof pj.vsSymbol === 'string' && pj.vsSymbol.trim()){
       vsSymbol = pj.vsSymbol.trim().toUpperCase();
+    }
+    if(pj && pj.autoCheckForUpdates){
+      // Non-blocking: don't await. If the network is slow or offline,
+      // app boot continues normally and the banner just doesn't show.
+      fetch('/api/updates/check')
+        .then(r => r.ok ? r.json() : null)
+        .then(j => {
+          if(!j || !j.updateAvailable) return;
+          const banner = document.getElementById('update-banner');
+          const text   = document.getElementById('update-banner-text');
+          const dismiss = document.getElementById('update-banner-dismiss');
+          if(!banner || !text) return;
+          const ver = j.latest ? `v${j.latest}` : 'a newer version';
+          const link = j.url || 'https://github.com/mbelgin/PivBO/releases/latest';
+          text.innerHTML = `${ver} is available. <a href="${link}" target="_blank" rel="noopener">Download</a> or visit <a href="https://pivbo.com" target="_blank" rel="noopener">pivbo.com</a>.`;
+          banner.classList.remove('hidden');
+          if(dismiss) dismiss.addEventListener('click', () => banner.classList.add('hidden'), { once: true });
+        })
+        .catch(() => { /* offline / firewall — silent */ });
     }
   }catch(_){}
   initChart();
