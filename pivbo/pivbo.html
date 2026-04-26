@@ -8723,8 +8723,17 @@ async function openAnalysisReport(simId){
 
 function renderAnalysisReport(a){
   const el=document.getElementById('analysis-content');
-  const progressNote=(a.isComplete||(a.progress||0)>=100)?'':`<div class="rpt-banner warning">⚠ Simulation is incomplete (${a.progress||0}%). Metrics reflect closed trades only; open positions are excluded.</div>`;
-  const cacheNote=a._fromCache?'<div class="rpt-banner info" style="font-size:10px;padding:4px 8px;">Showing cached analysis from '+_safeTxt((a.generatedAt||'').slice(0,19).replace('T',' '))+' UTC.</div>':'';
+  // Warnings are server-built (a.warnings) so HTML / PDF / CSV / TXT all
+  // surface the same caveats. Edit pivbo_server.py:_build_report_warnings
+  // to add new ones; every renderer picks them up.
+  const _warningsHtml = (a.warnings || []).map(w => {
+    const cls = w.severity === 'info' ? 'info' : 'warning';
+    const icon = w.severity === 'info' ? 'ℹ' : '⚠';
+    const fontSize = w.severity === 'info' ? 'style="font-size:10px;padding:4px 8px;"' : '';
+    return `<div class="rpt-banner ${cls}" ${fontSize}>${icon} ${_safeTxt(w.message)}</div>`;
+  }).join('');
+  const progressNote = _warningsHtml;
+  const cacheNote = '';
 
   const plClass=(a.totalNetProfit||0)>=0?'pos':'neg';
   const rClass=(a.totalR||0)>=0?'pos':'neg';
@@ -8990,17 +8999,30 @@ function renderEquityChart(a){
 
 function exportAnalysisCSV(a){
   const rows=[];
+  // Warnings first — surfaces caveats (incomplete sim, cached analysis,
+  // no trades) at the top so a reader can't miss them.
+  for (const w of (a.warnings || [])) {
+    rows.push([`[${(w.severity || '').toUpperCase()}]`, w.message || '']);
+  }
+  if ((a.warnings || []).length) rows.push([]);
   rows.push(['Metric','Value']);
   // Build R-section rows from the schema. Each section becomes a
   // labelled block ("Adjusted R - Total adjR", etc.) so a single CSV
-  // can carry both modes without column ambiguity.
+  // can carry both modes without column ambiguity. Numeric values are
+  // rounded to 2 decimals before stringification — same precision the
+  // HTML/PDF/TXT renderers display, so all four formats agree.
+  const csvRound = (v) => (typeof v === 'number') ? Number(v.toFixed(2)) : v;
   const rMetrics = {};
   for (const sec of (a.rSections || [])) {
     for (const cell of (sec.cells || [])) {
       const key = `${sec.title} - ${cell.label}`;
       let v = cell.value;
       if (cell.fmt === 'rPair' && Array.isArray(v)) {
-        v = `${v[0] == null ? '' : v[0]} / ${v[1] == null ? '' : v[1]}`;
+        const hi = v[0] == null ? '' : csvRound(v[0]);
+        const lo = v[1] == null ? '' : csvRound(v[1]);
+        v = `${hi} / ${lo}`;
+      } else if (typeof v === 'number') {
+        v = csvRound(v);
       }
       rMetrics[key] = v;
     }
@@ -9044,6 +9066,12 @@ function exportAnalysisText(a){
   lines.push(`  Progress:         ${a.isComplete?'COMPLETE':a.progress+'%'}`);
   lines.push(`  Generated:        ${(a.generatedAt||'').slice(0,19).replace('T',' ')} UTC`);
   lines.push('');
+  // Warnings — same source as the HTML banners and CSV header rows.
+  for (const w of (a.warnings || [])) {
+    const tag = w.severity === 'info' ? 'NOTE   ' : 'WARNING';
+    lines.push(`  [${tag}] ${w.message || ''}`);
+  }
+  if ((a.warnings || []).length) lines.push('');
   // R-sections: schema-driven. Single source of truth for R-section
   // layout = a.rSections (built server-side from R_SECTION_METRICS).
   // Editing the metric list in pivbo_server.py auto-flows to here, the

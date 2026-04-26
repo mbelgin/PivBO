@@ -1222,6 +1222,38 @@ R_SECTION_METRICS = [
 ]
 
 
+def _build_report_warnings(progress, is_complete, from_cache, generated_at, total_trades):
+    """Single source of truth for report-level warnings/notices. Walked by
+    every renderer (HTML/PDF/CSV/TXT). Each entry has:
+      severity: 'warning' (serious caveat) | 'info' (FYI)
+      kind:     stable id for filtering / styling
+      message:  human-readable single line
+    Renderers must use this list — no hardcoded warning strings per format."""
+    out = []
+    if not is_complete and (progress or 0) < 100:
+        out.append({
+            "severity": "warning",
+            "kind": "incomplete-sim",
+            "message": (
+                f"Simulation is incomplete ({progress or 0}%). Metrics reflect "
+                "closed trades only; open positions are excluded."
+            ),
+        })
+    if total_trades == 0:
+        out.append({
+            "severity": "warning",
+            "kind": "no-trades",
+            "message": "No closed trades yet. Most metrics will read as zero or blank.",
+        })
+    if from_cache and generated_at:
+        out.append({
+            "severity": "info",
+            "kind": "cached",
+            "message": f"Showing cached analysis from {generated_at[:19].replace('T', ' ')} UTC.",
+        })
+    return out
+
+
 def _build_r_sections(rAdjusted, rSimple):
     """Resolve the schema against a specific analysis result. Returns
     a list of two section dicts (Adjusted, Simple), each with title,
@@ -1670,6 +1702,16 @@ def compute_analysis(sim):
             "maxDrawdown": round(aggs_simple.get("maxDrawdown") or 0, 2),
             "sharpeTrades": round(aggs_simple["sharpeTrades"], 3) if aggs_simple.get("sharpeTrades") is not None else None,
         },
+        # Report-level warnings — single source for all renderers. Edit the
+        # _build_report_warnings logic to add new caveats; every output
+        # format picks them up.
+        "warnings": _build_report_warnings(
+            progress=progress if not is_complete else 100,
+            is_complete=is_complete,
+            from_cache=False,  # Set later in the cached-fetch path.
+            generated_at=_iso_now(),
+            total_trades=len(closed),
+        ),
         # Single source of truth for R-section layout. Built from R_SECTION_METRICS
         # and the two mode aggregates above. HTML / PDF / CSV / TXT renderers
         # ALL walk this list. Edit the schema in one place, every renderer
@@ -1809,6 +1851,16 @@ def api_simulation_analyze(sim_id):
 
         cache["notes"] = sim.get("notes", cache.get("notes", "")) or ""
         cache["_fromCache"] = True
+        # Re-build warnings now that we know this fetch is cached. Without
+        # this, the cached payload's warnings array would still say
+        # "from_cache=False" from the original compute.
+        cache["warnings"] = _build_report_warnings(
+            progress=cache.get("progress") if not cache.get("isComplete") else 100,
+            is_complete=bool(cache.get("isComplete")),
+            from_cache=True,
+            generated_at=cache.get("generatedAt") or "",
+            total_trades=int(cache.get("totalTrades") or 0),
+        )
         return jsonify(cache)
 
     try:
@@ -2186,12 +2238,20 @@ def _build_analysis_pdf(a):
                 f"{progress_note}")
     elements.append(Paragraph(subtitle, st["subtitle"]))
 
-    if not is_complete:
-        banner = Table([[Paragraph(f"⚠ Simulation is incomplete ({a.get('progress') or 0}%). Metrics reflect closed trades only; open positions are excluded.", st["banner"])]],
+    # Warnings — same source the HTML/CSV/TXT renderers walk. Each
+    # warning becomes a banner table row, color-coded by severity.
+    for w in (a.get("warnings") or []):
+        sev = w.get("severity") or "warning"
+        msg = w.get("message") or ""
+        if sev == "info":
+            bg, border, prefix = "#e0f7f0", "#00a684", "ℹ"
+        else:
+            bg, border, prefix = "#fff7d6", "#e0c460", "⚠"
+        banner = Table([[Paragraph(f"{prefix} {msg}", st["banner"])]],
                        colWidths=[7.4 * inch])
         banner.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), HexColor("#fff7d6")),
-            ("BOX", (0, 0), (-1, -1), 0.5, HexColor("#e0c460")),
+            ("BACKGROUND", (0, 0), (-1, -1), HexColor(bg)),
+            ("BOX", (0, 0), (-1, -1), 0.5, HexColor(border)),
             ("LEFTPADDING", (0, 0), (-1, -1), 8),
             ("RIGHTPADDING", (0, 0), (-1, -1), 8),
             ("TOPPADDING", (0, 0), (-1, -1), 6),
