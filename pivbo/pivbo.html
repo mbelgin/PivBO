@@ -1554,16 +1554,15 @@
 
   /* Open positions in left panel */
   .open-trade-card{padding:8px;margin-bottom:4px;background:var(--bg);border:1px solid var(--border);border-radius:4px;}
-  /* Open trade highlight: yellow ("active / in-progress") thick left
-     border + subtle tint. Yellow is intentional vs accent (teal) to
-     avoid the "this trade is winning / long" implication that any
-     green-shifted color would carry in a trading UI. Yellow already
-     means "in progress" elsewhere (BETA badge, duel banner, Current
-     Bar date). Scoped to .open-trade-card.open only — global accent
-     stays the same. */
+  /* Open trade highlight: dark purple. Avoids any trading-color overload
+     (green = long/win, red = short/loss, yellow already used for
+     in-progress status banners and was eye-catching enough to compete
+     with the chart). Purple is visible against both the dark and light
+     theme backgrounds without screaming for attention. Scoped to
+     .open-trade-card.open only — no global theme change. */
   .open-trade-card.open{
-    border-left:3px solid var(--yellow);
-    background:color-mix(in srgb, var(--yellow) 6%, var(--bg));
+    border-left:3px solid #8b5cf6;
+    background:color-mix(in srgb, #8b5cf6 7%, var(--bg));
     padding-left:6px; /* compensate for the thicker left border */
   }
   .open-trade-card .otc-header{display:flex;justify-content:space-between;align-items:center;}
