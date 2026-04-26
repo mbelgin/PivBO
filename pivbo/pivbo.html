@@ -1384,11 +1384,16 @@
   .sim-panel-header{padding:10px 12px;background:var(--bg3);border-bottom:1px solid var(--border);}
   .sim-panel-header .sim-name{font-size:13px;font-weight:600;color:var(--accent);}
   .sim-panel-header .sim-meta{font-size:10px;color:var(--muted);margin-top:4px;}
-  .sim-panel-section{padding:8px 12px;border-bottom:1px solid var(--border);}
-  .sim-panel-section h3{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;}
-  .sim-stats{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;}
+  /* Compact vertical layout for the sim-active right rail. The Capital
+     and Statistics sections eat real estate on smaller laptop screens
+     and squeeze the trade-history list. Tightening padding + line-height
+     here reclaims roughly a third of the section height without dropping
+     any fields. */
+  .sim-panel-section{padding:5px 12px;border-bottom:1px solid var(--border);}
+  .sim-panel-section h3{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:3px;}
+  .sim-stats{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;line-height:1.25;}
   .sim-stat-label{color:var(--muted);font-size:10px;}
-  .sim-stat-value{color:var(--text);font-weight:500;font-size:11px;text-align:right;}
+  .sim-stat-value{color:var(--text);font-weight:500;font-size:10.5px;text-align:right;}
   .sim-stat-value.pos{color:var(--green);}
   .sim-stat-value.neg{color:var(--red);}
   .sim-trades-list{flex:1;overflow-y:auto;padding:4px 0;}
@@ -1516,6 +1521,14 @@
 
   /* Open positions in left panel */
   .open-trade-card{padding:8px;margin-bottom:4px;background:var(--bg);border:1px solid var(--border);border-radius:4px;}
+  /* Open trade highlight: accent-colored thick left border + subtle
+     accent-tinted background. Stands out from the dozens of closed
+     trades in the history list. */
+  .open-trade-card.open{
+    border-left:3px solid var(--accent);
+    background:color-mix(in srgb, var(--accent) 6%, var(--bg));
+    padding-left:6px; /* compensate for the thicker left border */
+  }
   .open-trade-card .otc-header{display:flex;justify-content:space-between;align-items:center;}
   .open-trade-card .otc-dir{font-weight:700;font-size:10px;text-transform:uppercase;}
   .open-trade-card .otc-dir.long{color:var(--green);}
@@ -2135,6 +2148,7 @@
             <span class="sim-stat-label">Batting</span><span class="sim-stat-value" id="sim-batting">—</span>
             <span class="sim-stat-label">Avg Win</span><span class="sim-stat-value" id="sim-avg-win">—</span>
             <span class="sim-stat-label">Avg Loss</span><span class="sim-stat-value" id="sim-avg-loss">—</span>
+            <span class="sim-stat-label" title="Worst peak-to-trough equity drop from the running maximum.">Max DD</span><span class="sim-stat-value" id="sim-max-dd">—</span>
           </div>
         </div>
         <div class="sim-panel-section">
@@ -6453,7 +6467,7 @@ function simUpdatePlaybackUI(){
 // Recalculate analytics from visible trades (trades created at or before simIdx)
 function simRecalcAnalytics(){
   const cap=simConfig?.startingCapital||100000;
-  simAnalytics={currentCapital:cap,totalPL:0,realizedPL:0,unrealizedPL:0,realizedR:0,unrealizedR:0,totalR:0,totalTrades:0,wins:0,losses:0,totalWinPL:0,totalLossPL:0,totalWinDays:0,totalLossDays:0,totalWinR:0,totalLossR:0};
+  simAnalytics={currentCapital:cap,totalPL:0,realizedPL:0,unrealizedPL:0,realizedR:0,unrealizedR:0,totalR:0,totalTrades:0,wins:0,losses:0,totalWinPL:0,totalLossPL:0,totalWinDays:0,totalLossDays:0,totalWinR:0,totalLossR:0,maxDDPct:0,maxDD$:0};
   const curBar=simCurrentBar();
   const curPrice=curBar?curBar.close:0;
   for(const t of simTrades){
@@ -6499,6 +6513,34 @@ function simRecalcAnalytics(){
   simAnalytics.totalPL=simAnalytics.realizedPL+simAnalytics.unrealizedPL;
   simAnalytics.totalR=simAnalytics.realizedR+simAnalytics.unrealizedR;
   simAnalytics.currentCapital=cap+simAnalytics.totalPL;
+
+  // Max drawdown from peak. Walk the same equity series the equity pane
+  // renders (realized + unrealized handoff = full curve), track the
+  // running max equity, and remember the worst drop relative to that
+  // running max in both $ and % terms. "From top" semantics: each new
+  // peak resets the watermark; a later trough below an earlier peak is
+  // measured from the most recent peak it follows.
+  try {
+    const series = computeTradeIndexEquity();
+    const points = [...(series.realized || []), ...(series.unrealized || [])];
+    let peak = cap;
+    let worstAbs = 0; // worst $ drawdown observed
+    let worstPct = 0; // worst % drawdown observed (positive number)
+    for (const p of points) {
+      if (p.value > peak) peak = p.value;
+      const drop = peak - p.value;
+      if (drop > worstAbs) {
+        worstAbs = drop;
+        worstPct = peak > 0 ? (drop / peak) * 100 : 0;
+      }
+    }
+    simAnalytics.maxDD$ = worstAbs;
+    simAnalytics.maxDDPct = worstPct;
+  } catch (_) {
+    simAnalytics.maxDD$ = 0;
+    simAnalytics.maxDDPct = 0;
+  }
+
   // Keep the equity pane in lockstep with analytics — any path that mutates
   // trades/exits recomputes analytics, so this one hook covers them all.
   try{eqApplyBars();}catch(e){}
@@ -7200,6 +7242,19 @@ function simUpdateStatsUI(){
   const pct=v=>`${v>=0?'+':''}${v.toFixed(2)}%`;
   document.getElementById('sim-avg-win').textContent=a.wins?pct((a.totalWinPL/a.wins)/cap0*100):'—';
   document.getElementById('sim-avg-loss').textContent=a.losses?pct((a.totalLossPL/a.losses)/cap0*100):'—';
+  // Max drawdown from peak — both percentage and dollar amount. Blank
+  // when there's no drawdown yet (sim just started, or equity has only
+  // gone up).
+  const ddEl=document.getElementById('sim-max-dd');
+  if(ddEl){
+    if((a.maxDD$||0) <= 0){
+      ddEl.textContent = '—';
+      ddEl.className = 'sim-stat-value';
+    } else {
+      ddEl.textContent = `-${(a.maxDDPct||0).toFixed(1)}% (-$${Math.round(a.maxDD$).toLocaleString()})`;
+      ddEl.className = 'sim-stat-value neg';
+    }
+  }
 }
 
 function simRenderTradesList(){
@@ -7347,7 +7402,11 @@ function simRenderTradesList(){
     const cardAttrs=!isOpen
       ? ` onclick="simToggleReview(${t.id})" style="cursor:pointer;${reviewActive?'outline:1px solid var(--accent);':''}" title="Click to review this trade on the chart"`
       : '';
-    rows.push(`<div class="open-trade-card"${cardAttrs}>
+    // Add a visual marker for open trades so they stand out from closed
+    // ones in the long history list. Accent-color left border + subtle
+    // background tint, controlled by the .open class on the card.
+    const openClass = isOpen ? ' open' : '';
+    rows.push(`<div class="open-trade-card${openClass}"${cardAttrs}>
       <div class="otc-header">
         <span style="font-size:9px;color:var(--muted);font-weight:400;">${idx}</span>
         <span class="otc-dir ${t.direction}">${t.direction.toUpperCase()}</span>
