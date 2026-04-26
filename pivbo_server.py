@@ -1636,7 +1636,10 @@ def compute_analysis(sim):
             "id": c["id"], "direction": c["direction"],
             "entryDate": c["entryDate"], "exitDate": c["exitDate"],
             "shares": c["shares"], "avgEntry": round(c["avgEntry"], 4),
-            "pl": round(c["pl"], 2), "r": round(c["r"], 3) if c["r"] is not None else None,
+            "pl": round(c["pl"], 2),
+            "r": round(c["r"], 3) if c["r"] is not None else None,
+            "rAdjusted": round(c["rAdjusted"], 3) if c.get("rAdjusted") is not None else None,
+            "rSimple": round(c["rSimple"], 3) if c.get("rSimple") is not None else None,
             "holdDays": c["holdDays"], "holdBars": c["holdBars"],
         } for c in closed],
     }
@@ -2125,7 +2128,7 @@ def _build_analysis_pdf(a):
     elements.append(_pdf_metric_grid(r_cells, cols=3, col_widths=[2.47 * inch] * 3))
 
     # ----- Dollar-based -----
-    elements.append(Paragraph("DOLLAR-BASED (MT4 PARITY)", st["h3"]))
+    elements.append(Paragraph("DOLLAR-BASED", st["h3"]))
     d_cells = [
         ("Starting Capital", _fmt_money(a.get("startingCapital")), "cell_value"),
         ("Final Balance", _fmt_money(a.get("finalBalance")), "cell_value_pos" if pos else "cell_value_neg"),
