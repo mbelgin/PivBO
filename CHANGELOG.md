@@ -8,6 +8,16 @@ The newest version is at the top.
 
 ## Unreleased
 
+- **Self-healing Mark-of-the-Web on Windows launch**. The pythonnet
+  `Failed to resolve Python.Runtime.Loader.Initialize` crash that hit
+  some Windows users (winget OR direct download) was caused by
+  Zone.Identifier ADS on the bundled `Python.Runtime.dll`. The launcher
+  now strips Zone.Identifier from every bundled `.dll/.pyd/.exe`
+  early in `__main__.py`, before any import transitively pulls in
+  pythonnet. Equivalent of running `Get-ChildItem ... | Unblock-File`
+  on the install dir but happens automatically on every launch. No-op
+  on macOS/Linux. Becomes a cheap defensive no-op once SignPath signing
+  ships.
 - **Listen-on-LAN preference in the web UI**. Already exposed in the
   desktop launcher window; now also a toggle in Preferences → Server,
   marked "(takes effect after restart)." Same underlying pref key
