@@ -164,7 +164,11 @@ class PivBOLauncher(toga.App):
             style=Pack(direction=COLUMN, alignment="left", padding=18),
         )
 
-        self.main_window = toga.MainWindow(title=self.formal_name, size=(520, 380))
+        # Title bar reads "PivBO Launcher" so users have an unambiguous
+        # name for this window when describing it (vs the browser-based
+        # web UI). The OS taskbar tooltip / process name still uses the
+        # bare formal_name from briefcase config.
+        self.main_window = toga.MainWindow(title=self.formal_name + " Launcher", size=(520, 380))
         self.main_window.content = main_box
         self.main_window.show()
 

@@ -17,7 +17,9 @@ requires = ["briefcase"]
 project_name = "PivotBreakout"
 bundle = "com.pivbo"
 version = "0.0.2"
-url = "https://github.com/mbelgin/PivBO"
+# Toga's Help -> Visit homepage menu item links here. Repo URLs (issues,
+# source) are still GitHub; "homepage" is the user-facing landing site.
+url = "https://pivbo.com"
 license.file = "LICENSE"
 author = "Mehmet Belgin"
 author_email = "mbelgin@gmail.com"
