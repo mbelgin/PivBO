@@ -1194,6 +1194,86 @@ def _analyze_trade(trade):
     }
 
 
+# ===================================================================
+# Report-section schema — the SINGLE SOURCE OF TRUTH for what metrics
+# the per-sim Analysis report shows under each R-multiple mode, in
+# what order, and how they're labelled / sub-captioned.
+#
+# All four renderers (HTML report in pivbo.html, PDF in this file,
+# CSV export, TXT export) walk this list. Add a metric here once →
+# every renderer picks it up. Never edit a single renderer's R-section
+# layout independently; it WILL drift, and we will WILL break the
+# user's trust again.
+#
+# Each spec describes one metric cell. `unit_suffix=True` means the
+# label and value get the section's R unit appended (Total adjR /
+# Total R). `derive` is a callable invoked with the section's data
+# dict to produce a tuple of values; otherwise we read `key` directly.
+# `fmt`: 'r' = signed R-multiple; 'rNeg' = negative R drawdown; 'num'
+# = plain number with 2 decimals; 'rPair' = "max / min".
+# ===================================================================
+R_SECTION_METRICS = [
+    {"key": "total",        "label": "Total {unit}",       "fmt": "r",     "sub": "sum across trades",            "primary": True, "color": True},
+    {"key": "expectancy",   "label": "Expectancy",         "fmt": "r",     "sub": "per trade",                    "primary": True, "color": True},
+    {"key": "profitFactor", "label": "Profit Factor",      "fmt": "num",   "sub": "|win| / |loss|",               "primary": True},
+    {"key": "maxDrawdown",  "label": "Max Drawdown",       "fmt": "rNeg",  "sub": "cumulative {unit}, peak-to-trough", "primary": True},
+    {"key": "sharpeTrades", "label": "Sharpe (per trade)", "fmt": "num",   "sub": "mean / stdev * sqrt(trades/yr)"},
+    {"key": "_maxMin",      "label": "Max win / loss",     "fmt": "rPair", "sub": ""},
+]
+
+
+def _build_r_sections(rAdjusted, rSimple):
+    """Resolve the schema against a specific analysis result. Returns
+    a list of two section dicts (Adjusted, Simple), each with title,
+    unit, blurb, and a `cells` array of {label, value, fmt, sub,
+    primary, color, isNegative} resolved metric cells. Renderers walk
+    cells without re-reading raw aggregates."""
+    specs = [
+        {
+            "id": "adjusted",
+            "title": "Adjusted R",
+            "unit": "adjR",
+            "blurb": "Adjusted = total $ P/L / initial $ risk. Partial closes are weighted by share fraction; reflects actual money outcome.",
+            "data": rAdjusted or {},
+        },
+        {
+            "id": "simple",
+            "title": "Simple R",
+            "unit": "R",
+            "blurb": ("Simple = per-share R at the trade's final exit price. "
+                      "Independent of partial-close timing or sizing; reflects "
+                      "\"the R the setup ran to.\""),
+            "data": rSimple or {},
+        },
+    ]
+    out = []
+    for s in specs:
+        cells = []
+        for m in R_SECTION_METRICS:
+            label = m["label"].replace("{unit}", s["unit"])
+            sub = m["sub"].replace("{unit}", s["unit"]) if m.get("sub") else ""
+            if m["key"] == "_maxMin":
+                value = (s["data"].get("max"), s["data"].get("min"))
+            else:
+                value = s["data"].get(m["key"])
+            cells.append({
+                "label": label,
+                "value": value,
+                "fmt": m["fmt"],
+                "sub": sub,
+                "primary": bool(m.get("primary")),
+                "color": bool(m.get("color")),
+            })
+        out.append({
+            "id": s["id"],
+            "title": s["title"],
+            "unit": s["unit"],
+            "blurb": s["blurb"],
+            "cells": cells,
+        })
+    return out
+
+
 def _compute_equity_curve(closed, starting_capital):
     """Build per-exit-event running balance. Events are ordered by exit _atIdx, then date.
     Tracks cumulative R for the active mode (cumR), Adjusted (cumRAdj),
@@ -1590,6 +1670,30 @@ def compute_analysis(sim):
             "maxDrawdown": round(aggs_simple.get("maxDrawdown") or 0, 2),
             "sharpeTrades": round(aggs_simple["sharpeTrades"], 3) if aggs_simple.get("sharpeTrades") is not None else None,
         },
+        # Single source of truth for R-section layout. Built from R_SECTION_METRICS
+        # and the two mode aggregates above. HTML / PDF / CSV / TXT renderers
+        # ALL walk this list. Edit the schema in one place, every renderer
+        # follows.
+        "rSections": _build_r_sections(
+            rAdjusted={
+                "total": round(aggs_adjusted["total"], 2),
+                "expectancy": round(aggs_adjusted["expectancy"], 3) if aggs_adjusted["expectancy"] is not None else None,
+                "max": aggs_adjusted["max"],
+                "min": aggs_adjusted["min"],
+                "profitFactor": round(aggs_adjusted["profitFactor"], 3) if aggs_adjusted["profitFactor"] is not None else None,
+                "maxDrawdown": round(aggs_adjusted.get("maxDrawdown") or 0, 2),
+                "sharpeTrades": round(aggs_adjusted["sharpeTrades"], 3) if aggs_adjusted.get("sharpeTrades") is not None else None,
+            },
+            rSimple={
+                "total": round(aggs_simple["total"], 2),
+                "expectancy": round(aggs_simple["expectancy"], 3) if aggs_simple["expectancy"] is not None else None,
+                "max": aggs_simple["max"],
+                "min": aggs_simple["min"],
+                "profitFactor": round(aggs_simple["profitFactor"], 3) if aggs_simple["profitFactor"] is not None else None,
+                "maxDrawdown": round(aggs_simple.get("maxDrawdown") or 0, 2),
+                "sharpeTrades": round(aggs_simple["sharpeTrades"], 3) if aggs_simple.get("sharpeTrades") is not None else None,
+            },
+        ),
 
         # $-based
         "totalNetProfit": round(total_pl, 2),
@@ -2115,17 +2219,41 @@ def _build_analysis_pdf(a):
         elements.append(notes_box)
         elements.append(Spacer(1, 6))
 
-    # ----- R-based (primary) -----
-    elements.append(Paragraph("HEADLINE (R-BASED)", st["h3"]))
-    r_cells = [
-        ("Total R", _fmt_r(a.get("totalR")), "cell_value_primary"),
-        ("Expectancy", f"{_fmt_r(a.get('expectancyR'))}/trade", "cell_value_primary"),
-        ("Profit Factor (R)", _fmt_num(a.get("profitFactorR"), 2), "cell_value_primary"),
-        ("Max Drawdown (R)", f"-{_fmt_num(a.get('maxDrawdownR'), 2)}R", "cell_value_neg"),
-        ("Sharpe (trade R)", _fmt_num(a.get("sharpeTradesR"), 2), "cell_value"),
-        ("Max R Win / Loss", f"{_fmt_r(a.get('maxR'))} / {_fmt_r(a.get('minR'))}", "cell_value"),
-    ]
-    elements.append(_pdf_metric_grid(r_cells, cols=3, col_widths=[2.47 * inch] * 3))
+    # ----- R-based, schema-driven from a["rSections"] -----
+    # Walks the same R section schema the HTML report walks. Adding /
+    # changing a metric means editing R_SECTION_METRICS once; this
+    # renderer (and the CSV / TXT / HTML ones) follow.
+    def _pdf_format_cell(cell, unit):
+        v = cell.get("value")
+        fmt = cell.get("fmt")
+        if fmt == "r":
+            text = "—" if v is None else _fmt_r(v)
+        elif fmt == "rNeg":
+            text = "—" if v is None else f"-{_fmt_num(abs(v), 2)}{unit}"
+        elif fmt == "num":
+            text = "—" if v is None else _fmt_num(v, 2)
+        elif fmt == "rPair":
+            hi = v[0] if isinstance(v, (list, tuple)) and len(v) > 0 else None
+            lo = v[1] if isinstance(v, (list, tuple)) and len(v) > 1 else None
+            text = f"{('—' if hi is None else _fmt_r(hi))} / {('—' if lo is None else _fmt_r(lo))}"
+        else:
+            text = "—" if v is None else str(v)
+        # Color class: drawdown is always negative, primary signed cells
+        # follow value sign, others stay neutral.
+        if fmt == "rNeg":
+            cls = "cell_value_neg"
+        elif cell.get("color") and v is not None and isinstance(v, (int, float)):
+            cls = "cell_value_pos" if v >= 0 else "cell_value_neg"
+        elif cell.get("primary"):
+            cls = "cell_value_primary"
+        else:
+            cls = "cell_value"
+        return (cell["label"], text, cls)
+
+    for sec in (a.get("rSections") or []):
+        elements.append(Paragraph(sec["title"].upper(), st["h3"]))
+        cells = [_pdf_format_cell(c, sec.get("unit", "")) for c in (sec.get("cells") or [])]
+        elements.append(_pdf_metric_grid(cells, cols=3, col_widths=[2.47 * inch] * 3))
 
     # ----- Dollar-based -----
     elements.append(Paragraph("DOLLAR-BASED", st["h3"]))

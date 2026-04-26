@@ -8739,9 +8739,15 @@ function renderAnalysisReport(a){
         <div class="rpt-actions no-print">
           <button class="sim-btn" id="rpt-back">← Back</button>
           <button class="sim-btn" id="rpt-refresh" title="Force re-analysis">↻ Refresh</button>
-          <button class="sim-btn" id="rpt-export-csv">CSV</button>
-          <button class="sim-btn" id="rpt-export-txt">Text</button>
-          <button class="sim-btn primary" id="rpt-print">Download PDF</button>
+          <div class="rpt-export-wrap" style="position:relative;display:inline-block;">
+            <button class="sim-btn primary" id="rpt-export-btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+            <div class="rpt-export-menu hidden" id="rpt-export-menu" role="menu" style="position:absolute;right:0;top:calc(100% + 4px);background:var(--bg2);border:1px solid var(--border);border-radius:4px;box-shadow:0 4px 14px rgba(0,0,0,0.5);min-width:140px;z-index:30;padding:4px 0;">
+              <button class="sim-btn" data-export="pdf" style="width:100%;text-align:left;border:0;background:transparent;border-radius:0;padding:6px 12px;">PDF</button>
+              <button class="sim-btn" data-export="csv" style="width:100%;text-align:left;border:0;background:transparent;border-radius:0;padding:6px 12px;">CSV</button>
+              <button class="sim-btn" data-export="text" style="width:100%;text-align:left;border:0;background:transparent;border-radius:0;padding:6px 12px;">Text</button>
+              <button class="sim-btn" data-export="json" style="width:100%;text-align:left;border:0;background:transparent;border-radius:0;padding:6px 12px;" title="Raw analysis structure all renderers consume.">JSON</button>
+            </div>
+          </div>
         </div>
       </div>
       ${progressNote}
@@ -8749,41 +8755,45 @@ function renderAnalysisReport(a){
       ${a.notes?`<div class="rpt-section"><h3>Notes</h3><div style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;font-size:11px;line-height:1.5;color:var(--text);white-space:pre-wrap;">${_safeTxt(a.notes)}</div></div>`:''}
 
       ${(() => {
-        // Two equal R sections — Adjusted (adjR) and Simple (R) — replacing
-        // the old single Headline + R-vs-adjR breakdown table. Each section
-        // shows the same six metrics under the same rpt-grid layout, so a
-        // reader can compare them at a glance just by glancing left vs right.
-        const renderRSection = (title, def, blurb, data) => {
-          const t = data?.total || 0;
-          const e = data?.expectancy || 0;
-          return `
-          <div class="rpt-section">
-            <h3>${title}</h3>
-            <p style="font-size:11px;color:var(--muted);margin:0 0 8px;line-height:1.5;">${blurb}</p>
-            <div class="rpt-grid">
-              <div class="rpt-cell"><div class="lbl">Total ${def}</div><div class="val primary ${t>=0?'pos':'neg'}">${_fmtR(data?.total)}</div><div class="sub">sum across trades</div></div>
-              <div class="rpt-cell"><div class="lbl">Expectancy</div><div class="val primary ${e>=0?'pos':'neg'}">${_fmtR(data?.expectancy)}</div><div class="sub">per trade</div></div>
-              <div class="rpt-cell"><div class="lbl">Profit Factor</div><div class="val primary">${_fmtNum(data?.profitFactor,2)}</div><div class="sub">|Σ win| / |Σ loss|</div></div>
-              <div class="rpt-cell"><div class="lbl">Max Drawdown</div><div class="val primary neg">-${_fmtNum(data?.maxDrawdown,2)}${def}</div><div class="sub">cumulative ${def}, peak-to-trough</div></div>
-              <div class="rpt-cell"><div class="lbl">Sharpe (per trade)</div><div class="val">${_fmtNum(data?.sharpeTrades,2)}</div><div class="sub">mean / stdev × √(trades/yr)</div></div>
-              <div class="rpt-cell"><div class="lbl">Max win / loss</div><div class="val">${_fmtR(data?.max)} / ${_fmtR(data?.min)}</div></div>
-            </div>
-          </div>`;
+        // Walks a.rSections, the schema-built R-section list from the
+        // server. Adding/changing a metric means editing the Python
+        // R_SECTION_METRICS list once; every renderer (this one + PDF +
+        // CSV + TXT) picks it up. Do NOT hardcode metric layout here.
+        const sections = a.rSections || [];
+        const fmtCell = (cell, unit) => {
+          const v = cell.value;
+          let valStr = '';
+          let cls = 'val';
+          if (cell.primary) cls += ' primary';
+          if (cell.fmt === 'r') {
+            valStr = (v == null) ? '—' : _fmtR(v);
+            if (cell.color) {
+              cls += (Number(v) >= 0) ? ' pos' : ' neg';
+            }
+          } else if (cell.fmt === 'rNeg') {
+            // Drawdown rendered as negative regardless of sign.
+            valStr = (v == null) ? '—' : ('-' + _fmtNum(Math.abs(v), 2) + unit);
+            cls += ' neg';
+          } else if (cell.fmt === 'num') {
+            valStr = (v == null) ? '—' : _fmtNum(v, 2);
+          } else if (cell.fmt === 'rPair') {
+            const [hi, lo] = Array.isArray(v) ? v : [null, null];
+            valStr = `${hi == null ? '—' : _fmtR(hi)} / ${lo == null ? '—' : _fmtR(lo)}`;
+          } else {
+            valStr = (v == null) ? '—' : String(v);
+          }
+          const subHtml = cell.sub ? `<div class="sub">${cell.sub}</div>` : '';
+          return `<div class="rpt-cell"><div class="lbl">${cell.label}</div><div class="${cls}">${valStr}</div>${subHtml}</div>`;
         };
-        return [
-          renderRSection(
-            'Adjusted R (adjR)',
-            'adjR',
-            '<strong>Adjusted</strong> = total $ P/L ÷ initial $ risk. Partial closes are weighted by share fraction; reflects actual money outcome.',
-            a.rAdjusted
-          ),
-          renderRSection(
-            'Simple R (R)',
-            'R',
-            "<strong>Simple</strong> = per-share R at the trade's final exit price. Independent of partial-close timing or sizing; reflects &ldquo;the R the setup ran to.&rdquo;",
-            a.rSimple
-          ),
-        ].join('');
+        return sections.map(sec => `
+          <div class="rpt-section">
+            <h3>${sec.title}</h3>
+            <p style="font-size:11px;color:var(--muted);margin:0 0 8px;line-height:1.5;">${sec.blurb}</p>
+            <div class="rpt-grid">
+              ${(sec.cells || []).map(c => fmtCell(c, sec.unit)).join('')}
+            </div>
+          </div>
+        `).join('');
       })()}
 
       <div class="rpt-section">
@@ -8872,23 +8882,63 @@ function renderAnalysisReport(a){
     if(!r.ok){el.innerHTML=`<div class="rpt-banner warning">${_safeTxt(j.error||'Failed')}</div>`;return;}
     renderAnalysisReport(j);
   });
-  document.getElementById('rpt-export-csv').addEventListener('click',()=>exportAnalysisCSV(a));
-  document.getElementById('rpt-export-txt').addEventListener('click',()=>exportAnalysisText(a));
-  document.getElementById('rpt-print').addEventListener('click',async()=>{
-    const btn=document.getElementById('rpt-print');
-    const origLabel=btn.textContent;
-    btn.disabled=true;btn.textContent='Generating PDF…';
-    try{
-      const r=await fetch(`/api/simulations/${a.simId}/analyze/pdf`);
-      if(!r.ok){const j=await r.json().catch(()=>({}));flash('PDF failed: '+(j.error||r.status));return;}
-      const blob=await r.blob();
-      const url=URL.createObjectURL(blob);
-      const link=document.createElement('a');link.href=url;link.download=`${(a.simName||'analysis').replace(/[^\w\-]/g,'_')}_analysis.pdf`;document.body.appendChild(link);link.click();link.remove();
-      setTimeout(()=>URL.revokeObjectURL(url),1000);
-    }catch(e){flash('PDF failed: '+e.message);}
-    finally{btn.disabled=false;btn.textContent=origLabel;}
-  });
-
+  // Export dropdown — single source-of-truth analysis JSON drives every
+  // rendering. PDF is server-rendered; CSV / Text / JSON are client-side.
+  // Adding a future format means: implement the renderer (or accept the
+  // raw JSON), wire a new menu item; nothing else.
+  (function wireExportMenu(){
+    const btn = document.getElementById('rpt-export-btn');
+    const menu = document.getElementById('rpt-export-menu');
+    if (!btn || !menu) return;
+    const open = (state) => {
+      menu.classList.toggle('hidden', !state);
+      btn.setAttribute('aria-expanded', state ? 'true' : 'false');
+    };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      open(menu.classList.contains('hidden'));
+    });
+    document.addEventListener('click', (e) => {
+      if (!menu.classList.contains('hidden') && !menu.contains(e.target) && e.target !== btn) {
+        open(false);
+      }
+    });
+    menu.addEventListener('click', async (e) => {
+      const target = e.target.closest('[data-export]');
+      if (!target) return;
+      const kind = target.getAttribute('data-export');
+      open(false);
+      if (kind === 'csv') return exportAnalysisCSV(a);
+      if (kind === 'text') return exportAnalysisText(a);
+      if (kind === 'json') {
+        // Raw analysis JSON — same structure all four renderers consume.
+        const txt = JSON.stringify(a, null, 2);
+        _download(txt, `${(a.simName||'analysis').replace(/[^\w\-]/g,'_')}_analysis.json`, 'application/json');
+        return;
+      }
+      if (kind === 'pdf') {
+        const orig = btn.textContent;
+        btn.disabled = true; btn.textContent = 'Generating PDF…';
+        try {
+          const r = await fetch(`/api/simulations/${a.simId}/analyze/pdf`);
+          if (!r.ok) {
+            const j = await r.json().catch(() => ({}));
+            flash('PDF failed: ' + (j.error || r.status));
+            return;
+          }
+          const blob = await r.blob();
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${(a.simName||'analysis').replace(/[^\w\-]/g,'_')}_analysis.pdf`;
+          document.body.appendChild(link); link.click(); document.body.removeChild(link);
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } finally {
+          btn.disabled = false; btn.textContent = orig;
+        }
+      }
+    });
+  })();
   // Equity curve chart
   renderEquityChart(a);
 }
@@ -8941,12 +8991,25 @@ function renderEquityChart(a){
 function exportAnalysisCSV(a){
   const rows=[];
   rows.push(['Metric','Value']);
+  // Build R-section rows from the schema. Each section becomes a
+  // labelled block ("Adjusted R - Total adjR", etc.) so a single CSV
+  // can carry both modes without column ambiguity.
+  const rMetrics = {};
+  for (const sec of (a.rSections || [])) {
+    for (const cell of (sec.cells || [])) {
+      const key = `${sec.title} - ${cell.label}`;
+      let v = cell.value;
+      if (cell.fmt === 'rPair' && Array.isArray(v)) {
+        v = `${v[0] == null ? '' : v[0]} / ${v[1] == null ? '' : v[1]}`;
+      }
+      rMetrics[key] = v;
+    }
+  }
   const metrics={
     'Simulation':a.simName,'Ticker':a.ticker,'Start Date':a.simStartDate,'Current Date':a.simCurrentDate,
     'Progress %':a.progress,'Bars in test':a.barsInTest,'Total Trades':a.totalTrades,'Win Rate %':a.winRatePct,
     'Starting Capital':a.startingCapital,'Final Balance':a.finalBalance,
-    'Total R':a.totalR,'Expectancy (R)':a.expectancyR,'Profit Factor (R)':a.profitFactorR,
-    'Max Drawdown (R)':a.maxDrawdownR,'Sharpe (trade R)':a.sharpeTradesR,
+    ...rMetrics,
     'Total Net Profit':a.totalNetProfit,'Gross Profit':a.grossProfit,'Gross Loss':a.grossLoss,
     'Profit Factor ($)':a.profitFactor,'Expected Payoff':a.expectedPayoff,
     'Absolute Drawdown':a.absoluteDrawdown,'Maximal Drawdown':a.maximalDrawdown,'Maximal Drawdown %':a.maximalDrawdownPct,
@@ -8961,8 +9024,12 @@ function exportAnalysisCSV(a){
   };
   for(const[k,v]of Object.entries(metrics))rows.push([k,v==null?'':String(v)]);
   rows.push([]);
-  rows.push(['Trade #','Direction','Entry Date','Exit Date','Hold Days','Shares','Avg Entry','P/L ($)','R']);
-  (a.trades||[]).forEach((t,i)=>rows.push([i+1,t.direction,t.entryDate||'',t.exitDate||'',t.holdDays,t.shares,t.avgEntry,t.pl,t.r==null?'':t.r]));
+  rows.push(['Trade #','Direction','Entry Date','Exit Date','Hold Days','Shares','Avg Entry','P/L ($)','adjR','R']);
+  (a.trades||[]).forEach((t,i)=>rows.push([
+    i+1, t.direction, t.entryDate||'', t.exitDate||'', t.holdDays, t.shares, t.avgEntry, t.pl,
+    t.rAdjusted==null?'':t.rAdjusted,
+    t.rSimple==null?'':t.rSimple,
+  ]));
   const csv=rows.map(r=>r.map(c=>{const s=String(c==null?'':c);return s.includes(',')||s.includes('"')?'"'+s.replace(/"/g,'""')+'"':s;}).join(',')).join('\n');
   _download(csv,`${(a.simName||'analysis').replace(/[^\w\-]/g,'_')}_analysis.csv`,'text/csv');
 }
@@ -8977,14 +9044,31 @@ function exportAnalysisText(a){
   lines.push(`  Progress:         ${a.isComplete?'COMPLETE':a.progress+'%'}`);
   lines.push(`  Generated:        ${(a.generatedAt||'').slice(0,19).replace('T',' ')} UTC`);
   lines.push('');
-  lines.push('── HEADLINE (R-based) ─────────────────────────────────────────');
-  lines.push(`  Total R:          ${_fmtR(a.totalR)}`);
-  lines.push(`  Expectancy:       ${_fmtR(a.expectancyR)} per trade`);
-  lines.push(`  Profit Factor:    ${_fmtNum(a.profitFactorR,2)}`);
-  lines.push(`  Max Drawdown:     -${_fmtNum(a.maxDrawdownR,2)}R`);
-  lines.push(`  Max R win/loss:   ${_fmtR(a.maxR)} / ${_fmtR(a.minR)}`);
-  lines.push(`  Sharpe (trade R): ${_fmtNum(a.sharpeTradesR,2)}`);
-  lines.push('');
+  // R-sections: schema-driven. Single source of truth for R-section
+  // layout = a.rSections (built server-side from R_SECTION_METRICS).
+  // Editing the metric list in pivbo_server.py auto-flows to here, the
+  // HTML report, the PDF, and the CSV.
+  for (const sec of (a.rSections || [])) {
+    const banner = `── ${sec.title.toUpperCase()} `.padEnd(63, '─');
+    lines.push(banner);
+    for (const cell of (sec.cells || [])) {
+      let valStr = '';
+      if (cell.fmt === 'r') {
+        valStr = (cell.value == null) ? '—' : _fmtR(cell.value);
+      } else if (cell.fmt === 'rNeg') {
+        valStr = (cell.value == null) ? '—' : `-${_fmtNum(Math.abs(cell.value), 2)}${sec.unit}`;
+      } else if (cell.fmt === 'num') {
+        valStr = (cell.value == null) ? '—' : _fmtNum(cell.value, 2);
+      } else if (cell.fmt === 'rPair') {
+        const [hi, lo] = Array.isArray(cell.value) ? cell.value : [null, null];
+        valStr = `${hi == null ? '—' : _fmtR(hi)} / ${lo == null ? '—' : _fmtR(lo)}`;
+      } else {
+        valStr = (cell.value == null) ? '—' : String(cell.value);
+      }
+      lines.push(`  ${cell.label.padEnd(20)}${valStr}`);
+    }
+    lines.push('');
+  }
   lines.push('── DOLLAR-BASED ───────────────────────────────────────────────');
   lines.push(`  Starting:         ${_fmtMoney(a.startingCapital)}`);
   lines.push(`  Final:            ${_fmtMoney(a.finalBalance)}`);
@@ -9014,7 +9098,7 @@ function exportAnalysisText(a){
   lines.push(`  Max consec losses:${a.streaksDollar?.maxConsecLosses||0} (${_fmtMoney(a.streaksDollar?.maxConsecLossesLoss)})`);
   lines.push('');
   lines.push('── TRADE LOG ──────────────────────────────────────────────────');
-  lines.push('  #   Dir   Entry Date    Exit Date     Hold  Shares     P/L        R');
+  lines.push('  #   Dir   Entry Date    Exit Date     Hold  Shares     P/L      adjR        R');
   (a.trades||[]).forEach((t,i)=>{
     const n=String(i+1).padStart(3);
     const dir=(t.direction||'').toUpperCase().padEnd(5);
@@ -9023,8 +9107,9 @@ function exportAnalysisText(a){
     const hd=String(t.holdDays||0).padStart(4)+'d';
     const sh=String(t.shares||0).padStart(6);
     const pl=_fmtMoney(t.pl).padStart(11);
-    const r=(t.r==null?'—':_fmtR(t.r)).padStart(8);
-    lines.push(`  ${n} ${dir} ${ed} ${xd} ${hd} ${sh} ${pl} ${r}`);
+    const ra=(t.rAdjusted==null?'—':_fmtR(t.rAdjusted)).padStart(8);
+    const rs=(t.rSimple==null?'—':_fmtR(t.rSimple)).padStart(8);
+    lines.push(`  ${n} ${dir} ${ed} ${xd} ${hd} ${sh} ${pl} ${ra} ${rs}`);
   });
   const txt=lines.join('\n');
   _download(txt,`${(a.simName||'analysis').replace(/[^\w\-]/g,'_')}_analysis.txt`,'text/plain');
