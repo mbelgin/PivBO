@@ -1012,6 +1012,40 @@
      so the canvas takes the full subpane rectangle. JS sizes the pixel
      buffer based on clientWidth/Height times device pixel ratio. */
   .eq-canvas{display:block;position:absolute;inset:0;width:100%;height:100%;}
+  /* Floating tooltip on equity hover. Positioned absolute inside the
+     subpane; JS sets left/top to follow the cursor and clamps to the
+     subpane bounds so it never overflows. Pointer-events:none so the
+     mousemove on the canvas keeps firing even when cursor crosses the
+     tooltip. */
+  .eq-hover-tip{
+    position:absolute;
+    z-index:5;
+    pointer-events:none;
+    background:rgba(20,22,26,0.95);
+    border:1px solid var(--border);
+    border-radius:3px;
+    padding:3px 7px;
+    font-family:var(--mono);
+    font-size:10px;
+    color:var(--text);
+    white-space:nowrap;
+    box-shadow:0 2px 6px rgba(0,0,0,0.4);
+    transform:translate(-50%, -130%);
+  }
+  .eq-hover-tip.hidden{display:none!important;}
+  .eq-hover-tip .v{color:var(--accent);font-weight:600;}
+  .eq-hover-tip .v.neg{color:var(--red);}
+  /* Vertical hover line drawn in JS via a 1px-wide div. Spans the
+     subpane top-to-bottom and follows the cursor's x position. */
+  .eq-hover-line{
+    position:absolute;
+    top:0;bottom:0;
+    width:1px;
+    background:rgba(138,143,152,0.7);
+    pointer-events:none;
+    z-index:4;
+  }
+  .eq-hover-line.hidden{display:none!important;}
   .eq-who{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;padding:1px 6px;border:1px solid var(--border);border-radius:2px;}
   .eq-who-opp{color:#60a5fa;border-color:#60a5fa;}
   .eq-resize-hit{
@@ -2021,6 +2055,8 @@
               <button id="eq-opp-toggle" class="eq-opp-toggle hidden" title="Show / hide the opponent's equity pane">Opp</button>
             </div>
             <canvas id="eq-chart" class="eq-canvas"></canvas>
+            <div class="eq-hover-line hidden" id="eq-hover-line-you"></div>
+            <div class="eq-hover-tip hidden" id="eq-hover-tip-you">—</div>
           </div>
           <!-- Opponent sub-pane: only visible during duels. Tinted background
                so the two lines can't be confused with one another. -->
@@ -2029,6 +2065,8 @@
               <span class="eq-who eq-who-opp">Opp</span><span>Equity</span><span class="v" id="eq-pane-val-opp">—</span>
             </div>
             <canvas id="eq-chart-opp" class="eq-canvas"></canvas>
+            <div class="eq-hover-line hidden" id="eq-hover-line-opp"></div>
+            <div class="eq-hover-tip hidden" id="eq-hover-tip-opp">—</div>
           </div>
         </div>
         <canvas id="crosshair-overlay"></canvas>
@@ -6201,6 +6239,67 @@ function drawEquityCanvas(canvasId, data){
   ctx.fillStyle = '#0a0a0a';
   ctx.fillText(pillLabel, pillX + pillW / 2, pillY + pillH / 2 + 0.5);
   ctx.restore();
+
+  // Stash hover lookup data on the canvas so a separate mouse listener
+  // can map a cursor x-position to the nearest equity datapoint and show
+  // a tooltip. PAD_L / plotW / xDen / xIdx are the same values used
+  // above for plotting; reusing them here guarantees the tooltip points
+  // at exactly the same pixel coordinates the line is drawn at.
+  canvas._eqHover = {
+    times: times.slice(),
+    realized: realized.slice(),
+    unrealized: unrealized.slice(),
+    capital: cap,
+    PAD_L, plotW, xDen,
+    W, H,
+  };
+  // One-time event wiring per canvas. A small registry on the canvas
+  // prevents duplicate handlers when drawEquityCanvas is called every
+  // recompute (after every trade event).
+  if (!canvas._eqHoverWired) {
+    canvas._eqHoverWired = true;
+    const subpane = canvas.parentElement;
+    const tip = subpane?.querySelector('.eq-hover-tip');
+    const line = subpane?.querySelector('.eq-hover-line');
+    canvas.addEventListener('mousemove', (e) => {
+      const d = canvas._eqHover;
+      if (!d || !tip || !line) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const inset = (x - d.PAD_L) / d.plotW * d.xDen;
+      const idx = Math.max(0, Math.min(d.times.length - 1, Math.round(inset)));
+      const t = d.times[idx];
+      // Prefer the unrealized datapoint at this time; fall back to realized.
+      // (At the handoff between the two series the time keys overlap; either
+      // one gives the same value at that index.)
+      const uPt = d.unrealized.find((p) => p.time === t);
+      const rPt = d.realized.find((p) => p.time === t);
+      const pt = uPt || rPt;
+      if (!pt) return;
+      // Coords stored at draw time are CSS-pixels; canvas hasn't been
+      // resized since (drawEquityCanvas runs on every recompute, well
+      // before any hover would arrive). So we can use stored values
+      // directly without scaling.
+      const xPx = (idx / d.xDen) * d.plotW + d.PAD_L;
+      // Position the tip above the cursor; clamp to subpane bounds so it
+      // doesn't clip when hovering near the edges. translate(-50%, -130%)
+      // in CSS handles the centering and lift.
+      tip.style.left = xPx + 'px';
+      tip.style.top  = (e.clientY - rect.top) + 'px';
+      const delta = pt.value - d.capital;
+      const cls = delta >= 0 ? 'v' : 'v neg';
+      tip.innerHTML = '<span class="' + cls + '">$' +
+        Math.round(pt.value).toLocaleString() + '</span> ' +
+        (delta >= 0 ? '+' : '') + Math.round(delta).toLocaleString();
+      tip.classList.remove('hidden');
+      line.style.left = xPx + 'px';
+      line.classList.remove('hidden');
+    });
+    canvas.addEventListener('mouseleave', () => {
+      if (tip) tip.classList.add('hidden');
+      if (line) line.classList.add('hidden');
+    });
+  }
 }
 
 function eqApplyBars(){
