@@ -2138,7 +2138,7 @@
             <span class="sim-stat-label">Realized</span><span class="sim-stat-value" id="sim-realized-pl">—</span>
             <span class="sim-stat-label">Unrealized</span><span class="sim-stat-value" id="sim-unrealized-pl">—</span>
             <span class="sim-stat-label">Total P/L</span><span class="sim-stat-value" id="sim-pl">—</span>
-            <span class="sim-stat-label">Total R</span><span class="sim-stat-value" id="sim-total-r">—</span>
+            <span class="sim-stat-label" id="sim-total-r-label">Total R</span><span class="sim-stat-value" id="sim-total-r">—</span>
           </div>
         </div>
         <div class="sim-panel-section">
@@ -2952,6 +2952,13 @@ let vsSymbol='SPY'; // benchmark ticker for the "VS" overlay. User-configurable 
 // still open); independent of partial-close timing/sizing; reflects "the R the
 // setup ran to". User-configurable via Preferences → Trading.
 let rMultipleMode='adjusted';
+
+// rUnit() returns the unit label that goes after a number in the live UI
+// ("Total adjR", "5.2adjR", or with the simple mode "Total R", "5.2R").
+// On-chart R-level lines (1R / 2R / 3R drawn on the chart) intentionally
+// stay as plain "R" regardless of mode — those are price levels measured
+// from the trade's initial risk and are mode-independent.
+function rUnit(){ return rMultipleMode === 'simple' ? 'R' : 'adjR'; }
 
 // Compute the R contributions of a single trade under the active rMultipleMode.
 // Returns {realizedR, unrealizedR, isClosed} where:
@@ -7234,9 +7241,12 @@ function simUpdateStatsUI(){
   plEl.textContent=`${fmt(a.totalPL)} (${((a.totalPL/cap0)*100).toFixed(1)}%)`;
   plEl.className='sim-stat-value'+(a.totalPL>=0?' pos':' neg');
   const rEl=document.getElementById('sim-total-r');
+  const rLabel=document.getElementById('sim-total-r-label');
   const tr=a.realizedR||0;
-  rEl.textContent=`${tr>=0?'+':''}${tr.toFixed(1)}R`;
+  const ru=rUnit();
+  rEl.textContent=`${tr>=0?'+':''}${tr.toFixed(1)}${ru}`;
   rEl.className='sim-stat-value'+(tr>=0?' pos':' neg');
+  if(rLabel) rLabel.textContent='Total '+ru;
   document.getElementById('sim-total-trades').textContent=a.totalTrades;
   document.getElementById('sim-batting').textContent=a.totalTrades?`${((a.wins/a.totalTrades)*100).toFixed(0)}%`:'—';
   const pct=v=>`${v>=0?'+':''}${v.toFixed(2)}%`;
@@ -7314,7 +7324,7 @@ function simRenderTradesList(){
       const r=computeTradeR(t,visExits,totalShares,avgEntry,isOpen?curPrice:null);
       const total=(r.realizedR||0)+(r.unrealizedR||0);
       const ir=t._initialRisk>0?t._initialRisk:(t.riskPerShare>0?t.riskPerShare:0);
-      if(ir>0) plR=` (${total.toFixed(1)}R)`;
+      if(ir>0) plR=` (${total.toFixed(1)}${rUnit()})`;
     }
     const plStr=pl>=0?`+$${pl.toFixed(0)}`:`-$${Math.abs(pl).toFixed(0)}`;
     const plClass=pl>=0?'pos':'neg';
@@ -8696,6 +8706,51 @@ function renderAnalysisReport(a){
       </div>
 
       <div class="rpt-section">
+        <h3>R-multiple breakdown: Adjusted vs Simple</h3>
+        <p style="font-size:11px;color:var(--muted);margin:0 0 8px;line-height:1.5;">
+          <strong>Adjusted</strong> = total $ P/L ÷ initial $ risk. Partial closes are weighted by share fraction; reflects actual money outcome.
+          <strong>Simple</strong> = per-share R at the trade's final exit price. Independent of partial-close timing or sizing; reflects "the R the setup ran to."
+          Both pin the denominator to the initial risk, so SL movement never changes either value.
+        </p>
+        <table style="width:100%;border-collapse:collapse;font-size:11px;font-family:var(--mono);">
+          <thead>
+            <tr style="background:var(--bg2);text-align:left;border-bottom:1px solid var(--border);">
+              <th style="padding:6px 10px;font-weight:600;color:var(--muted);">Metric</th>
+              <th style="padding:6px 10px;font-weight:600;color:var(--accent);">Adjusted (adjR)</th>
+              <th style="padding:6px 10px;font-weight:600;color:var(--accent);">Simple (R)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:6px 10px;color:var(--muted);">Total</td>
+              <td style="padding:6px 10px;${(a.rAdjusted?.total||0)>=0?'color:var(--green);':'color:var(--red);'}">${_fmtR(a.rAdjusted?.total)}</td>
+              <td style="padding:6px 10px;${(a.rSimple?.total||0)>=0?'color:var(--green);':'color:var(--red);'}">${_fmtR(a.rSimple?.total)}</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:6px 10px;color:var(--muted);">Expectancy / trade</td>
+              <td style="padding:6px 10px;${(a.rAdjusted?.expectancy||0)>=0?'color:var(--green);':'color:var(--red);'}">${_fmtR(a.rAdjusted?.expectancy)}</td>
+              <td style="padding:6px 10px;${(a.rSimple?.expectancy||0)>=0?'color:var(--green);':'color:var(--red);'}">${_fmtR(a.rSimple?.expectancy)}</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:6px 10px;color:var(--muted);">Profit factor</td>
+              <td style="padding:6px 10px;">${_fmtNum(a.rAdjusted?.profitFactor,2)}</td>
+              <td style="padding:6px 10px;">${_fmtNum(a.rSimple?.profitFactor,2)}</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:6px 10px;color:var(--muted);">Max R win</td>
+              <td style="padding:6px 10px;color:var(--green);">${_fmtR(a.rAdjusted?.max)}</td>
+              <td style="padding:6px 10px;color:var(--green);">${_fmtR(a.rSimple?.max)}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 10px;color:var(--muted);">Max R loss</td>
+              <td style="padding:6px 10px;color:var(--red);">${_fmtR(a.rAdjusted?.min)}</td>
+              <td style="padding:6px 10px;color:var(--red);">${_fmtR(a.rSimple?.min)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="rpt-section">
         <h3>Dollar-based (MT4 parity)</h3>
         <div class="rpt-grid">
           <div class="rpt-cell"><div class="lbl">Starting Capital</div><div class="val">${_fmtMoney(a.startingCapital)}</div></div>
@@ -8751,7 +8806,7 @@ function renderAnalysisReport(a){
         <h3>Trade Log</h3>
         <div style="overflow-x:auto;">
           <table class="rpt-table">
-            <thead><tr><th>#</th><th>Dir</th><th>Entry Date</th><th>Exit Date</th><th>Hold</th><th>Shares</th><th>Avg Entry</th><th>P/L</th><th>R</th></tr></thead>
+            <thead><tr><th>#</th><th>Dir</th><th>Entry Date</th><th>Exit Date</th><th>Hold</th><th>Shares</th><th>Avg Entry</th><th>P/L</th><th title="Adjusted R: position-weighted, $ P/L based">adjR</th><th title="Simple R: per-share R at final exit">R</th></tr></thead>
             <tbody>
               ${(a.trades||[]).map((t,i)=>`<tr>
                 <td>${i+1}</td>
@@ -8762,7 +8817,8 @@ function renderAnalysisReport(a){
                 <td>${t.shares}</td>
                 <td>$${_fmtNum(t.avgEntry,2)}</td>
                 <td style="color:${(t.pl||0)>=0?'var(--green)':'var(--red)'};">${_fmtMoney(t.pl)}</td>
-                <td style="color:${(t.r||0)>=0?'var(--green)':'var(--red)'};">${t.r==null?'—':_fmtR(t.r)}</td>
+                <td style="color:${(t.rAdjusted||0)>=0?'var(--green)':'var(--red)'};">${t.rAdjusted==null?'—':_fmtR(t.rAdjusted)}</td>
+                <td style="color:${(t.rSimple||0)>=0?'var(--green)':'var(--red)'};">${t.rSimple==null?'—':_fmtR(t.rSimple)}</td>
               </tr>`).join('')}
             </tbody>
           </table>

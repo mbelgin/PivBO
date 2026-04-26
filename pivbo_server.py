@@ -1157,15 +1157,19 @@ def _analyze_trade(trade):
 
     init_risk = trade.get("_initialRisk") or trade.get("riskPerShare") or 0
     dollar_risk = abs(init_risk) * total_shares if init_risk else 0
-    # R-multiple computed in the user's preferred mode (Adjusted = $ P/L /
-    # initial $ risk; Simple = per-share R at the trade's final exit price).
-    # SL movement never affects either mode (denominator = initial risk).
+    # R-multiples — both modes computed regardless of the user's display
+    # preference, so reports can show both side-by-side. Both pin the
+    # denominator to the initial risk so SL movement never changes either.
+    #   Adjusted = total $ P/L / initial $ risk; partial-close weighted.
+    #   Simple   = per-share R at the trade's final exit price.
+    r_adjusted = (pl / dollar_risk) if dollar_risk > 0 else None
+    r_simple = None
+    if abs(init_risk) > 0:
+        r_simple = (sign * (exits[-1]["price"] - avg_entry)) / abs(init_risk)
+    # Backward-compat single `r` field that follows the user's chosen
+    # display mode (existing report templates and CSV export read this).
     mode = (_load_prefs() or {}).get("rMultipleMode", "adjusted")
-    if mode == "simple" and abs(init_risk) > 0:
-        final_price = exits[-1]["price"]
-        r_mult = (sign * (final_price - avg_entry)) / abs(init_risk)
-    else:
-        r_mult = (pl / dollar_risk) if dollar_risk > 0 else None
+    r_mult = r_simple if (mode == "simple" and r_simple is not None) else r_adjusted
 
     entry_date = entries[0]["date"]
     exit_date = exits[-1]["date"]
@@ -1181,6 +1185,8 @@ def _analyze_trade(trade):
         "shares": total_shares,
         "pl": pl,
         "r": r_mult,
+        "rAdjusted": r_adjusted,
+        "rSimple": r_simple,
         "dollarRisk": dollar_risk,
         "holdDays": _days_between(entry_date, exit_date),
         "holdBars": max(0, exit_idx - entry_idx),
@@ -1419,10 +1425,15 @@ def compute_analysis(sim):
 
     # Consecutive streaks ($ and R)
     streaks_dollar = _consec_streaks([c["pl"] for c in closed])
+    # Active mode's series (used for the existing single-mode aggregates that
+    # downstream report templates and CSV exports already key off of).
     r_series = [c["r"] for c in closed if c["r"] is not None]
     streaks_r = _consec_streaks(r_series) if r_series else None
 
-    # R-based metrics
+    # R-based metrics — primary single-mode aggregates (used by existing
+    # legacy fields). The dual-mode aggregates below mirror these for both
+    # Adjusted and Simple, exposed under separate keys for side-by-side
+    # presentation in reports.
     total_r = sum(r_series) if r_series else 0
     expectancy_r = (total_r / len(r_series)) if r_series else None
     wins_r = [r for r in r_series if r > 0]
@@ -1430,6 +1441,33 @@ def compute_analysis(sim):
     gross_r_wins = sum(wins_r) if wins_r else 0
     gross_r_losses = sum(losses_r) if losses_r else 0
     profit_factor_r = _safe_div(gross_r_wins, abs(gross_r_losses)) if gross_r_losses < 0 else None
+
+    # Dual-mode R aggregates: same math run twice, once per series.
+    def _r_aggs(series):
+        if not series:
+            return {
+                "total": 0,
+                "expectancy": None,
+                "max": None,
+                "min": None,
+                "profitFactor": None,
+            }
+        wins = [r for r in series if r > 0]
+        losses = [r for r in series if r < 0]
+        gross_w = sum(wins) if wins else 0
+        gross_l = sum(losses) if losses else 0
+        return {
+            "total": sum(series),
+            "expectancy": sum(series) / len(series),
+            "max": max(series),
+            "min": min(series),
+            "profitFactor": _safe_div(gross_w, abs(gross_l)) if gross_l < 0 else None,
+        }
+
+    r_adj_series = [c["rAdjusted"] for c in closed if c.get("rAdjusted") is not None]
+    r_simple_series = [c["rSimple"] for c in closed if c.get("rSimple") is not None]
+    aggs_adjusted = _r_aggs(r_adj_series)
+    aggs_simple = _r_aggs(r_simple_series)
 
     # Time/CAGR
     bars = _read_ticker_bars(sim.get("ticker", ""))
@@ -1475,7 +1513,10 @@ def compute_analysis(sim):
         "startingCapital": starting_capital,
         "finalBalance": round(final_balance, 2),
 
-        # R-based (PRIMARY)
+        # R-based (PRIMARY) — follows the user's chosen rMultipleMode.
+        # Kept for backwards compat with existing report sections / CSV
+        # columns. The dual-mode keys below carry the same numbers split
+        # explicitly per mode so reports can show them side-by-side.
         "totalR": round(total_r, 2),
         "expectancyR": round(expectancy_r, 3) if expectancy_r is not None else None,
         "profitFactorR": round(profit_factor_r, 3) if profit_factor_r is not None else None,
@@ -1483,6 +1524,23 @@ def compute_analysis(sim):
         "minR": min(r_series) if r_series else None,
         "maxDrawdownR": round(max_dd_r, 2),
         "sharpeTradesR": round(sharpe_trades, 3) if sharpe_trades is not None else None,
+        # Dual-mode aggregates: present both Adjusted and Simple, regardless
+        # of the user's display preference. Reports can present them side
+        # by side. Same per-trade input data, two output series.
+        "rAdjusted": {
+            "total": round(aggs_adjusted["total"], 2),
+            "expectancy": round(aggs_adjusted["expectancy"], 3) if aggs_adjusted["expectancy"] is not None else None,
+            "max": aggs_adjusted["max"],
+            "min": aggs_adjusted["min"],
+            "profitFactor": round(aggs_adjusted["profitFactor"], 3) if aggs_adjusted["profitFactor"] is not None else None,
+        },
+        "rSimple": {
+            "total": round(aggs_simple["total"], 2),
+            "expectancy": round(aggs_simple["expectancy"], 3) if aggs_simple["expectancy"] is not None else None,
+            "max": aggs_simple["max"],
+            "min": aggs_simple["min"],
+            "profitFactor": round(aggs_simple["profitFactor"], 3) if aggs_simple["profitFactor"] is not None else None,
+        },
 
         # $-based
         "totalNetProfit": round(total_pl, 2),
