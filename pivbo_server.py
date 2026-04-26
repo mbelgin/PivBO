@@ -2047,12 +2047,18 @@ def _render_equity_png(analysis, width_in=7.5, height_in=2.6):
 
 
 def _render_compare_equity_png(analyses, width_in=7.5, height_in=3.0):
-    """Overlay equity curves (normalized to 100) for comparison."""
+    """Overlay equity curves (normalized to 100) for comparison.
+
+    X-axis is trade index, NOT calendar date. Calendar-date plotting
+    compressed short sims into a small slice of the chart while a longer
+    sim spanned the whole width — misleading when the user wants to
+    compare shape/slope. Trade-index plotting starts every sim at x=0
+    (initial capital) and moves rightward by trade count, so the curves
+    are directly comparable regardless of real-time duration.
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from matplotlib.dates import AutoDateLocator, DateFormatter
-    from datetime import datetime as _dt
 
     palette = ["#00d4aa", "#f5c842", "#ff6b35", "#60a5fa", "#c084fc"]
     fig, ax = plt.subplots(figsize=(width_in, height_in), dpi=150)
@@ -2060,19 +2066,20 @@ def _render_compare_equity_png(analyses, width_in=7.5, height_in=3.0):
     ax.set_facecolor(_PDF_COLORS["bg"])
 
     any_drawn = False
+    max_idx = 0
     for i, a in enumerate(analyses):
-        raw = [(p.get("date"), p.get("balance")) for p in (a.get("equityCurve") or []) if p.get("date")]
-        cap = a.get("startingCapital") or (raw[0][1] if raw else 100000)
-        seen = {}
-        for d, b in raw:
-            seen[d] = b
-        pts = sorted(seen.items())
-        if not pts:
+        curve = a.get("equityCurve") or []
+        if not curve:
             continue
+        cap = a.get("startingCapital") or curve[0].get("balance") or 100000
+        # Index 0 = starting capital (date may be None); subsequent rows
+        # are post-event balances. x = trade index (0..N).
+        xs = list(range(len(curve)))
+        ys = [(p.get("balance") or cap) / cap * 100 for p in curve]
+        if len(curve) - 1 > max_idx:
+            max_idx = len(curve) - 1
         any_drawn = True
-        dates = [_dt.strptime(d[:10], "%Y-%m-%d") for d, _ in pts]
-        norm = [(b / cap * 100) for _, b in pts]
-        ax.plot(dates, norm, color=palette[i % len(palette)], linewidth=1.6,
+        ax.plot(xs, ys, color=palette[i % len(palette)], linewidth=1.6,
                 label=a.get("simName") or f"Sim {i + 1}")
 
     if not any_drawn:
@@ -2086,8 +2093,9 @@ def _render_compare_equity_png(analyses, width_in=7.5, height_in=3.0):
         spine.set_linewidth(0.6)
     ax.tick_params(colors=_PDF_COLORS["muted"], labelsize=7)
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.0f}"))
-    ax.xaxis.set_major_locator(AutoDateLocator(maxticks=8))
-    ax.xaxis.set_major_formatter(DateFormatter("%b %Y"))
+    # X-axis is trade index. Use plain integer ticks; no calendar formatter.
+    ax.set_xlabel("Trade #", color=_PDF_COLORS["muted"], fontsize=7)
+    ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True, nbins=8))
     ax.grid(True, axis="y", color=_PDF_COLORS["grid"], linestyle="-", linewidth=0.5, alpha=0.7)
     ax.set_axisbelow(True)
     leg = ax.legend(loc="upper left", fontsize=7, frameon=True, facecolor=_PDF_COLORS["panel"],
@@ -2635,7 +2643,7 @@ def _build_compare_pdf(analyses):
     elements.append(Spacer(1, 10))
 
     # ----- Overlay equity curves -----
-    elements.append(Paragraph("EQUITY CURVES (NORMALIZED, START = 100)", st["h3"]))
+    elements.append(Paragraph("EQUITY CURVES (NORMALIZED, START = 100, X = TRADE INDEX)", st["h3"]))
     eq_buf = _render_compare_equity_png(analyses, width_in=min(9.5, (pagesize[0] - 0.9 * inch) / 72), height_in=3.0)
     if eq_buf:
         img_w = pagesize[0] - 0.9 * inch

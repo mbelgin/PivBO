@@ -9288,7 +9288,7 @@ function renderCompareReport(j){
         </table>
       </div>
       <div class="rpt-section">
-        <h3>Equity Curves (Normalized, starting = 100)</h3>
+        <h3>Equity Curves (Normalized, starting = 100, x = trade index)</h3>
         <div class="rpt-chart" id="cmp-equity-chart"></div>
       </div>
       ${analyses.some(a=>a.notes)?`<div class="rpt-section"><h3>Notes</h3>${analyses.filter(a=>a.notes).map(a=>`<div style="margin-bottom:10px;"><div style="font-size:11px;color:var(--accent);font-weight:500;margin-bottom:4px;">${_safeTxt(a.simName)} <span style="color:var(--muted);font-weight:400;">[${_safeTxt(a.ticker)}]</span></div><div style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;font-size:11px;line-height:1.5;color:var(--text);white-space:pre-wrap;">${_safeTxt(a.notes)}</div></div>`).join('')}</div>`:''}
@@ -9318,6 +9318,14 @@ function renderCompareReport(j){
 }
 
 let _compareEquityChart=null;
+// Plot each sim's equity curve against TRADE INDEX, not calendar date.
+// Calendar-date plotting compresses short sims into a small slice of the
+// chart while a longer sim spans the whole width — visually misleading
+// when the user is comparing strategies. Trade-index plotting puts every
+// sim on the same x-axis (0 = start, 1 = after first trade, ...) so the
+// shape and slope of each curve is directly comparable regardless of
+// real-time duration. This matches how every backtest report tool (the
+// MT4 strategy tester, Tradeview's Bar replay, etc.) overlays curves.
 function renderCompareEquityChart(analyses){
   const host=document.getElementById('cmp-equity-chart');
   if(!host)return;
@@ -9328,24 +9336,54 @@ function renderCompareEquityChart(analyses){
     layout:{background:{color:'#111418'},textColor:'#e8f0f8'},
     grid:{vertLines:{visible:false},horzLines:{color:'rgba(255,255,255,0.05)'}},
     rightPriceScale:{borderColor:'#1f2833'},
-    timeScale:{borderColor:'#1f2833',timeVisible:false},
+    // LightweightCharts requires a time axis; we feed it sequential
+    // fake dates (one per trade index) and hide the axis so the user
+    // doesn't see synthetic 2000-01-N labels. Section heading already
+    // tells them the x-axis is trade index.
+    timeScale:{borderColor:'#1f2833',timeVisible:false,secondsVisible:false,visible:false},
     crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
     handleScroll:false,handleScale:false,
   });
   const palette=['#00d4aa','#f5c842','#ff6b35','#60a5fa','#c084fc'];
+  // Convert trade index N to a fake calendar date that LightweightCharts
+  // accepts as monotonically-increasing time. (2000-01-01 + N days.)
+  const idxToFakeDate = (n) => {
+    const d = new Date(Date.UTC(2000, 0, 1));
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  let maxIdx = 0;
   analyses.forEach((a,i)=>{
-    const cap=a.startingCapital||100000;
-    const rawPts=(a.equityCurve||[]).filter(p=>p.date).map(p=>({time:p.date,value:p.balance/cap*100}));
-    const pts=_dedupByDate(rawPts);
-    if(!pts.length)return;
-    const s=_compareEquityChart.addLineSeries({color:palette[i%palette.length],lineWidth:2,priceLineVisible:false,lastValueVisible:true,title:a.simName});
+    const cap = a.startingCapital || 100000;
+    const curve = a.equityCurve || [];
+    if (!curve.length) return;
+    // Index 0 is the starting-capital row (date is null); subsequent
+    // rows are post-event balances. Map each row to its index so the
+    // first point sits at x=0 across all sims.
+    const pts = curve.map((p, k) => ({
+      time: idxToFakeDate(k),
+      value: (p.balance || cap) / cap * 100,
+    }));
+    if (pts.length - 1 > maxIdx) maxIdx = pts.length - 1;
+    const s = _compareEquityChart.addLineSeries({
+      color: palette[i % palette.length],
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      title: a.simName,
+    });
     s.setData(pts);
   });
-  const baseline=_compareEquityChart.addLineSeries({color:'rgba(255,255,255,0.25)',lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,priceLineVisible:false,lastValueVisible:false});
-  // Find full date range
-  let minD=null,maxD=null;
-  analyses.forEach(a=>{(a.equityCurve||[]).forEach(p=>{if(p.date){if(!minD||p.date<minD)minD=p.date;if(!maxD||p.date>maxD)maxD=p.date;}});});
-  if(minD&&maxD)baseline.setData([{time:minD,value:100},{time:maxD,value:100}]);
+  // 100% baseline across the full x-extent.
+  const baseline = _compareEquityChart.addLineSeries({
+    color: 'rgba(255,255,255,0.25)', lineWidth: 1,
+    lineStyle: LightweightCharts.LineStyle.Dashed,
+    priceLineVisible: false, lastValueVisible: false,
+  });
+  baseline.setData([
+    { time: idxToFakeDate(0), value: 100 },
+    { time: idxToFakeDate(maxIdx || 1), value: 100 },
+  ]);
   try{_compareEquityChart.timeScale().fitContent();}catch(e){}
 }
 
