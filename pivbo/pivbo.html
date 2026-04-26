@@ -1394,6 +1394,31 @@
   .sim-stats{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;line-height:1.25;}
   .sim-stat-label{color:var(--muted);font-size:10px;}
   .sim-stat-value{color:var(--text);font-weight:500;font-size:10.5px;text-align:right;}
+
+  /* Collapsible sections in the right rail (Capital / Statistics /
+     Notes). The trade form and trade history are NOT collapsible —
+     those are always-on workflow surfaces. h3 becomes a clickable
+     header with a chevron; collapsed state hides every direct child
+     except h3 and stores the choice in localStorage so it persists
+     across reloads. */
+  .sim-panel-section.collapsible h3{
+    cursor:pointer;
+    user-select:none;
+    display:flex;align-items:center;gap:6px;
+    margin-bottom:3px;
+  }
+  .sim-panel-section.collapsible h3::before{
+    content:'▼';
+    font-size:8px;
+    color:var(--muted);
+    transition:transform 0.15s ease;
+    display:inline-block;
+    width:9px;
+  }
+  .sim-panel-section.collapsible.collapsed h3{margin-bottom:0;}
+  .sim-panel-section.collapsible.collapsed h3::before{transform:rotate(-90deg);}
+  .sim-panel-section.collapsible.collapsed > *:not(h3){display:none!important;}
+  .sim-panel-section.collapsible h3:hover{color:var(--accent);}
   .sim-stat-value.pos{color:var(--green);}
   .sim-stat-value.neg{color:var(--red);}
   .sim-trades-list{flex:1;overflow-y:auto;padding:4px 0;}
@@ -2129,7 +2154,7 @@
           <div class="sim-name" id="sim-panel-name">—</div>
           <div class="sim-meta" id="sim-panel-meta">—</div>
         </div>
-        <div class="sim-panel-section">
+        <div class="sim-panel-section collapsible" data-section="capital">
           <h3>Capital</h3>
           <div class="sim-stats">
             <span class="sim-stat-label">Current Bar</span><span class="sim-stat-value" id="sim-cur-date" style="color:var(--yellow);">—</span>
@@ -2141,7 +2166,7 @@
             <span class="sim-stat-label" id="sim-total-r-label">Total R</span><span class="sim-stat-value" id="sim-total-r">—</span>
           </div>
         </div>
-        <div class="sim-panel-section">
+        <div class="sim-panel-section collapsible" data-section="statistics">
           <h3>Statistics</h3>
           <div class="sim-stats">
             <span class="sim-stat-label">Trades</span><span class="sim-stat-value" id="sim-total-trades">0</span>
@@ -2151,8 +2176,8 @@
             <span class="sim-stat-label" title="Worst peak-to-trough equity drop from the running maximum.">Max DD</span><span class="sim-stat-value" id="sim-max-dd">—</span>
           </div>
         </div>
-        <div class="sim-panel-section">
-          <h3 style="display:flex;align-items:center;gap:6px;">Notes <span id="sim-notes-status" style="font-size:8px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;"></span></h3>
+        <div class="sim-panel-section collapsible" data-section="notes">
+          <h3>Notes <span id="sim-notes-status" style="font-size:8px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;"></span></h3>
           <textarea id="sim-notes" placeholder="Rules, observations, lessons learned — saved automatically and appears in analysis/compare reports." style="width:100%;min-height:70px;max-height:200px;resize:vertical;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;line-height:1.4;padding:6px 8px;border-radius:3px;box-sizing:border-box;outline:none;"></textarea>
         </div>
         <!-- Trade form -->
@@ -5920,6 +5945,25 @@ function simSetLayoutActive(active){
     document.getElementById('playback-bar').classList.remove('hidden');
     tp.classList.remove('hidden');
     ensureEqPane(eqPaneEnabled);
+    // Restore each collapsible section's prior state and wire up clicks.
+    // localStorage keys are 'simSection.<name>.collapsed' — boolean string.
+    // We re-bind each time the panel becomes active because the DOM nodes
+    // are static; the addEventListener guard via dataset prevents stacking.
+    document.querySelectorAll('#trade-panel .sim-panel-section.collapsible').forEach(sec => {
+      const name = sec.getAttribute('data-section');
+      if(!name) return;
+      const stored = localStorage.getItem('simSection.' + name + '.collapsed');
+      sec.classList.toggle('collapsed', stored === '1');
+      const h3 = sec.querySelector('h3');
+      if(h3 && !h3.dataset.collapsibleWired){
+        h3.dataset.collapsibleWired = '1';
+        h3.addEventListener('click', () => {
+          sec.classList.toggle('collapsed');
+          localStorage.setItem('simSection.' + name + '.collapsed',
+            sec.classList.contains('collapsed') ? '1' : '0');
+        });
+      }
+    });
   }else{
     main.classList.remove('sim-active');
     document.getElementById('playback-bar').classList.add('hidden');

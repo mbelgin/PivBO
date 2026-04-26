@@ -8,6 +8,40 @@ The newest version is at the top.
 
 ## Unreleased
 
+- **Limit-order retreat un-fill**. When a limit order placed at bar A
+  filled at bar F, retreating past F used to drop the trade entirely.
+  Now: retreating into the [A, F) window restores the trade to the
+  pending order it filled from, so the user sees the same waiting-to-
+  fill state they had at that point in the original timeline. Past A,
+  the order finally disappears.
+- **Equity-pane hover tooltip**. Move the cursor over the equity curve
+  to see the equity value at any past trade point with a vertical
+  guideline + small floating tip showing $value and signed delta from
+  starting capital. No persistent UI; tip and line hide on mouseleave.
+- **Compact CAPITAL / STATISTICS sections** in the sim right rail.
+  Tighter padding, smaller h3 + value font, denser row gap. About a
+  third more vertical room for the trade-history list on laptop
+  screens, no fields dropped.
+- **Max DD from peak** added to the Statistics box. Reports both the
+  percentage drop from the running max and the dollar amount, e.g.
+  "-12.3% (-$1,230)".
+- **Open trades highlighted in the trade history**. A 3px accent-color
+  left border + subtle accent-tinted background mark open trades so
+  they stand out from the closed-trade scroll.
+- **Dual-R analysis reports**. The HTML analysis report now shows
+  Adjusted and Simple R aggregates side by side (Total / Expectancy
+  per trade / Profit factor / Max win / Max loss), and the Trade Log
+  table gets a second R column. Both modes are computed for every
+  trade regardless of the user's display preference.
+- **adjR / R live UI labels** that follow the user's chosen R-multiple
+  display mode. Adjusted: "Total adjR", "5.2adjR". Simple: "Total R",
+  "5.2R". On-chart R-level lines (1R / 2R / 3R) intentionally stay
+  plain "R" since they mark price levels, not P/L attributions.
+- **Collapsible right-rail sections**. Capital / Statistics / Notes
+  each get a chevron-prefixed clickable header; click toggles the
+  section closed or open. Collapsed state persists per section in
+  localStorage. Trade form and trade history are intentionally NOT
+  collapsible — they're always-on workflow surfaces.
 - **Self-healing Mark-of-the-Web on Windows launch**. The pythonnet
   `Failed to resolve Python.Runtime.Loader.Initialize` crash that hit
   some Windows users (winget OR direct download) was caused by
