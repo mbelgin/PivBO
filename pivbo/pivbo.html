@@ -9499,14 +9499,28 @@ function renderCompareEquityChart(analyses){
         curve,
       };
     });
+    // LightweightCharts converts the "YYYY-MM-DD" strings we feed it
+    // into BusinessDay objects (`{year, month, day}`), and that's what
+    // `param.time` comes back as on hover. The byDate map keys on the
+    // string form, so normalize back before lookup or every chip misses.
+    const _timeKey = (t) => {
+      if (typeof t === 'string') return t;
+      if (t && typeof t === 'object' && 'year' in t) {
+        const y = String(t.year).padStart(4, '0');
+        const m = String(t.month).padStart(2, '0');
+        const d = String(t.day).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+      return null;
+    };
     _compareEquityChart.subscribeCrosshairMove((param) => {
-      if (!param || !param.time) {
+      const key = param ? _timeKey(param.time) : null;
+      if (!key) {
         legendEl.innerHTML = '<span style="color:var(--muted);">Hover the chart to see each sim\'s equity at that trade.</span>';
         return;
       }
-      // The hover time is the same fake-date string we plotted with.
       const chips = seriesInfo.map((info) => {
-        const hit = info.byDate.get(param.time);
+        const hit = info.byDate.get(key);
         if (!hit) {
           return `<span style="color:var(--muted);">${_safeTxt(info.name)}: —</span>`;
         }

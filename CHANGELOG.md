@@ -8,6 +8,28 @@ The newest version is at the top.
 
 ## Unreleased
 
+## v0.0.4 (2026-04-26)
+
+- **Compare report: dual-R sections**. Side-by-side Adjusted R and Simple R
+  blocks with the same metrics (Total / Expectancy / Profit Factor / Max
+  Drawdown / Sharpe per trade / Max win-loss). Equal column widths across
+  any number of sims, no editorial star markers on either mode.
+- **Compare report: hover legend**. Crossing the cursor over the equity
+  chart shows a per-sim chip with color swatch, sim name, trade index,
+  equity dollars, and signed P/L for that point. Up to 5 sims; chips
+  flex-wrap on narrow widths.
+- **Compare report: Export dropdown** with PDF / CSV / JSON, matching the
+  Analysis report. CSV emits section header rows and rounds numeric
+  values to 2 decimals; JSON is the same shape the HTML and PDF
+  renderers consume.
+- **Compare equity curves by trade index**. Sims of different durations no
+  longer get visually compressed into a small slice of the chart. The
+  x-axis is now trade index (0 = start, 1 = after first trade, ...) so
+  curve shapes are directly comparable. PDF and HTML both updated.
+- **Linux AppImage with embedded icon**. The AppImage now bundles the
+  PivBO icon at standard sizes so desktop launchers and taskbars show
+  the right artwork instead of a generic AppImage placeholder. Website
+  Linux tile re-enabled with a direct download link.
 - **Limit-order retreat un-fill**. When a limit order placed at bar A
   filled at bar F, retreating past F used to drop the trade entirely.
   Now: retreating into the [A, F) window restores the trade to the
