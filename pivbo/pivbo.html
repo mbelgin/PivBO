@@ -8748,62 +8748,43 @@ function renderAnalysisReport(a){
       ${cacheNote}
       ${a.notes?`<div class="rpt-section"><h3>Notes</h3><div style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;font-size:11px;line-height:1.5;color:var(--text);white-space:pre-wrap;">${_safeTxt(a.notes)}</div></div>`:''}
 
-      <div class="rpt-section">
-        <h3>Headline (R-based — compounding-neutral)</h3>
-        <div class="rpt-grid">
-          <div class="rpt-cell"><div class="lbl">Total R</div><div class="val primary ${rClass}">${_fmtR(a.totalR)}</div><div class="sub">sum of R multiples</div></div>
-          <div class="rpt-cell"><div class="lbl">Expectancy</div><div class="val primary ${(a.expectancyR||0)>=0?'pos':'neg'}">${_fmtR(a.expectancyR)}</div><div class="sub">per trade</div></div>
-          <div class="rpt-cell"><div class="lbl">Profit Factor (R)</div><div class="val primary">${_fmtNum(a.profitFactorR,2)}</div><div class="sub">|Σ win R| / |Σ loss R|</div></div>
-          <div class="rpt-cell"><div class="lbl">Max Drawdown (R)</div><div class="val primary neg">-${_fmtNum(a.maxDrawdownR,2)}R</div><div class="sub">peak-to-trough</div></div>
-          <div class="rpt-cell"><div class="lbl">Sharpe (trade R)</div><div class="val">${_fmtNum(a.sharpeTradesR,2)}</div><div class="sub">mean/stdev × √(trades/yr)</div></div>
-          <div class="rpt-cell"><div class="lbl">Max R win / loss</div><div class="val">${_fmtR(a.maxR)} / ${_fmtR(a.minR)}</div></div>
-        </div>
-      </div>
-
-      <div class="rpt-section">
-        <h3>R-multiple breakdown: Adjusted vs Simple</h3>
-        <p style="font-size:11px;color:var(--muted);margin:0 0 8px;line-height:1.5;">
-          <strong>Adjusted</strong> = total $ P/L ÷ initial $ risk. Partial closes are weighted by share fraction; reflects actual money outcome.
-          <strong>Simple</strong> = per-share R at the trade's final exit price. Independent of partial-close timing or sizing; reflects "the R the setup ran to."
-          Both pin the denominator to the initial risk, so SL movement never changes either value.
-        </p>
-        <table style="width:100%;border-collapse:collapse;font-size:11px;font-family:var(--mono);">
-          <thead>
-            <tr style="background:var(--bg2);text-align:left;border-bottom:1px solid var(--border);">
-              <th style="padding:6px 10px;font-weight:600;color:var(--muted);">Metric</th>
-              <th style="padding:6px 10px;font-weight:600;color:var(--accent);">Adjusted (adjR)</th>
-              <th style="padding:6px 10px;font-weight:600;color:var(--accent);">Simple (R)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:6px 10px;color:var(--muted);">Total</td>
-              <td style="padding:6px 10px;${(a.rAdjusted?.total||0)>=0?'color:var(--green);':'color:var(--red);'}">${_fmtR(a.rAdjusted?.total)}</td>
-              <td style="padding:6px 10px;${(a.rSimple?.total||0)>=0?'color:var(--green);':'color:var(--red);'}">${_fmtR(a.rSimple?.total)}</td>
-            </tr>
-            <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:6px 10px;color:var(--muted);">Expectancy / trade</td>
-              <td style="padding:6px 10px;${(a.rAdjusted?.expectancy||0)>=0?'color:var(--green);':'color:var(--red);'}">${_fmtR(a.rAdjusted?.expectancy)}</td>
-              <td style="padding:6px 10px;${(a.rSimple?.expectancy||0)>=0?'color:var(--green);':'color:var(--red);'}">${_fmtR(a.rSimple?.expectancy)}</td>
-            </tr>
-            <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:6px 10px;color:var(--muted);">Profit factor</td>
-              <td style="padding:6px 10px;">${_fmtNum(a.rAdjusted?.profitFactor,2)}</td>
-              <td style="padding:6px 10px;">${_fmtNum(a.rSimple?.profitFactor,2)}</td>
-            </tr>
-            <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:6px 10px;color:var(--muted);">Max R win</td>
-              <td style="padding:6px 10px;color:var(--green);">${_fmtR(a.rAdjusted?.max)}</td>
-              <td style="padding:6px 10px;color:var(--green);">${_fmtR(a.rSimple?.max)}</td>
-            </tr>
-            <tr>
-              <td style="padding:6px 10px;color:var(--muted);">Max R loss</td>
-              <td style="padding:6px 10px;color:var(--red);">${_fmtR(a.rAdjusted?.min)}</td>
-              <td style="padding:6px 10px;color:var(--red);">${_fmtR(a.rSimple?.min)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      ${(() => {
+        // Two equal R sections — Adjusted (adjR) and Simple (R) — replacing
+        // the old single Headline + R-vs-adjR breakdown table. Each section
+        // shows the same six metrics under the same rpt-grid layout, so a
+        // reader can compare them at a glance just by glancing left vs right.
+        const renderRSection = (title, def, blurb, data) => {
+          const t = data?.total || 0;
+          const e = data?.expectancy || 0;
+          return `
+          <div class="rpt-section">
+            <h3>${title}</h3>
+            <p style="font-size:11px;color:var(--muted);margin:0 0 8px;line-height:1.5;">${blurb}</p>
+            <div class="rpt-grid">
+              <div class="rpt-cell"><div class="lbl">Total ${def}</div><div class="val primary ${t>=0?'pos':'neg'}">${_fmtR(data?.total)}</div><div class="sub">sum across trades</div></div>
+              <div class="rpt-cell"><div class="lbl">Expectancy</div><div class="val primary ${e>=0?'pos':'neg'}">${_fmtR(data?.expectancy)}</div><div class="sub">per trade</div></div>
+              <div class="rpt-cell"><div class="lbl">Profit Factor</div><div class="val primary">${_fmtNum(data?.profitFactor,2)}</div><div class="sub">|Σ win| / |Σ loss|</div></div>
+              <div class="rpt-cell"><div class="lbl">Max Drawdown</div><div class="val primary neg">-${_fmtNum(data?.maxDrawdown,2)}${def}</div><div class="sub">cumulative ${def}, peak-to-trough</div></div>
+              <div class="rpt-cell"><div class="lbl">Sharpe (per trade)</div><div class="val">${_fmtNum(data?.sharpeTrades,2)}</div><div class="sub">mean / stdev × √(trades/yr)</div></div>
+              <div class="rpt-cell"><div class="lbl">Max win / loss</div><div class="val">${_fmtR(data?.max)} / ${_fmtR(data?.min)}</div></div>
+            </div>
+          </div>`;
+        };
+        return [
+          renderRSection(
+            'Adjusted R (adjR)',
+            'adjR',
+            '<strong>Adjusted</strong> = total $ P/L ÷ initial $ risk. Partial closes are weighted by share fraction; reflects actual money outcome.',
+            a.rAdjusted
+          ),
+          renderRSection(
+            'Simple R (R)',
+            'R',
+            "<strong>Simple</strong> = per-share R at the trade's final exit price. Independent of partial-close timing or sizing; reflects &ldquo;the R the setup ran to.&rdquo;",
+            a.rSimple
+          ),
+        ].join('');
+      })()}
 
       <div class="rpt-section">
         <h3>Dollar-based (MT4 parity)</h3>

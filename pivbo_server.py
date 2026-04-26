@@ -1195,18 +1195,41 @@ def _analyze_trade(trade):
 
 
 def _compute_equity_curve(closed, starting_capital):
-    """Build per-exit-event running balance. Events are ordered by exit _atIdx, then date."""
+    """Build per-exit-event running balance. Events are ordered by exit _atIdx, then date.
+    Tracks cumulative R for the active mode (cumR), Adjusted (cumRAdj),
+    and Simple (cumRSimple) so both modes' max drawdowns can be computed
+    from the same event series without re-sorting."""
     events = []
     for tr in closed:
-        events.append({"date": tr["exitDate"], "pl": tr["pl"], "r": tr["r"] or 0, "barIdx": tr["barExitIdx"]})
+        events.append({
+            "date": tr["exitDate"],
+            "pl": tr["pl"],
+            "r": tr["r"] or 0,
+            "rAdj": tr.get("rAdjusted") or 0,
+            "rSimple": tr.get("rSimple") or 0,
+            "barIdx": tr["barExitIdx"],
+        })
     events.sort(key=lambda e: (e["barIdx"], e["date"]))
-    curve = [{"date": None, "balance": starting_capital, "pl": 0, "r": 0, "cumR": 0}]
+    curve = [{"date": None, "balance": starting_capital, "pl": 0, "r": 0,
+              "cumR": 0, "cumRAdj": 0, "cumRSimple": 0}]
     bal = starting_capital
     cum_r = 0.0
+    cum_r_adj = 0.0
+    cum_r_simple = 0.0
     for ev in events:
         bal += ev["pl"]
         cum_r += ev["r"]
-        curve.append({"date": ev["date"], "balance": bal, "pl": ev["pl"], "r": ev["r"], "cumR": cum_r})
+        cum_r_adj += ev["rAdj"]
+        cum_r_simple += ev["rSimple"]
+        curve.append({
+            "date": ev["date"],
+            "balance": bal,
+            "pl": ev["pl"],
+            "r": ev["r"],
+            "cumR": cum_r,
+            "cumRAdj": cum_r_adj,
+            "cumRSimple": cum_r_simple,
+        })
     return curve, events
 
 
@@ -1469,6 +1492,26 @@ def compute_analysis(sim):
     aggs_adjusted = _r_aggs(r_adj_series)
     aggs_simple = _r_aggs(r_simple_series)
 
+    # Per-mode max drawdown on the cumulative-R series (peak-to-trough).
+    def _cum_r_max_dd(cum_series):
+        if not cum_series:
+            return 0.0
+        peak = cum_series[0]
+        worst = 0.0
+        for v in cum_series:
+            if v > peak:
+                peak = v
+            drop = peak - v
+            if drop > worst:
+                worst = drop
+        return worst
+    cum_r_adj_series = [pt["cumRAdj"] for pt in curve]
+    cum_r_simple_series = [pt["cumRSimple"] for pt in curve]
+    aggs_adjusted["maxDrawdown"] = _cum_r_max_dd(cum_r_adj_series)
+    aggs_simple["maxDrawdown"] = _cum_r_max_dd(cum_r_simple_series)
+    # Note: per-mode Sharpe is computed below, once `years` is available
+    # (Time/CAGR block); it can't be done here without forward reference.
+
     # Time/CAGR
     bars = _read_ticker_bars(sim.get("ticker", ""))
     config = sim.get("config") or {}
@@ -1491,6 +1534,8 @@ def compute_analysis(sim):
     sharpe_daily_all = _daily_sharpe_all_days(events, bars, start_idx, cur_idx, starting_capital)
     sharpe_daily_trade_days = _daily_sharpe_trade_days(events, starting_capital)
     sharpe_trades = _per_trade_sharpe(r_series, years) if r_series else None
+    aggs_adjusted["sharpeTrades"] = _per_trade_sharpe(r_adj_series, years) if r_adj_series else None
+    aggs_simple["sharpeTrades"] = _per_trade_sharpe(r_simple_series, years) if r_simple_series else None
 
     progress = None
     total_bars = len(bars) - start_idx if bars else 0
@@ -1533,6 +1578,8 @@ def compute_analysis(sim):
             "max": aggs_adjusted["max"],
             "min": aggs_adjusted["min"],
             "profitFactor": round(aggs_adjusted["profitFactor"], 3) if aggs_adjusted["profitFactor"] is not None else None,
+            "maxDrawdown": round(aggs_adjusted.get("maxDrawdown") or 0, 2),
+            "sharpeTrades": round(aggs_adjusted["sharpeTrades"], 3) if aggs_adjusted.get("sharpeTrades") is not None else None,
         },
         "rSimple": {
             "total": round(aggs_simple["total"], 2),
@@ -1540,6 +1587,8 @@ def compute_analysis(sim):
             "max": aggs_simple["max"],
             "min": aggs_simple["min"],
             "profitFactor": round(aggs_simple["profitFactor"], 3) if aggs_simple["profitFactor"] is not None else None,
+            "maxDrawdown": round(aggs_simple.get("maxDrawdown") or 0, 2),
+            "sharpeTrades": round(aggs_simple["sharpeTrades"], 3) if aggs_simple.get("sharpeTrades") is not None else None,
         },
 
         # $-based
