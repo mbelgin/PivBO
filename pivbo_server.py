@@ -2482,18 +2482,29 @@ def _build_compare_pdf(analyses):
     elements.append(title_bar)
     elements.append(Spacer(1, 4))
     elements.append(Paragraph(
-        "Side-by-side with heatmap coloring (★ = primary R-based; green = best, red = worst)", st["subtitle"]))
+        "Side-by-side with heatmap (green = best, red = worst per row)", st["subtitle"]))
 
     # ----- Metrics table with heatmap -----
+    # Two R-mode sections built from a parallel template — same metric
+    # structure as the per-sim Analysis report, just one column per sim
+    # instead of one card per metric. Drop the legacy 'primary'/star
+    # marker; users compare on whatever metric matters to them.
+    def _r_metrics_for(mode_key, section_key, unit):
+        ext = lambda key: (lambda a: (a.get(mode_key) or {}).get(key))
+        return [
+            (section_key, f"Total {unit}",       True,  ext("total"),         _fmt_r),
+            (section_key, "Expectancy",          True,  ext("expectancy"),    _fmt_r),
+            (section_key, "Profit Factor",       True,  ext("profitFactor"),  lambda v: _fmt_num(v, 2)),
+            (section_key, "Max Drawdown",        False, ext("maxDrawdown"),   lambda v: f"-{_fmt_num(v, 2)}{unit}"),
+            (section_key, "Sharpe (per trade)",  True,  ext("sharpeTrades"),  lambda v: _fmt_num(v, 2)),
+            (section_key, "Max win",             True,  ext("max"),           _fmt_r),
+            (section_key, "Max loss",            True,  ext("min"),           _fmt_r),
+        ]
+
     metrics = [
-        # R-based
-        ("r", "Total R", True, lambda a: a.get("totalR"), _fmt_r, True),
-        ("r", "Expectancy (R)", True, lambda a: a.get("expectancyR"), _fmt_r, True),
-        ("r", "Profit Factor (R)", True, lambda a: a.get("profitFactorR"), lambda v: _fmt_num(v, 2), True),
-        ("r", "Max Drawdown (R)", False, lambda a: a.get("maxDrawdownR"), lambda v: f"-{_fmt_num(v, 2)}R", True),
-        ("r", "Sharpe (trade R)", True, lambda a: a.get("sharpeTradesR"), lambda v: _fmt_num(v, 2), True),
-        ("r", "Max R Win", True, lambda a: a.get("maxR"), _fmt_r, False),
-        ("r", "Max R Loss", True, lambda a: a.get("minR"), _fmt_r, False),
+        # Adjusted R section, then Simple R section.
+        *_r_metrics_for("rAdjusted", "ra", "adjR"),
+        *_r_metrics_for("rSimple",   "rs", "R"),
         # Dollar
         ("d", "Starting Capital", None, lambda a: a.get("startingCapital"), _fmt_money, False),
         ("d", "Final Balance", True, lambda a: a.get("finalBalance"), _fmt_money, False),
@@ -2531,7 +2542,13 @@ def _build_compare_pdf(analyses):
         ("s", "Avg Consec Losses", False, lambda a: (a.get("streaksDollar") or {}).get("avgConsecLosses"), lambda v: _fmt_num(v, 2), False),
     ]
 
-    section_titles = {"r": "R-BASED (PRIMARY)", "d": "DOLLAR-BASED", "c": "TRADE COUNTS", "s": "STREAKS"}
+    section_titles = {
+        "ra": "ADJUSTED R (adjR)",
+        "rs": "SIMPLE R (R)",
+        "d":  "DOLLAR-BASED",
+        "c":  "TRADE COUNTS",
+        "s":  "STREAKS",
+    }
 
     # Header row: ticker names
     headers = ["Metric"]
@@ -2599,7 +2616,11 @@ def _build_compare_pdf(analyses):
 
     last_section = None
     row_idx = 1
-    for sec, label, hb, extractor, fmt, primary in metrics:
+    # Tuple shape is (sec, label, hb, extractor, fmt[, ...]); the trailing
+    # 'primary' flag from the legacy rows is intentionally ignored — we no
+    # longer star-mark "primary" R-based metrics in the comparison.
+    for row in metrics:
+        sec, label, hb, extractor, fmt = row[:5]
         if sec != last_section:
             # Insert section header row
             title = section_titles.get(sec, sec)
@@ -2627,7 +2648,7 @@ def _build_compare_pdf(analyses):
             if color is not None:
                 style_cmds.append(("BACKGROUND", (1 + i, row_idx), (1 + i, row_idx), color))
 
-        label_para = Paragraph(("★ " + label) if primary else label, metric_label_primary if primary else metric_label_style)
+        label_para = Paragraph(label, metric_label_style)
         rows.append([label_para] + cells_out)
         row_idx += 1
 

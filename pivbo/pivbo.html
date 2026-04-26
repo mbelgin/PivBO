@@ -1335,7 +1335,15 @@
   .rpt-table td{padding:5px 8px;text-align:right;border-bottom:1px solid var(--row-border);}
   .rpt-table tr:hover td{background:var(--bg3);}
   .rpt-actions{display:flex;gap:6px;}
-  .rpt-heatmap td{text-align:right;padding:6px 10px;font-variant-numeric:tabular-nums;}
+  /* table-layout:fixed forces the browser to honor explicit col widths
+     instead of auto-sizing per-column based on cell content. Without
+     it, asymmetric content (e.g. one sim's name 'Test2' vs another's
+     'Discretionary Rules') makes the second column visibly wider on
+     a 2-sim compare. With fixed layout, label col is 22% and the sim
+     columns share the remaining 78% equally. */
+  .rpt-heatmap{table-layout:fixed;}
+  .rpt-heatmap col.label-col{width:22%;}
+  .rpt-heatmap td{text-align:right;padding:6px 10px;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;}
   .rpt-heatmap td.label{text-align:left;color:var(--muted);font-size:11px;}
   .rpt-heatmap td.metric{font-weight:600;}
   .rpt-heatmap .sim-hdr{text-align:center;font-size:11px;color:var(--text);padding:8px;background:var(--bg3);}
@@ -9175,16 +9183,29 @@ function renderCompareReport(j){
   }
 
   // Metric definitions: key, label, higherIsBetter, formatter
-  // section:'r'|'dollar'|'counts'|'streaks' drives optional section headers.
+  // section:'r-adjusted'|'r-simple'|'dollar'|'counts'|'streaks' drives
+  // optional section headers.
+  //
+  // Two R-mode sections are built from a shared template so adding a
+  // metric to the per-sim R schema (R_SECTION_METRICS in the server)
+  // and to this template stays a small, parallel edit.
+  const _rMetricsFor = (modeKey, sectionKey, unit) => {
+    const ext = (key) => (a) => (a[modeKey] || {})[key];
+    return [
+      {k:`_${modeKey}_total`,        label:`Total ${unit}`,       hb:true,  f:_fmtR,                                section:sectionKey, extract:ext('total')},
+      {k:`_${modeKey}_expectancy`,   label:'Expectancy',          hb:true,  f:_fmtR,                                section:sectionKey, extract:ext('expectancy')},
+      {k:`_${modeKey}_profitFactor`, label:'Profit Factor',       hb:true,  f:v=>_fmtNum(v,2),                      section:sectionKey, extract:ext('profitFactor')},
+      {k:`_${modeKey}_maxDrawdown`,  label:'Max Drawdown',        hb:false, f:v=>'-'+_fmtNum(v,2)+unit,             section:sectionKey, extract:ext('maxDrawdown')},
+      {k:`_${modeKey}_sharpe`,       label:'Sharpe (per trade)',  hb:true,  f:v=>_fmtNum(v,2),                      section:sectionKey, extract:ext('sharpeTrades')},
+      {k:`_${modeKey}_max`,          label:'Max win',             hb:true,  f:_fmtR,                                section:sectionKey, extract:ext('max')},
+      {k:`_${modeKey}_min`,          label:'Max loss',            hb:true,  f:_fmtR,                                section:sectionKey, extract:ext('min')},
+    ];
+  };
   const metrics=[
-    // R-BASED (PRIMARY)
-    {k:'totalR',label:'Total R',hb:true,f:_fmtR,primary:true,section:'r'},
-    {k:'expectancyR',label:'Expectancy (R)',hb:true,f:_fmtR,primary:true,section:'r'},
-    {k:'profitFactorR',label:'Profit Factor (R)',hb:true,f:v=>_fmtNum(v,2),primary:true,section:'r'},
-    {k:'maxDrawdownR',label:'Max Drawdown (R)',hb:false,f:v=>'-'+_fmtNum(v,2)+'R',primary:true,section:'r'},
-    {k:'sharpeTradesR',label:'Sharpe (trade R)',hb:true,f:v=>_fmtNum(v,2),primary:true,section:'r'},
-    {k:'maxR',label:'Max R win',hb:true,f:_fmtR,section:'r'},
-    {k:'minR',label:'Max R loss',hb:true,f:_fmtR,section:'r'},
+    // R-mode sections — Adjusted first, then Simple (matches per-sim
+    // report ordering).
+    ..._rMetricsFor('rAdjusted', 'r-adjusted', 'adjR'),
+    ..._rMetricsFor('rSimple',   'r-simple',   'R'),
     // DOLLAR-BASED
     {k:'startingCapital',label:'Starting Capital',hb:null,f:_fmtMoney,section:'dollar'},
     {k:'finalBalance',label:'Final Balance',hb:true,f:_fmtMoney,section:'dollar'},
@@ -9247,7 +9268,13 @@ function renderCompareReport(j){
     return `background:rgba(${r},${g},${b},${(alpha*0.25).toFixed(3)});color:rgb(${r},${g},${b});font-weight:600;`;
   }
 
-  const sectionTitles={r:'R-based (primary)',dollar:'Dollar-based',counts:'Trade Counts',streaks:'Streaks'};
+  const sectionTitles={
+    'r-adjusted': 'Adjusted R (adjR)',
+    'r-simple':   'Simple R (R)',
+    dollar:       'Dollar-based',
+    counts:       'Trade Counts',
+    streaks:      'Streaks',
+  };
   let lastSection=null;
   const rows=metrics.map(m=>{
     const vals=analyses.map(a=>m.extract?m.extract(a):a[m.k]);
@@ -9259,7 +9286,7 @@ function renderCompareReport(j){
       header=`<tr><td colspan="${span}" style="background:var(--bg2);color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;padding:10px 8px 4px 8px;border-top:1px solid var(--border);">${sectionTitles[m.section]||m.section}</td></tr>`;
       lastSection=m.section;
     }
-    return header+`<tr><td class="label" style="${m.primary?'color:var(--accent);font-weight:500;':''}">${m.label}${m.primary?' ★':''}</td>${cells}</tr>`;
+    return header+`<tr><td class="label">${m.label}</td>${cells}</tr>`;
   }).join('');
 
   const headers=analyses.map(a=>{
@@ -9272,23 +9299,40 @@ function renderCompareReport(j){
       <div class="rpt-header">
         <div style="flex:1;">
           <div class="rpt-title">Compare — ${analyses.length} Simulations</div>
-          <div class="rpt-subtitle">Side-by-side with heatmap (★ = primary R-based)</div>
+          <div class="rpt-subtitle">Side-by-side with heatmap (green = best, red = worst per row)</div>
         </div>
         <div class="rpt-actions no-print">
           <button class="sim-btn" id="cmp-back">← Back</button>
-          <button class="sim-btn" id="cmp-export-csv">CSV</button>
-          <button class="sim-btn primary" id="cmp-print">Download PDF</button>
+          <div class="rpt-export-wrap" style="position:relative;display:inline-block;">
+            <button class="sim-btn primary" id="cmp-export-btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+            <div class="rpt-export-menu hidden" id="cmp-export-menu" role="menu" style="position:absolute;right:0;top:calc(100% + 4px);background:var(--bg2);border:1px solid var(--border);border-radius:4px;box-shadow:0 4px 14px rgba(0,0,0,0.5);min-width:140px;z-index:30;padding:4px 0;">
+              <button class="sim-btn" data-export="pdf"  style="width:100%;text-align:left;border:0;background:transparent;border-radius:0;padding:6px 12px;">PDF</button>
+              <button class="sim-btn" data-export="csv"  style="width:100%;text-align:left;border:0;background:transparent;border-radius:0;padding:6px 12px;">CSV</button>
+              <button class="sim-btn" data-export="json" style="width:100%;text-align:left;border:0;background:transparent;border-radius:0;padding:6px 12px;" title="Raw analyses array — same structure all renderers consume.">JSON</button>
+            </div>
+          </div>
         </div>
       </div>
       ${errors.length?`<div class="rpt-banner warning">Skipped: ${errors.map(e=>_safeTxt(e.id+' ('+e.error+')')).join(', ')}</div>`:''}
       <div class="rpt-section">
         <table class="rpt-table rpt-heatmap" style="width:100%;">
+          <colgroup>
+            <col class="label-col">
+            ${analyses.map(()=>`<col class="sim-col">`).join('')}
+          </colgroup>
           <thead><tr><td class="label"></td>${headers}</tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
       <div class="rpt-section">
         <h3>Equity Curves (Normalized, starting = 100, x = trade index)</h3>
+        <!-- Hover legend: shows each sim's value at the cursor's trade
+             index. Up to 5 chips fit comfortably; flex-wrap lets it
+             stack on narrow widths. Filled in by the cross-hair handler
+             in renderCompareEquityChart. -->
+        <div id="cmp-equity-legend" style="display:flex;flex-wrap:wrap;gap:8px 14px;margin:6px 0 4px;font-family:var(--mono);font-size:11px;min-height:18px;color:var(--muted);">
+          <span style="color:var(--muted);">Hover the chart to see each sim's equity at that trade.</span>
+        </div>
         <div class="rpt-chart" id="cmp-equity-chart"></div>
       </div>
       ${analyses.some(a=>a.notes)?`<div class="rpt-section"><h3>Notes</h3>${analyses.filter(a=>a.notes).map(a=>`<div style="margin-bottom:10px;"><div style="font-size:11px;color:var(--accent);font-weight:500;margin-bottom:4px;">${_safeTxt(a.simName)} <span style="color:var(--muted);font-weight:400;">[${_safeTxt(a.ticker)}]</span></div><div style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;font-size:11px;line-height:1.5;color:var(--text);white-space:pre-wrap;">${_safeTxt(a.notes)}</div></div>`).join('')}</div>`:''}
@@ -9296,22 +9340,66 @@ function renderCompareReport(j){
   `;
 
   document.getElementById('cmp-back').addEventListener('click',()=>showPage('simulations'));
-  document.getElementById('cmp-export-csv').addEventListener('click',()=>exportCompareCSV(analyses,metrics));
-  document.getElementById('cmp-print').addEventListener('click',async()=>{
-    const btn=document.getElementById('cmp-print');
-    const origLabel=btn.textContent;
-    btn.disabled=true;btn.textContent='Generating PDF…';
-    try{
-      const ids=analyses.map(a=>a.simId);
-      const r=await fetch('/api/simulations/compare/pdf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});
-      if(!r.ok){const j=await r.json().catch(()=>({}));flash('PDF failed: '+(j.error||r.status));return;}
-      const blob=await r.blob();
-      const url=URL.createObjectURL(blob);
-      const link=document.createElement('a');link.href=url;link.download='comparison.pdf';document.body.appendChild(link);link.click();link.remove();
-      setTimeout(()=>URL.revokeObjectURL(url),1000);
-    }catch(e){flash('PDF failed: '+e.message);}
-    finally{btn.disabled=false;btn.textContent=origLabel;}
-  });
+  // Compare Export dropdown — mirrors the per-sim Analysis report's
+  // export menu. Same UX, same close-on-outside behavior. PDF goes
+  // through the server (matplotlib chart + reportlab table); CSV and
+  // JSON are client-side over the analyses array we already have.
+  (function wireCompareExportMenu(){
+    const btn  = document.getElementById('cmp-export-btn');
+    const menu = document.getElementById('cmp-export-menu');
+    if (!btn || !menu) return;
+    const open = (state) => {
+      menu.classList.toggle('hidden', !state);
+      btn.setAttribute('aria-expanded', state ? 'true' : 'false');
+    };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      open(menu.classList.contains('hidden'));
+    });
+    document.addEventListener('click', (e) => {
+      if (!menu.classList.contains('hidden') && !menu.contains(e.target) && e.target !== btn) {
+        open(false);
+      }
+    });
+    menu.addEventListener('click', async (e) => {
+      const target = e.target.closest('[data-export]');
+      if (!target) return;
+      const kind = target.getAttribute('data-export');
+      open(false);
+      if (kind === 'csv') return exportCompareCSV(analyses, metrics);
+      if (kind === 'json') {
+        // Raw analyses array — same structure CSV/PDF render from.
+        const txt = JSON.stringify(analyses, null, 2);
+        _download(txt, 'comparison.json', 'application/json');
+        return;
+      }
+      if (kind === 'pdf') {
+        const orig = btn.textContent;
+        btn.disabled = true; btn.textContent = 'Generating PDF…';
+        try {
+          const ids = analyses.map(a => a.simId);
+          const r = await fetch('/api/simulations/compare/pdf', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ids}),
+          });
+          if (!r.ok) {
+            const j = await r.json().catch(() => ({}));
+            flash('PDF failed: ' + (j.error || r.status));
+            return;
+          }
+          const blob = await r.blob();
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = 'comparison.pdf';
+          document.body.appendChild(link); link.click(); document.body.removeChild(link);
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } finally {
+          btn.disabled = false; btn.textContent = orig;
+        }
+      }
+    });
+  })();
 
   // Render normalized equity curves on one chart
   renderCompareEquityChart(analyses);
@@ -9385,16 +9473,91 @@ function renderCompareEquityChart(analyses){
     { time: idxToFakeDate(maxIdx || 1), value: 100 },
   ]);
   try{_compareEquityChart.timeScale().fitContent();}catch(e){}
+
+  // Hover legend: show each sim's equity at the hovered trade index,
+  // including starting capital ($) and P/L ($) for direct comparison.
+  // Up to 5 sims are supported via flex-wrap on the legend container.
+  const legendEl = document.getElementById('cmp-equity-legend');
+  if (legendEl) {
+    // Build a sim-index → series map so we can pull per-sim values
+    // for any hover position. Keep references to series + their
+    // analysis so we can rebuild legend chips on each crosshair move.
+    const seriesInfo = analyses.map((a, i) => {
+      const cap = a.startingCapital || 100000;
+      const curve = a.equityCurve || [];
+      // Build a fast lookup: fake-date → (balance, pl, idx)
+      const byDate = new Map();
+      curve.forEach((p, k) => {
+        byDate.set(idxToFakeDate(k), { balance: p.balance, idx: k });
+      });
+      return {
+        name: a.simName || `Sim ${i + 1}`,
+        ticker: a.ticker || '',
+        color: palette[i % palette.length],
+        cap,
+        byDate,
+        curve,
+      };
+    });
+    _compareEquityChart.subscribeCrosshairMove((param) => {
+      if (!param || !param.time) {
+        legendEl.innerHTML = '<span style="color:var(--muted);">Hover the chart to see each sim\'s equity at that trade.</span>';
+        return;
+      }
+      // The hover time is the same fake-date string we plotted with.
+      const chips = seriesInfo.map((info) => {
+        const hit = info.byDate.get(param.time);
+        if (!hit) {
+          return `<span style="color:var(--muted);">${_safeTxt(info.name)}: —</span>`;
+        }
+        const pl = hit.balance - info.cap;
+        const plColor = pl >= 0 ? 'var(--green)' : 'var(--red)';
+        const plSign = pl >= 0 ? '+' : '';
+        return (
+          `<span style="display:inline-flex;align-items:center;gap:5px;">` +
+          `<span style="display:inline-block;width:8px;height:8px;background:${info.color};border-radius:2px;"></span>` +
+          `<span style="color:var(--text);">${_safeTxt(info.name)}</span> ` +
+          `<span style="color:var(--muted);">@ #${hit.idx}</span> ` +
+          `<span>$${Math.round(hit.balance).toLocaleString()}</span> ` +
+          `<span style="color:${plColor};">${plSign}$${Math.round(pl).toLocaleString()}</span>` +
+          `</span>`
+        );
+      });
+      legendEl.innerHTML = chips.join('');
+    });
+  }
 }
 
 function exportCompareCSV(analyses,metrics){
+  // Section titles match the on-screen heatmap headers so the CSV
+  // reader sees the same grouping. Falls back to the section key if
+  // a new section is added without a label.
+  const sectionTitles={
+    'r-adjusted':'ADJUSTED R (adjR)',
+    'r-simple':  'SIMPLE R (R)',
+    dollar:      'DOLLAR-BASED',
+    counts:      'TRADE COUNTS',
+    streaks:     'STREAKS',
+  };
+  const csvRound=(v)=>(typeof v==='number')?Number(v.toFixed(2)):v;
   const rows=[];
   rows.push(['Metric',...analyses.map(a=>a.simName)]);
   rows.push(['Ticker',...analyses.map(a=>a.ticker)]);
   rows.push(['Progress',...analyses.map(a=>a.isComplete||(a.progress||0)>=100?'Complete':(a.progress+'%'))]);
   rows.push([]);
+  let lastSection=null;
   metrics.forEach(m=>{
-    rows.push([m.label,...analyses.map(a=>{const v=m.extract?m.extract(a):a[m.k];return v==null?'':String(v);})]);
+    if(m.section&&m.section!==lastSection){
+      // Section header row — Excel renders an empty row + bold-ish
+      // group label so the reader can tell where each block begins.
+      rows.push([]);
+      rows.push([sectionTitles[m.section]||m.section,...analyses.map(()=>'')]);
+      lastSection=m.section;
+    }
+    rows.push([m.label,...analyses.map(a=>{
+      const v=m.extract?m.extract(a):a[m.k];
+      return v==null?'':String(csvRound(v));
+    })]);
   });
   const csv=rows.map(r=>r.map(c=>{const s=String(c==null?'':c);return s.includes(',')||s.includes('"')?'"'+s.replace(/"/g,'""')+'"':s;}).join(',')).join('\n');
   _download(csv,'comparison.csv','text/csv');
