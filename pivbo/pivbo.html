@@ -6496,8 +6496,46 @@ function simRetreat(){
   simIdx--;
   _simReviewId=null;
   simSetSelectedBar(null);
-  // Permanently discard trades/exits/pending created after current bar
-  simTrades=simTrades.filter(t=>t._createdAtIdx<=simIdx);
+  // Permanently discard trades/exits/pending created after current bar.
+  //
+  // Two stages of trade removal:
+  //   (a) Trades whose UNDERLYING ORDER was placed AFTER the new simIdx are
+  //       gone entirely — order placement hasn't happened yet.
+  //   (b) Trades whose order was placed at or before the new simIdx, but
+  //       which only FILLED later (e.g. limit orders), get "un-filled":
+  //       the trade is removed AND the original pending order is restored
+  //       to simPending so the user sees the same waiting-to-fill state
+  //       they had at this bar in the original timeline.
+  // Without (b), retreating one bar past the fill made the trade vanish
+  // without trace, even though at that bar the user still had a live
+  // pending order on the books.
+  {
+    const survivors = [];
+    for (const t of simTrades) {
+      const placed = (typeof t._placedAtIdx === 'number')
+        ? t._placedAtIdx
+        : (t._createdAtIdx || 0);
+      if (placed > simIdx) {
+        // Order placement is in the future — drop everything.
+        continue;
+      }
+      const filled = t._createdAtIdx || 0;
+      if (filled > simIdx && t._placedFrom) {
+        // Pre-fill state: restore the pending order, drop the trade.
+        // Re-insert so the order list keeps the original chronological
+        // ordering (placement-bar ascending).
+        const pending = { ...t._placedFrom };
+        // Clear stale id linkage: simPending entries are anonymous orders.
+        delete pending.tradeId;
+        simPending.push(pending);
+        continue;
+      }
+      survivors.push(t);
+    }
+    simTrades = survivors;
+    // Re-sort pending so the visible order matches creation chronology.
+    simPending.sort((a, b) => (a._createdAtIdx || 0) - (b._createdAtIdx || 0));
+  }
   for(const t of simTrades){
     t.exits=t.exits.filter(e=>e._atIdx<=simIdx);
     // Discard SL changes that happened in the future; recompute effective SL.
@@ -6659,6 +6697,25 @@ function simCheckSL(bar){
 function simExecuteEntry(order,date){
   const stopLoss=(order.stopLoss&&order.stopLoss>0)?order.stopLoss:null;
   const initialRisk=stopLoss?Math.abs(order.price-stopLoss):0;
+  // Retain a snapshot of the pending order this trade filled from (if any).
+  // Used by simRetreat to "un-fill" the trade back to a pending order when
+  // the user rewinds past the fill bar but not yet past the placement bar.
+  // For market-style fills (no prior pending), _placedAtIdx == _createdAtIdx,
+  // _placedFrom is null, and the un-fill path is a no-op.
+  const placedFrom = (order && typeof order._createdAtIdx === 'number')
+    ? {
+        direction: order.direction,
+        price: order.price,
+        stopLoss: order.stopLoss,
+        shares: order.shares,
+        type: 'entry',
+        gapLimit: order.gapLimit || 0,
+        _createdAtIdx: order._createdAtIdx,
+      }
+    : null;
+  const placedIdx = (order && typeof order._createdAtIdx === 'number')
+    ? order._createdAtIdx
+    : simIdx;
   const trade={
     id:++simTradeIdCtr,direction:order.direction,
     entries:[{date,price:order.price,shares:order.shares}],
@@ -6671,7 +6728,9 @@ function simExecuteEntry(order,date){
     // enables time-travel (retreat reveals the SL you had at that past bar).
     slHistory:stopLoss!=null?[{_atIdx:simIdx,price:stopLoss}]:[],
     status:'open',currentShares:order.shares,_unrealizedPL:0,
-    _createdAtIdx:simIdx
+    _createdAtIdx:simIdx,        // bar the FILL happened
+    _placedAtIdx:placedIdx,      // bar the underlying order was first submitted
+    _placedFrom:placedFrom,      // snapshot of the pending order, for retreat un-fill
   };
   simTrades.push(trade);
 }
