@@ -5483,12 +5483,17 @@ function initSecondaryChart(){
     // runtime resize alignment in alignSecondaryPriceScale().
     timeScale:{borderColor:borderColor,visible:false,timeVisible:false,rightOffset:persistedRightOffset},
     // ============================================================
-    // Chart2 is a horizontal follower: all horizontal pan/zoom is
-    // disabled (main chart is the authority). But vertical scaling
-    // via price-axis drag IS allowed — the user wants to adjust
-    // chart2's vertical scale independently.
+    // Chart2 follows the main chart horizontally but allows
+    // independent vertical adjustment:
+    //  * pressedMouseMove: true  → click-drag pans. Lightweight
+    //    pans both axes; the horizontal piece is immediately
+    //    snapped back to main's range by the listener below
+    //    (search "chart2→main snap-back"). Vertical pan persists.
+    //  * mouseWheel: false       → wheel routes to main chart.
+    //  * axisPressedMouseMove.price: true → drag right axis to
+    //    scale chart2's price range independently.
     // ============================================================
-    handleScroll:false,
+    handleScroll:{pressedMouseMove:true,mouseWheel:false,horzTouchDrag:true,vertTouchDrag:true},
     handleScale:{
       axisPressedMouseMove:{time:false,price:true},
       mouseWheel:false,
@@ -5522,6 +5527,22 @@ function initSecondaryChart(){
     _syncingTimeRange=false;
     // Widest price label can change as the view scrolls — re-align scales.
     requestAnimationFrame(()=>alignSecondaryPriceScale());
+  });
+
+  // chart2→main snap-back. Chart2 has pressedMouseMove enabled so users can
+  // drag-pan vertically, but the same gesture also pans the time axis.
+  // Whenever chart2's logical range diverges from main's, force it back to
+  // main's range immediately. Net effect: vertical pan persists (separate
+  // from logical range), horizontal stays locked to main.
+  chart2.timeScale().subscribeVisibleLogicalRangeChange(r=>{
+    if(_syncingTimeRange||!chart||!r)return;
+    let mainR=null;
+    try{mainR=chart.timeScale().getVisibleLogicalRange();}catch(e){return;}
+    if(!mainR)return;
+    if(Math.abs(r.from-mainR.from)<0.001 && Math.abs(r.to-mainR.to)<0.001)return;
+    _syncingTimeRange=true;
+    try{chart2.timeScale().setVisibleLogicalRange(mainR);}catch(e){}
+    _syncingTimeRange=false;
   });
 
   // Crosshair sync: hover on one → show crosshair on other

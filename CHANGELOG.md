@@ -8,6 +8,13 @@ The newest version is at the top.
 
 ## Unreleased
 
+- **Secondary chart: independent vertical pan**. After zooming the secondary
+  chart's price axis (drag the right edge), you can now click-drag the chart
+  body up or down to pan vertically, exactly like the main chart. Horizontal
+  position stays locked to the main chart at all times — any horizontal drift
+  introduced by the drag is reverted on the next frame, so the two charts
+  never desync.
+
 ## v0.0.4 (2026-04-26)
 
 - **Compare report: dual-R sections**. Side-by-side Adjusted R and Simple R
