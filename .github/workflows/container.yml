@@ -17,6 +17,7 @@ on:
       - 'Dockerfile'
       - '.dockerignore'
       - 'docker-compose.yml'
+      - 'docker-entrypoint.sh'
       - 'requirements-server.txt'
       - 'pivbo_server.py'
       - 'pivbo/**'
