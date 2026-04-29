@@ -62,6 +62,14 @@ except Exception:
 # The env var PIVBO_FORCE_USER_DATA_DIR=1 forces the installed-mode path
 # for local testing of the packaged layout.
 def _resolve_user_data_dir():
+    # Explicit override wins. Containers set PIVBO_DATA_DIR=/data so
+    # the data path is decoupled from $HOME and platformdirs (which
+    # makes opportunistic chmod calls that fail when the runtime UID
+    # doesn't own its $HOME tree). Anyone who wants their desktop data
+    # outside the platformdirs default can use the same env var.
+    explicit = os.environ.get("PIVBO_DATA_DIR")
+    if explicit:
+        return explicit
     # `pyproject.toml` lives at the repo root but is NOT copied into a
     # Briefcase bundle (sources only include `pivbo` and `pivbo_server.py`),
     # so its presence next to this script is a reliable dev-mode marker.

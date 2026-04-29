@@ -22,11 +22,6 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
-# Default user UID 1000 with primary GID 0 so writable paths can be
-# group-owned by 0 (see chgrp/chmod below). This is what makes the image
-# safe to run under an arbitrary `--user` override without rebuilding.
-RUN useradd --create-home --uid 1000 --gid 0 --shell /usr/sbin/nologin pivbo
-
 WORKDIR /app
 
 # Server-only deps. Toga / briefcase / GUI bits are intentionally not
@@ -39,24 +34,18 @@ RUN pip install --no-cache-dir -r requirements-server.txt
 COPY pivbo_server.py LICENSE ./
 COPY pivbo/ ./pivbo/
 
-# PIVBO_HOST: container internals bind to 0.0.0.0 so the port Docker
-# forwards is reachable. HOME: explicit so Python's `~` expansion (and
-# hence platformdirs) still resolves when the runtime UID has no entry
-# in /etc/passwd.
+# Bind to 0.0.0.0 inside the container so the port Docker forwards is
+# reachable. Pin the data dir to /data so platformdirs and $HOME never
+# enter the picture; whatever UID can read/write /data can run the app.
 ENV PIVBO_HOST=0.0.0.0 \
-    HOME=/home/pivbo
+    PIVBO_DATA_DIR=/data
 
-# Make the writable tree group-0 owned with group permissions matching
-# user permissions. With `useradd --gid 0` above, the default user
-# already has the right access; an arbitrary --user override gets the
-# same access by either being in group 0 or owning the path on a
-# bind-mount.
-RUN mkdir -p /home/pivbo/.local/share/PivBO \
-    && chgrp -R 0 /home/pivbo \
-    && chmod -R g=u /home/pivbo
-VOLUME ["/home/pivbo/.local/share/PivBO"]
-
-USER 1000
+# Pre-create /data with world-writable perms so any UID picked at run
+# time (named volume, bind-mount, --user override) can write into it
+# on first launch. Bind-mounts always inherit the host directory's
+# ownership, so this only matters when no host directory is given.
+RUN mkdir -p /data && chmod 0777 /data
+VOLUME ["/data"]
 
 EXPOSE 5051
 

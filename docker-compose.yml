@@ -26,9 +26,9 @@ services:
     volumes:
       # Named volume keeps simulations, prefs, drawings, and the seeded
       # historical bars across container restarts and image upgrades.
-      # Swap this for a bind-mount (e.g. ./pivbo-data:/home/pivbo/...)
-      # if you'd rather see the files on your host filesystem.
-      - pivbo-data:/home/pivbo/.local/share/PivBO
+      # Swap this for a bind-mount (e.g. ./pivbo-data:/data) if you'd
+      # rather see the files on your host filesystem.
+      - pivbo-data:/data
 
 volumes:
   pivbo-data:

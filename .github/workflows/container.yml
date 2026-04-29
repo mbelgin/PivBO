@@ -1,0 +1,76 @@
+name: Container
+
+# Builds the GHCR image independently of the desktop release pipeline.
+#
+# Triggers:
+#   - push to main, when container-relevant files change (path filter
+#     below). Iterations on the Dockerfile or server code don't drag
+#     the windows/macos/linux jobs through a rebuild for nothing.
+#   - workflow_dispatch, for manual rebuilds without code changes.
+#   - v* tag push, alongside release.yml. The tagged build pushes
+#     :VERSION and :latest; everything else pushes :edge.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'docker-compose.yml'
+      - 'requirements-server.txt'
+      - 'pivbo_server.py'
+      - 'pivbo/**'
+      - '.github/workflows/container.yml'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build container image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image tags
+        id: meta
+        run: |
+          REPO_LC="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/pivbo"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            echo "tags=${REPO_LC}:${VERSION},${REPO_LC}:latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=${REPO_LC}:edge" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=Self-hosted bar-by-bar momentum trading simulator
+            org.opencontainers.image.licenses=MIT
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
