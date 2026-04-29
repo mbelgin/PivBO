@@ -38,7 +38,8 @@ COPY pivbo/ ./pivbo/
 # reachable. Pin the data dir to /data so platformdirs and $HOME never
 # enter the picture; whatever UID can read/write /data can run the app.
 ENV PIVBO_HOST=0.0.0.0 \
-    PIVBO_DATA_DIR=/data
+    PIVBO_DATA_DIR=/data \
+    PYTHONUNBUFFERED=1
 
 # Pre-create /data with world-writable perms so any UID picked at run
 # time (named volume, bind-mount, --user override) can write into it
