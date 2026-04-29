@@ -758,6 +758,34 @@ a:hover {
   color: var(--text);
 }
 
+.dl-notice {
+  margin: 18px 0 22px;
+  padding: 12px 16px;
+  background: rgba(245, 200, 66, 0.07);
+  border: 1px solid rgba(245, 200, 66, 0.28);
+  border-radius: 8px;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.dl-notice strong {
+  color: var(--yellow);
+}
+
+.dl-notice a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: rgba(0, 212, 170, 0.45);
+}
+
+.dl-notice a:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+
 .os-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
