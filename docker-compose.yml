@@ -10,9 +10,13 @@
 #
 # Podman users: `podman compose` accepts the same file.
 #
-# If you bind-mount a host directory and your host user is not
-# UID 1000, override `user:` to match:
-#   user: "1001:1001"
+# Want files in a bind-mount owned by your host user (not 1000)?
+# Add PUID and PGID under `environment:` to match:
+#   environment:
+#     - PUID=1001
+#     - PGID=1001
+# The container's entrypoint chowns /data to that UID at startup, so
+# no host-side mkdir or chown is needed before `docker compose up`.
 
 services:
   pivbo:
