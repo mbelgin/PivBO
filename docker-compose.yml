@@ -35,4 +35,4 @@ services:
       - pivbo-data:/data
 
 volumes:
-  pivbo-data:
+  pivbo-data: {}
