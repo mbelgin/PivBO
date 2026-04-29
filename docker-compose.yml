@@ -10,12 +10,9 @@
 #
 # Podman users: `podman compose` accepts the same file.
 #
-# Bind-mount on a NAS / Pi where the host user is not UID 1000?
-# Add a `user:` line that matches the host owner. The image follows
-# the OpenShift arbitrary-UID pattern (writable paths owned by group
-# 0 with group=user permissions), so either form works:
-#   user: "1001:0"      # arbitrary UID, stay in group 0
-#   user: "1001:1001"   # match host bind-mount owner exactly
+# If you bind-mount a host directory and your host user is not
+# UID 1000, override `user:` to match:
+#   user: "1001:1001"
 
 services:
   pivbo:
