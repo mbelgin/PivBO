@@ -1,0 +1,30 @@
+# PivBO container: minimal compose file for self-hosters.
+#
+# Usage:
+#   docker compose up -d         # start in the background
+#   docker compose logs -f       # tail the server log
+#   docker compose down          # stop (data volume persists)
+#   docker compose pull          # fetch the latest tag, then `up -d` again
+#
+# Then open http://localhost:5051/ in a browser.
+#
+# Podman users: `podman compose` accepts the same file.
+
+services:
+  pivbo:
+    image: ghcr.io/mbelgin/pivbo:latest
+    container_name: pivbo
+    restart: unless-stopped
+    ports:
+      # host:container. Change the left side to remap to a different
+      # host port if 5051 is already taken.
+      - "5051:5051"
+    volumes:
+      # Named volume keeps simulations, prefs, drawings, and the seeded
+      # historical bars across container restarts and image upgrades.
+      # Swap this for a bind-mount (e.g. ./pivbo-data:/home/pivbo/...)
+      # if you'd rather see the files on your host filesystem.
+      - pivbo-data:/home/pivbo/.local/share/PivBO
+
+volumes:
+  pivbo-data:

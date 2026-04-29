@@ -821,8 +821,15 @@ def _sim_path(sim_id):
     return os.path.join(SIMULATIONS_DIR, f"{sim_id}.json")
 
 
+# Cache filename uses an app-specific prefix because some 3rd-party
+# security products silently block writes to generic "index.json" inside
+# user-data dirs, returning ACCESS_DENIED at the kernel mini-filter
+# layer with no surfaced error. App-prefixed names sidestep that.
+_SIM_INDEX_NAME = "pivbo_index.json"
+
+
 def _load_sim_index():
-    idx_path = os.path.join(SIMULATIONS_DIR, "index.json")
+    idx_path = os.path.join(SIMULATIONS_DIR, _SIM_INDEX_NAME)
     if not os.path.exists(idx_path):
         return []
     try:
@@ -833,17 +840,32 @@ def _load_sim_index():
 
 
 def _save_sim_index(index):
+    # Atomic write via tmp + os.replace so an interrupted write never leaves
+    # a half-written cache or trips file-locking edge cases. Cache write is
+    # also non-fatal: the source of truth is the per-sim JSONs and the
+    # endpoint returns the in-memory list, so a failed cache write must not
+    # break /api/simulations.
     _ensure_sim_dir()
-    idx_path = os.path.join(SIMULATIONS_DIR, "index.json")
-    with open(idx_path, "w", encoding="utf-8") as f:
-        json.dump(index, f, ensure_ascii=False, indent=2)
+    idx_path = os.path.join(SIMULATIONS_DIR, _SIM_INDEX_NAME)
+    tmp_path = idx_path + ".tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(index, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, idx_path)
+    except OSError as e:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+        print(f"[sim_index] cache write skipped ({e.__class__.__name__}: {e})")
 
 
 def _rebuild_sim_index():
     _ensure_sim_dir()
     index = []
     for fname in os.listdir(SIMULATIONS_DIR):
-        if fname == "index.json" or not fname.endswith(".json"):
+        if fname == _SIM_INDEX_NAME or fname == "index.json" or not fname.endswith(".json"):
             continue
         try:
             with open(os.path.join(SIMULATIONS_DIR, fname), "r", encoding="utf-8") as f:
@@ -3602,8 +3624,13 @@ if __name__ == "__main__":
     # default without us hardcoding a number.
     from waitress import serve
     thread_count = os.cpu_count() or 4
+    # Default to loopback so a casual `python pivbo_server.py` outside a
+    # container behaves the same as before (no exposed port, no firewall
+    # prompt). Container builds set PIVBO_HOST=0.0.0.0 so the server
+    # accepts the connection Docker forwards from the host.
+    bind_host = os.environ.get("PIVBO_HOST", "127.0.0.1")
     try:
-        serve(app, host="127.0.0.1", port=PORT, threads=thread_count, ident="pivbo")
+        serve(app, host=bind_host, port=PORT, threads=thread_count, ident="pivbo")
     except KeyboardInterrupt:
         pass
     finally:

@@ -1,0 +1,53 @@
+# Keep the build context small and the image lean. Anything not needed
+# at runtime is excluded from `docker build`'s upload to the daemon.
+
+# Version control
+.git/
+.gitignore
+.gitattributes
+
+# CI / packaging metadata
+.github/
+.briefcase/
+
+# Briefcase build outputs
+build/
+dist/
+
+# Marketing site
+web/
+
+# Per-user data and historical bars (seeder pulls these on first launch)
+collected_stocks/
+simulations/
+analyses/
+templates/
+sandbox/
+SPY Historical Data.csv
+
+# Virtual envs and Python caches
+.venv/
+venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Local-only docs and scratch files (gitignored anyway, belt-and-braces)
+CLAUDE.md
+DISTRO_README.md
+PLAN_*.md
+graphify-out/
+memory/
+_*.py
+_*.txt
+_*.md
+
+# Editor noise
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Container files don't need to ship inside the image
+Dockerfile
+.dockerignore

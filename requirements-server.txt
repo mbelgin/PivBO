@@ -1,0 +1,5 @@
+Flask>=3.0,<4.0
+waitress>=3.0
+reportlab>=4.0
+matplotlib>=3.5
+platformdirs>=4.0
