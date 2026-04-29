@@ -16,10 +16,11 @@
 
 FROM python:3.12-slim
 
-# matplotlib + reportlab need a font set for chart and PDF rendering.
-# DejaVu is the standard Linux fallback and ~3 MB.
+# matplotlib + reportlab need a font set for chart and PDF rendering;
+# gosu lets the entrypoint drop from root to a target UID after fixing
+# /data ownership at startup.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core gosu \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -48,6 +49,14 @@ ENV PIVBO_HOST=0.0.0.0 \
 RUN mkdir -p /data && chmod 0777 /data
 VOLUME ["/data"]
 
+# Entrypoint runs as root, chowns /data to PUID:PGID (default 1000:1000),
+# then drops privileges via gosu. This handles the bind-mount case where
+# Docker auto-creates the host source path as root, so users don't have
+# to mkdir/chown anything before `docker compose up`.
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 EXPOSE 5051
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["python", "pivbo_server.py"]
