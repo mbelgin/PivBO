@@ -22,12 +22,30 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
-# Non-root user for the running app. UID 1000 is the conventional first-
-# user UID on most desktop Linux hosts, so a host bind-mount (-v ./data:...)
-# inherits ownership cleanly without needing chown gymnastics. A user
-# can still override with `--user` at run-time if they need a different
-# UID/GID for a NAS, NFS share, etc.
-RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin pivbo
+# Non-root, "arbitrary UID safe" image, following the OpenShift pattern
+# (https://www.redhat.com/en/blog/a-guide-to-openshift-and-uids):
+#
+#   - Numeric default UID 1000, primary GID 0 (root group). Every
+#     container run gets group 0 in its primary or supplementary set,
+#     so any user-given UID can read and write the same paths as long
+#     as it is in group 0 (which is the default the OpenShift scheduler
+#     and most NAS panels arrange for).
+#   - All writable paths under HOME are `chgrp 0 + chmod g=u`, meaning
+#     the group permission bits exactly match the user's. So whoever
+#     the runtime UID is, if their group set includes 0, they have full
+#     access; if their UID happens to own the file on a bind-mount,
+#     they have access via the user bits. Both common deployment shapes
+#     (`-v named-volume:...` and `-v /host/path:...`) work without
+#     image changes.
+#   - HOME is set explicitly so Python's `~` expansion still resolves
+#     when the runtime UID has no `/etc/passwd` entry (the case for any
+#     `--user 1001` override on a NAS where the host user is 1001).
+#
+# Recommended overrides:
+#   docker compose ... --user 1001:0           # arbitrary UID, keep GID 0
+#   docker compose ... --user 1001:1001        # match host bind-mount owner
+#   (No --user)                                # uses 1000:0 from the image
+RUN useradd --create-home --uid 1000 --gid 0 --shell /usr/sbin/nologin pivbo
 
 WORKDIR /app
 
@@ -41,23 +59,23 @@ RUN pip install --no-cache-dir -r requirements-server.txt
 COPY pivbo_server.py LICENSE ./
 COPY pivbo/ ./pivbo/
 
-# Listen on every interface inside the container. Without this, waitress
-# binds 127.0.0.1 inside the container and rejects the connection Docker
-# forwards from the host. The override only takes effect when the env
-# var is set, so non-container `python pivbo_server.py` is unchanged.
-ENV PIVBO_HOST=0.0.0.0
+# Listen on every interface inside the container (Docker controls who
+# can reach it via -p). HOME is set explicitly so platformdirs and
+# Python's `~` expansion resolve correctly under any --user override,
+# even if the runtime UID has no entry in /etc/passwd.
+ENV PIVBO_HOST=0.0.0.0 \
+    HOME=/home/pivbo
 
-# Persistent data: simulations, prefs, drawings, seeded historical bars.
-# Lives under the pivbo user's HOME so platformdirs (XDG-spec on Linux)
-# resolves to /home/pivbo/.local/share/PivBO without any env override.
-# Pre-create + chown so the directory exists with the right ownership
-# even if no volume is mounted (named volumes inherit ownership from
-# the directory they cover; bind-mounts are the user's responsibility).
+# Pre-create the data tree, hand the entire HOME to root group with
+# group=user permissions. This is the OpenShift "arbitrary UID safe"
+# pattern: any UID running in group 0 has full write access; any UID
+# that happens to own a bind-mounted file has access via the user bits.
 RUN mkdir -p /home/pivbo/.local/share/PivBO \
-    && chown -R pivbo:pivbo /home/pivbo/.local
+    && chgrp -R 0 /home/pivbo \
+    && chmod -R g=u /home/pivbo
 VOLUME ["/home/pivbo/.local/share/PivBO"]
 
-USER pivbo
+USER 1000
 
 EXPOSE 5051
 
