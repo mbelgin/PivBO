@@ -1,23 +1,28 @@
 #!/bin/sh
-# Container entrypoint: runs as root, ensures /data is writable by the
-# target UID, then drops privileges via gosu and execs the server.
-# Solves the bind-mount-plus-non-root-UID problem without requiring
-# users to chown anything on the host.
+# Container entrypoint.
+#
+# Default: run as root. This is the right shape for Docker Desktop on
+# Mac and Windows (the filesystem bridge translates UIDs transparently)
+# and for the named-volume case on every platform.
+#
+# Linux users with a bind-mount who want host-side files owned by a
+# specific UID can opt in with PUID and PGID env vars; the entrypoint
+# then chowns /data and drops privileges via gosu.
 set -e
 
-TARGET_UID="${PUID:-1000}"
-TARGET_GID="${PGID:-1000}"
-
 if [ "$(id -u)" = "0" ]; then
-  # Only chown if ownership doesn't already match. Skips a recursive
-  # walk on every restart for users with a populated /data tree.
-  current_uid="$(stat -c '%u' /data 2>/dev/null || echo -1)"
-  if [ "$current_uid" != "$TARGET_UID" ]; then
-    chown -R "$TARGET_UID:$TARGET_GID" /data 2>/dev/null || true
+  if [ -n "$PUID" ] || [ -n "$PGID" ]; then
+    TARGET_UID="${PUID:-0}"
+    TARGET_GID="${PGID:-0}"
+    current_uid="$(stat -c '%u' /data 2>/dev/null || echo -1)"
+    if [ "$current_uid" != "$TARGET_UID" ]; then
+      chown -R "$TARGET_UID:$TARGET_GID" /data 2>/dev/null || true
+    fi
+    exec gosu "$TARGET_UID:$TARGET_GID" "$@"
   fi
-  exec gosu "$TARGET_UID:$TARGET_GID" "$@"
+  exec "$@"
 fi
 
-# Already non-root (someone passed --user to docker run / `user:` in
-# compose). Honor that, skip the chown attempt (would fail anyway).
+# Started with an explicit non-root UID (--user flag or `user:` in
+# compose). Honor it; can't chown without root anyway.
 exec "$@"
