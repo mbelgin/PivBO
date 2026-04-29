@@ -24,9 +24,9 @@ services:
       # host port if 5051 is already taken.
       - "5051:5051"
     volumes:
-      # Named volume keeps simulations, prefs, drawings, and the seeded
+      # Named volume keeps simulations, prefs, drawings, and seeded
       # historical bars across container restarts and image upgrades.
-      # Swap this for a bind-mount (e.g. ./pivbo-data:/data) if you'd
+      # Swap for a bind-mount (e.g. `./pivbo-data:/data`) if you'd
       # rather see the files on your host filesystem.
       - pivbo-data:/data
 
