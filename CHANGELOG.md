@@ -10,32 +10,22 @@ The newest version is at the top.
 
 ## v0.0.5 (2026-04-30)
 
-- **Container distribution**. PivBO is now available as a container image
-  at `ghcr.io/mbelgin/pivbo`, multi-arch (amd64 + arm64). One-liner install
-  via `docker compose up -d` after grabbing the published
-  `docker-compose.yml`, or `docker run` for a one-shot try. First-class
-  target for self-hosters, NAS appliances, single-board computers, and
-  anyone who'd rather avoid the SmartScreen / Gatekeeper / antivirus
-  dance entirely.
-- **Container: PUID / PGID env vars** for Linux bind-mounts. Set them to
-  match your host user and the entrypoint chowns `/data` to that UID at
-  startup, drops privileges, then runs the server, so files on the host
-  end up owned by you instead of root. Default (no env vars) runs as
-  root inside the container; Mac and Windows Docker Desktop users don't
-  need to set anything because the filesystem bridge handles UID
-  translation transparently.
+- **Container image** at `ghcr.io/mbelgin/pivbo`, amd64 and arm64.
+  Install with `docker compose up -d` using the published
+  `docker-compose.yml`, or `docker run` for a one-shot try. Data lives
+  at `/data` inside the container.
+- **PUID / PGID env vars** for Linux bind-mounts. Set them to your
+  host user's UID/GID and files written through the bind-mount end up
+  owned by you instead of root. Not needed on Docker Desktop (Mac /
+  Windows) or for named volumes.
 - **Tabbed Download section on pivbo.com**. Windows, macOS, Linux, and
-  Container as four tabs in one panel, with an OR-divider between the
-  package-manager and direct-download paths inside each tab. CSS-only,
-  no JavaScript, full keyboard support.
-- **macOS download tile is back**. The chart-rendering issue that paused
-  the .app build previously is resolved; Mac users get a working Direct
-  download alongside the per-step Privacy & Security guidance.
-- **Unsigned-package notice on the Download section** with an honest
-  explanation: free OSS Authenticode signing programs have effectively
-  closed, if signed builds matter to you a Ko-fi tip helps fund a paid
-  signing subscription, and the container build sidesteps the signing
-  question entirely in the meantime.
+  Container as four tabs, each with a Package manager / Direct download
+  split.
+- **macOS download tile re-enabled**. Working Direct download with the
+  Privacy & Security click-through guidance.
+- **Unsigned-package notice on the Download section** explaining that
+  Windows and macOS builds are not yet code signed, and pointing at
+  Ko-fi if anyone wants to help fund a paid signing subscription.
 - **Pinned start date in Surprise Me**. Optional date input under the
   Surprise filters. Leave it blank for the existing behavior (random
   start within the eligible window). Set it and the simulation pins to
