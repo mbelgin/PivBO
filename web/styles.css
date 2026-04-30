@@ -786,16 +786,337 @@ a:hover {
   text-decoration-color: currentColor;
 }
 
+/* Tabbed download panel: 4 tabs (Windows / macOS / Linux / Container)
+   driven by hidden radio inputs so tab switching works without JS.
+   Each panel is a 2-column grid (Package manager / Direct download)
+   with numbered steps under the right column. */
+.dl-tabs {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.dl-tabs > input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dl-tab-bar {
+  display: flex;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+}
+
+.dl-tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 14px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.dl-tab-btn:last-of-type {
+  border-right: none;
+}
+
+.dl-tab-btn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.dl-tab-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+#dl-tab-windows:checked   ~ .dl-tab-bar label[for="dl-tab-windows"],
+#dl-tab-macos:checked     ~ .dl-tab-bar label[for="dl-tab-macos"],
+#dl-tab-linux:checked     ~ .dl-tab-bar label[for="dl-tab-linux"],
+#dl-tab-container:checked ~ .dl-tab-bar label[for="dl-tab-container"] {
+  color: var(--accent);
+  background: var(--bg2);
+  border-bottom-color: var(--accent);
+}
+
+.dl-tabs > input:focus-visible ~ .dl-tab-bar label[for] {
+  /* fall-through; specific rules below override per-tab */
+}
+
+#dl-tab-windows:focus-visible   ~ .dl-tab-bar label[for="dl-tab-windows"],
+#dl-tab-macos:focus-visible     ~ .dl-tab-bar label[for="dl-tab-macos"],
+#dl-tab-linux:focus-visible     ~ .dl-tab-bar label[for="dl-tab-linux"],
+#dl-tab-container:focus-visible ~ .dl-tab-bar label[for="dl-tab-container"] {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.dl-panel {
+  display: none;
+  padding: 22px 24px;
+}
+
+#dl-tab-windows:checked   ~ .dl-panel[data-panel="windows"],
+#dl-tab-macos:checked     ~ .dl-panel[data-panel="macos"],
+#dl-tab-linux:checked     ~ .dl-panel[data-panel="linux"],
+#dl-tab-container:checked ~ .dl-panel[data-panel="container"] {
+  display: block;
+}
+
+.dl-panel-grid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 28px;
+  align-items: stretch;
+}
+
+.dl-or-divider {
+  position: relative;
+  width: 1px;
+  background: var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dl-or-divider span {
+  position: absolute;
+  background: var(--bg2);
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  padding: 6px 0;
+  line-height: 1;
+}
+
+.dl-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dl-col .pkg-cmd {
+  align-self: flex-start;
+}
+
+.dl-btn {
+  width: 100%;
+  max-width: 320px;
+  padding: 10px 16px;
+  font-size: 13px;
+  justify-content: center;
+}
+
+.dl-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.dl-btn span {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.2px;
+}
+
+.dl-cmd-block {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  margin: 0;
+  user-select: all;
+}
+
+.dl-hint {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.dl-panel-footnote {
+  margin: 18px 0 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-family: var(--sans);
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.dl-panel-footnote strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.dl-panel-footnote code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  background: var(--bg3);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.dl-hint code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  background: var(--bg3);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.dl-hint strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.dl-steps {
+  list-style: none;
+  counter-reset: step;
+  padding: 0;
+  margin: 4px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.dl-steps li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 24px;
+}
+
+.dl-steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.dl-steps code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  background: var(--bg3);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.dl-steps strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.dl-steps a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .dl-tab-btn span {
+    display: none;
+  }
+  .dl-tab-btn {
+    padding: 12px 8px;
+  }
+  .dl-panel {
+    padding: 18px 16px;
+  }
+  .dl-panel-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  /* On mobile the columns stack, so flatten the divider into a
+     horizontal line with OR centered. */
+  .dl-or-divider {
+    width: auto;
+    height: 1px;
+    align-self: stretch;
+  }
+}
+
+/* Legacy 2x2 grid kept stub-empty for any inherited references; the
+   live layout uses .dl-tabs above. */
 .os-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 18px;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 720px) {
   .os-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Tighter Download section: left-aligned, single-row header, smaller
+   title. The full-width centered title block looked like a content
+   island floating in dead space; inlining the version next to it
+   pulls the eye straight to the cards below. */
+#download {
+  padding-top: 28px;
+  padding-bottom: 36px;
+}
+
+.section-head.download-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  text-align: left;
+  margin-bottom: 14px;
+}
+
+.section-head.download-head .section-title {
+  font-size: 24px;
+  margin-bottom: 0;
+}
+
+.section-head.download-head .release-line {
+  margin-top: 0;
 }
 
 .os-card {
@@ -803,10 +1124,10 @@ a:hover {
   background: linear-gradient(180deg, var(--bg2), var(--bg3));
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 24px 22px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
   overflow: hidden;
   transition: transform 0.2s ease, border-color 0.2s ease,
     box-shadow 0.25s ease;
@@ -903,7 +1224,7 @@ a:hover {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
 }
 
 .os-steps li {
@@ -957,8 +1278,8 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 18px -22px;
-  padding: 0 22px;
+  margin: 4px -20px;
+  padding: 0 20px;
   font-family: var(--sans);
   font-size: 10px;
   font-weight: 700;

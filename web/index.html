@@ -159,9 +159,8 @@
 </section>
 
 <section class="section" id="download">
-  <div class="section-head">
-    <div class="section-kicker">Download</div>
-    <h2 class="section-title">Get PivBO</h2>
+  <div class="section-head download-head">
+    <h2 class="section-title">Download</h2>
     <div class="release-line">
       Latest release: <strong data-pivbo-version>latest</strong>
       <span class="release-line-sep">&middot;</span>
@@ -172,114 +171,140 @@
   <aside class="dl-notice">
     <strong>Windows and macOS builds are not yet code signed.</strong>
     If your antivirus or device-management policy flags them, add an
-    allow-run exception (per-platform steps below) or
-    <a href="#run-from-source">run from source</a>.
+    allow-run exception or <a href="#run-from-source">run from source</a>.
+    The container build sidesteps signing entirely.
+    Free OSS signing programs have effectively closed; if signed builds
+    matter to you, a <a href="https://ko-fi.com/mbelgin" target="_blank" rel="noopener">Ko-fi tip</a>
+    helps fund a paid signing subscription.
   </aside>
 
-  <div class="os-grid">
-    <article class="os-card">
-      <div class="os-card-head">
-        <div class="os-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M3 5.5L10.5 4.4v7.1H3V5.5zm0 7.5h7.5v7.1L3 18.5V13zm8.5-9.2L21 3v8.5h-9.5V3.8zm0 9.2H21V21l-9.5-1.3V13z"></path>
-          </svg>
+  <div class="dl-tabs">
+    <input type="radio" name="dl-tab" id="dl-tab-windows" checked>
+    <input type="radio" name="dl-tab" id="dl-tab-macos">
+    <input type="radio" name="dl-tab" id="dl-tab-linux">
+    <input type="radio" name="dl-tab" id="dl-tab-container">
+
+    <div class="dl-tab-bar" role="tablist">
+      <label for="dl-tab-windows" class="dl-tab-btn" role="tab">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5L10.5 4.4v7.1H3V5.5zm0 7.5h7.5v7.1L3 18.5V13zm8.5-9.2L21 3v8.5h-9.5V3.8zm0 9.2H21V21l-9.5-1.3V13z"></path></svg>
+        <span>Windows</span>
+      </label>
+      <label for="dl-tab-macos" class="dl-tab-btn" role="tab">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.3 13.1c0-2.4 2-3.5 2.1-3.6-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.1-2.9.9-3.6.9-.7 0-1.9-.9-3.2-.9-1.6 0-3.2 1-4 2.5-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.7 2.5 2.9 2.4 1.2 0 1.6-.7 3-.7 1.4 0 1.8.7 3 .7 1.2 0 2-1.2 2.8-2.3.9-1.3 1.2-2.6 1.2-2.7-.1 0-2.3-.9-2.3-3.5zM14.9 6c.6-.7 1.1-1.7 1-2.7-.9 0-2 .6-2.7 1.4-.6.6-1.1 1.7-1 2.7 1 0 2.1-.5 2.7-1.4z"></path></svg>
+        <span>macOS</span>
+      </label>
+      <label for="dl-tab-linux" class="dl-tab-btn" role="tab">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.5 2c-1.5 0-2.8 1-3.1 2.4-.2.8-.2 1.8 0 2.6.2.8.3 1.6.1 2.4-.2.6-.5 1.2-.9 1.7-.9 1.1-1.9 2.2-2.2 3.6-.3 1.2-.2 2.5.2 3.7.3.9.8 1.7 1.3 2.5.2.3.5.5.8.6.4.1.8 0 1.1-.2-.2.4-.2.9 0 1.3.3.5.9.8 1.4.8.6 0 1.1-.3 1.5-.7.4.4.9.7 1.5.7.5 0 1-.3 1.4-.8.2-.4.3-.9 0-1.3.3.2.7.3 1.1.2.3-.1.6-.3.8-.6.5-.8 1-1.6 1.3-2.5.4-1.2.5-2.5.2-3.7-.3-1.4-1.3-2.5-2.2-3.6-.4-.5-.7-1.1-.9-1.7-.2-.8-.1-1.6.1-2.4.2-.8.2-1.8 0-2.6C15.3 3 14 2 12.5 2zm-1.1 3.8c.4 0 .7.4.7 1s-.3 1-.7 1-.7-.4-.7-1 .3-1 .7-1zm2.2 0c.4 0 .7.4.7 1s-.3 1-.7 1-.7-.4-.7-1 .3-1 .7-1zm-1.1 2.5c1 0 2 .5 2 1.3 0 .4-.4.7-1 .9-.3.1-.5.2-.7.4-.2.2-.3.4-.3.6 0 .1 0 .1.1.2h-.2c.1-.1.1-.1.1-.2 0-.2-.1-.4-.3-.6-.2-.2-.4-.3-.7-.4-.6-.2-1-.5-1-.9 0-.8 1-1.3 2-1.3z"></path></svg>
+        <span>Linux</span>
+      </label>
+      <label for="dl-tab-container" class="dl-tab-btn" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="1"></rect><line x1="7" y1="6" x2="7" y2="20"></line><line x1="11" y1="6" x2="11" y2="20"></line><line x1="15" y1="6" x2="15" y2="20"></line><line x1="19" y1="6" x2="19" y2="20"></line><path d="M5 4 H19"></path></svg>
+        <span>Container</span>
+      </label>
+    </div>
+
+    <article class="dl-panel" data-panel="windows" role="tabpanel">
+      <div class="dl-panel-grid">
+        <div class="dl-col">
+          <span class="os-subhead">Package manager</span>
+          <code class="pkg-cmd">winget install PivBO</code>
+          <p class="dl-hint"><strong>To run:</strong> type <code>pivbo</code> on a <strong>fresh</strong> terminal.</p>
+          <p class="dl-hint"><strong>Update:</strong> <code>winget upgrade PivBO</code></p>
         </div>
-        <div>
-          <div class="os-name">Windows</div>
-          <div class="os-sub">10 &middot; 11 &middot; x64</div>
+        <div class="dl-or-divider" aria-hidden="true"><span>OR</span></div>
+        <div class="dl-col">
+          <span class="os-subhead">Direct download</span>
+          <a class="btn primary dl-btn" data-pivbo-dl="windows" href="https://github.com/mbelgin/PivBO/releases/latest" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            <span data-pivbo-asset-name="windows">PivBO-windows.zip</span>
+          </a>
+          <ol class="dl-steps">
+            <li>Extract the .zip anywhere.</li>
+            <li>Double-click <code>PivBO.exe</code>.</li>
+            <li>First launch: SmartScreen prompt &rarr; <strong>More info</strong> &rarr; <strong>Run anyway</strong>.</li>
+          </ol>
         </div>
       </div>
-
-      <div class="pkg-note">
-        <span class="os-subhead">Package manager</span>
-        <code class="pkg-cmd">winget install PivBO</code>
-        <p class="pkg-hint"><strong>To Run:</strong> run <code>pivbo</code> on a <strong>fresh</strong> terminal.</p>
-        <p class="pkg-hint"><strong>Update:</strong> run <code>winget upgrade PivBO</code>.</p>
-      </div>
-
-      <div class="os-divider">or</div>
-
-      <a class="btn primary os-dl-btn" data-pivbo-dl="windows" href="https://github.com/mbelgin/PivBO/releases/latest" target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-        Direct download
-      </a>
-      <div class="os-filename"><span data-pivbo-asset-name="windows">PivBO-windows.zip</span> &middot; <span data-pivbo-asset-size="windows">self-contained</span></div>
-
-      <ol class="os-steps">
-        <li>Extract the .zip anywhere.</li>
-        <li>Double-click <code>PivBO.exe</code>.</li>
-        <li>First launch: on the SmartScreen prompt, click <strong>More info</strong> &rarr; <strong>Run anyway</strong>.</li>
-      </ol>
     </article>
 
-    <article class="os-card">
-      <div class="os-card-head">
-        <div class="os-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M17.3 13.1c0-2.4 2-3.5 2.1-3.6-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.1-2.9.9-3.6.9-.7 0-1.9-.9-3.2-.9-1.6 0-3.2 1-4 2.5-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.7 2.5 2.9 2.4 1.2 0 1.6-.7 3-.7 1.4 0 1.8.7 3 .7 1.2 0 2-1.2 2.8-2.3.9-1.3 1.2-2.6 1.2-2.7-.1 0-2.3-.9-2.3-3.5zM14.9 6c.6-.7 1.1-1.7 1-2.7-.9 0-2 .6-2.7 1.4-.6.6-1.1 1.7-1 2.7 1 0 2.1-.5 2.7-1.4z"></path>
-          </svg>
+    <article class="dl-panel" data-panel="macos" role="tabpanel">
+      <div class="dl-panel-grid">
+        <div class="dl-col">
+          <span class="os-subhead">Package manager</span>
+          <span class="pkg-soon">Homebrew cask &middot; <em>coming soon</em></span>
         </div>
-        <div>
-          <div class="os-name">macOS</div>
-          <div class="os-sub">Intel &middot; Apple Silicon</div>
+        <div class="dl-or-divider" aria-hidden="true"><span>OR</span></div>
+        <div class="dl-col">
+          <span class="os-subhead">Direct download</span>
+          <a class="btn primary dl-btn" data-pivbo-dl="macos" href="https://github.com/mbelgin/PivBO/releases/latest" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            <span data-pivbo-asset-name="macos">PivBO-macos.zip</span>
+          </a>
+          <ol class="dl-steps">
+            <li>Double-click the .zip to unzip.</li>
+            <li>Drag <code>PivBO.app</code> into <strong>Applications</strong>.</li>
+            <li>First launch: <strong>System Settings</strong> &rarr; <strong>Privacy &amp; Security</strong> &rarr; <strong>Open Anyway</strong>. <a href="https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac" target="_blank" rel="noopener">Apple's guide</a>.</li>
+          </ol>
         </div>
       </div>
-
-      <div class="pkg-note">
-        <span class="os-subhead">Package manager</span>
-        <span class="pkg-soon">Homebrew cask &middot; <em>coming soon</em></span>
-      </div>
-
-      <div class="os-divider">or</div>
-
-      <a class="btn primary os-dl-btn" data-pivbo-dl="macos" href="https://github.com/mbelgin/PivBO/releases/latest" target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-        Direct download
-      </a>
-      <div class="os-filename"><span data-pivbo-asset-name="macos">PivBO-macos.zip</span> &middot; <span data-pivbo-asset-size="macos">self-contained</span></div>
-
-      <ol class="os-steps">
-        <li>Double-click the .zip to unzip.</li>
-        <li>Drag <code>PivBO.app</code> into <strong>Applications</strong>.</li>
-        <li>First launch: macOS will block the app with an "unidentified developer" warning. Open <strong>System Settings &rarr; Privacy &amp; Security</strong>, scroll to the <strong>Security</strong> section, and click <strong>Open Anyway</strong>. See <a href="https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac" target="_blank" rel="noopener">Apple's guide to opening an app from an unknown developer</a>.</li>
-      </ol>
     </article>
 
-    <article class="os-card">
-      <div class="os-card-head">
-        <div class="os-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12.5 2c-1.5 0-2.8 1-3.1 2.4-.2.8-.2 1.8 0 2.6.2.8.3 1.6.1 2.4-.2.6-.5 1.2-.9 1.7-.9 1.1-1.9 2.2-2.2 3.6-.3 1.2-.2 2.5.2 3.7.3.9.8 1.7 1.3 2.5.2.3.5.5.8.6.4.1.8 0 1.1-.2-.2.4-.2.9 0 1.3.3.5.9.8 1.4.8.6 0 1.1-.3 1.5-.7.4.4.9.7 1.5.7.5 0 1-.3 1.4-.8.2-.4.3-.9 0-1.3.3.2.7.3 1.1.2.3-.1.6-.3.8-.6.5-.8 1-1.6 1.3-2.5.4-1.2.5-2.5.2-3.7-.3-1.4-1.3-2.5-2.2-3.6-.4-.5-.7-1.1-.9-1.7-.2-.8-.1-1.6.1-2.4.2-.8.2-1.8 0-2.6C15.3 3 14 2 12.5 2zm-1.1 3.8c.4 0 .7.4.7 1s-.3 1-.7 1-.7-.4-.7-1 .3-1 .7-1zm2.2 0c.4 0 .7.4.7 1s-.3 1-.7 1-.7-.4-.7-1 .3-1 .7-1zm-1.1 2.5c1 0 2 .5 2 1.3 0 .4-.4.7-1 .9-.3.1-.5.2-.7.4-.2.2-.3.4-.3.6 0 .1 0 .1.1.2h-.2c.1-.1.1-.1.1-.2 0-.2-.1-.4-.3-.6-.2-.2-.4-.3-.7-.4-.6-.2-1-.5-1-.9 0-.8 1-1.3 2-1.3z"></path>
-          </svg>
+    <article class="dl-panel" data-panel="linux" role="tabpanel">
+      <div class="dl-panel-grid">
+        <div class="dl-col">
+          <span class="os-subhead">Package manager</span>
+          <span class="pkg-soon"><em>coming soon</em></span>
         </div>
-        <div>
-          <div class="os-name">Linux</div>
-          <div class="os-sub">x86_64 &middot; AppImage</div>
+        <div class="dl-or-divider" aria-hidden="true"><span>OR</span></div>
+        <div class="dl-col">
+          <span class="os-subhead">Direct download</span>
+          <a class="btn primary dl-btn" data-pivbo-dl="linux" href="https://github.com/mbelgin/PivBO/releases/latest" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            <span data-pivbo-asset-name="linux">PivBO-x86_64.AppImage</span>
+          </a>
+          <ol class="dl-steps">
+            <li>Save the <code>.AppImage</code> anywhere.</li>
+            <li><code>chmod +x PivBO-x86_64.AppImage</code> (or right-click &rarr; <strong>Allow executing</strong>).</li>
+            <li>Double-click it, or run <code>./PivBO-x86_64.AppImage</code>.</li>
+          </ol>
+          <p class="dl-hint">
+            Tip: <a href="https://github.com/mijorus/gearlever" target="_blank" rel="noopener">Gear Lever</a> adds AppImages to your app menu and keeps them updated.
+          </p>
         </div>
       </div>
+    </article>
 
-      <div class="pkg-note">
-        <span class="os-subhead">Package manager</span>
-        <span class="pkg-soon"><em>coming soon</em></span>
+    <article class="dl-panel" data-panel="container" role="tabpanel">
+      <div class="dl-panel-grid">
+        <div class="dl-col">
+          <span class="os-subhead">Compose</span>
+          <a class="btn primary dl-btn" href="https://raw.githubusercontent.com/mbelgin/PivBO/main/docker-compose.yml" download="docker-compose.yml" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            docker-compose.yml
+          </a>
+          <ol class="dl-steps">
+            <li>Save it in a folder of your choice.</li>
+            <li>From that folder: <code>docker compose up -d</code>.</li>
+            <li>Open <code>http://localhost:5051/</code>.</li>
+          </ol>
+          <p class="dl-hint">Recommended for long-running self-hosted setups (auto-restart, declarative config, easy upgrades).</p>
+        </div>
+        <div class="dl-or-divider" aria-hidden="true"><span>OR</span></div>
+        <div class="dl-col">
+          <span class="os-subhead">One-shot run</span>
+          <pre class="dl-cmd-block"><code>docker run -d \
+  -p 5051:5051 \
+  -v pivbo-data:/data \
+  ghcr.io/mbelgin/pivbo:latest</code></pre>
+          <ol class="dl-steps">
+            <li>Run the command above.</li>
+            <li>Open <code>http://localhost:5051/</code>.</li>
+          </ol>
+          <p class="dl-hint">Image: <a href="https://github.com/mbelgin/PivBO/pkgs/container/pivbo" target="_blank" rel="noopener"><code>ghcr.io/mbelgin/pivbo</code></a> &middot; multi-arch (amd64, arm64).</p>
+        </div>
       </div>
-
-      <div class="os-divider">or</div>
-
-      <a class="btn primary os-dl-btn" data-pivbo-dl="linux" href="https://github.com/mbelgin/PivBO/releases/latest" target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-        Direct download
-      </a>
-      <div class="os-filename"><span data-pivbo-asset-name="linux">PivBO-x86_64.AppImage</span> &middot; <span data-pivbo-asset-size="linux">self-contained</span></div>
-
-      <ol class="os-steps">
-        <li>Save the <code>.AppImage</code> anywhere.</li>
-        <li>Make it executable: <code>chmod +x PivBO-x86_64.AppImage</code> (or right-click &rarr; <strong>Allow executing</strong>).</li>
-        <li>Double-click it, or run <code>./PivBO-x86_64.AppImage</code>.</li>
-      </ol>
-
-      <p class="os-tip">
-        Tip: <a href="https://github.com/mijorus/gearlever" target="_blank" rel="noopener">Gear Lever</a>
-        adds AppImages to your app menu and keeps them updated.
+      <p class="dl-panel-footnote">
+        <strong>Linux bind-mount?</strong> Add <code>PUID</code> and <code>PGID</code> env vars matching your host user so files aren't root-owned. Docker Desktop on Mac and Windows handles UID translation automatically, no env vars needed.
       </p>
     </article>
   </div>
@@ -567,6 +592,7 @@ python pivbo_server.py</code></pre>
           <li><strong>Windows</strong>: <code>%LOCALAPPDATA%\PivBO\</code></li>
           <li><strong>macOS</strong>: <code>~/Library/Application Support/PivBO/</code></li>
           <li><strong>Linux</strong>: <code>~/.local/share/PivBO/</code></li>
+          <li><strong>Container</strong>: <code>/data</code> inside the container, mapped to a Docker named volume by default. Bind-mount a host path to <code>/data</code> if you'd rather see the files on disk.</li>
         </ul>
         <p>What's inside:</p>
         <ul>
@@ -795,10 +821,12 @@ python pivbo_server.py</code></pre>
           simulation, trade, preference, and analysis stays in a per-user
           folder on your disk: <code>%LOCALAPPDATA%\PivBO\</code> on Windows,
           <code>~/Library/Application Support/PivBO/</code> on macOS,
-          <code>~/.local/share/PivBO/</code> on Linux. Reinstalling or upgrading
-          never touches it. No cloud, no accounts, no tracking. See the
-          <a href="#docs">Docs &rarr; Your data</a> section for what's inside
-          and how to back it up.
+          <code>~/.local/share/PivBO/</code> on Linux, or <code>/data</code>
+          inside a container (named volume by default, or bind-mount a host
+          path if you'd rather see the files on disk). Reinstalling or
+          upgrading never touches it. No cloud, no accounts, no tracking.
+          See the <a href="#docs">Docs &rarr; Your data</a> section for
+          what's inside and how to back it up.
         </p>
       </div>
     </details>

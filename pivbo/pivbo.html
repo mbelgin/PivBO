@@ -1214,7 +1214,10 @@
     font-size: 40px;
     opacity: 0.3;
   }
-  .loading {
+  /* Scoped to #loading specifically — a bare `.loading` rule used to also
+     match buttons whose JS-applied `loading` state class shares the name,
+     bloating them to inset:0 fullscreen with the modal's accent color. */
+  #loading.loading {
     position: absolute;
     inset: 0;
     display: flex;
@@ -1975,12 +1978,12 @@
               </div>
             </span>
             <span class="tool-group">
-              <button class="tb-btn" id="tool-ray" title="Ray [Alt+R]" aria-label="Ray">
+              <button class="tb-btn" id="tool-ray" title="Arrow [Alt+R]" aria-label="Arrow">
                 <span class="tb-ico" aria-hidden="true">
                   <svg viewBox="0 0 20 20"><path d="M4 16L16 4"/><path d="M11 4h5v5"/></svg>
                 </span>
               </button>
-              <button class="tool-cfg-btn" id="cfg-ray" title="Ray style" aria-label="Ray settings">
+              <button class="tool-cfg-btn" id="cfg-ray" title="Arrow style" aria-label="Arrow settings">
                 <svg viewBox="0 0 20 20"><path d="M10 2l1.4 2.5 2.9.6-2 2.2.3 3-2.6-1.2-2.6 1.2.3-3-2-2.2 2.9-.6L10 2z"/></svg>
               </button>
               <div class="tool-popup hidden" id="popup-ray">
@@ -2309,7 +2312,7 @@
       <label style="margin-top:0;">Ticker</label>
       <input type="text" id="sim-ticker" placeholder="AAPL" style="text-transform:uppercase">
       <label>Start Date</label>
-      <input type="date" id="sim-start-date">
+      <input type="date" id="sim-start-date" oninput="(function(){var c=document.getElementById('sim-use-first');if(c)c.checked=false;})()">
       <div class="sim-check">
         <input type="checkbox" id="sim-use-first" checked>
         <span>Use first available bar</span>
@@ -2320,12 +2323,13 @@
     <div class="sim-mode-panel" data-sim-mode-panel="surprise" style="display:none;">
       <div style="font-size:11px;color:var(--muted);line-height:1.5;">
         We'll pick a random ticker matching the filters below. Start date is
-        also chosen at random to guarantee the requested history.
+        chosen at random to guarantee the requested history, or you can pin
+        it below.
       </div>
       <div class="sim-row" style="margin-top:10px;">
         <div>
           <label style="margin-top:0;" title="Minimum years of history a candidate ticker must have.">Min years of history</label>
-          <input type="number" id="sim-surprise-years" value="2" min="1" max="20" step="1">
+          <input type="number" id="sim-surprise-years" value="2" min="1" max="20" step="1" oninput="_simSurpriseValidate()">
         </div>
         <div>
           <label style="margin-top:0;">Min average ADR%</label>
@@ -2336,6 +2340,9 @@
           <input type="number" id="sim-surprise-minprice" value="5" min="0" max="10000" step="1">
         </div>
       </div>
+      <label style="margin-top:10px;" title="Leave blank for a random start date. If set, the sim starts on the first bar on or after this date.">Start date (optional)</label>
+      <input type="date" id="sim-surprise-start-date" oninput="_simSurpriseValidate()">
+      <div id="sim-surprise-start-err" style="font-size:10px;color:var(--red);margin-top:4px;display:none;"></div>
     </div>
 
     <div class="sim-actions">
@@ -4134,14 +4141,31 @@ function drawOne(d,sel=false){
     applyLineStyle(d.style);
     ctx2.beginPath();
     if(d.type==='ray'){
-      const dx=x2-x1,dy=y2-y1,len=Math.sqrt(dx*dx+dy*dy)||1;
-      ctx2.moveTo(x1,y1);ctx2.lineTo(x1+(dx/len)*canvas.width*3,y1+(dy/len)*canvas.width*3);
+      // Arrow: bounded line p1→p2; the arrowhead is drawn separately below.
+      ctx2.moveTo(x1,y1);ctx2.lineTo(x2,y2);
     } else if(d.type==='line'){
       const dx=x2-x1,dy=y2-y1,len=Math.sqrt(dx*dx+dy*dy)||1;
       ctx2.moveTo(x1-(dx/len)*canvas.width*3,y1-(dy/len)*canvas.width*3);
       ctx2.lineTo(x1+(dx/len)*canvas.width*3,y1+(dy/len)*canvas.width*3);
     } else {ctx2.moveTo(x1,y1);ctx2.lineTo(x2,y2);}
     ctx2.stroke();ctx2.setLineDash([]);
+    // Arrowhead at p2 for ray (drawn solid even if line is dashed; the head
+    // shape is what makes this an "arrow" instead of a generic segment).
+    if(d.type==='ray'){
+      const dx=x2-x1,dy=y2-y1,len=Math.sqrt(dx*dx+dy*dy)||1;
+      const ux=dx/len,uy=dy/len;
+      const headLen=Math.max(10, lw*4);
+      const tan30=0.5773502692; // tan(30°)
+      const backX=x2-ux*headLen, backY=y2-uy*headLen;
+      const perpX=-uy*headLen*tan30, perpY=ux*headLen*tan30;
+      ctx2.beginPath();
+      ctx2.moveTo(x2,y2);
+      ctx2.lineTo(backX+perpX,backY+perpY);
+      ctx2.lineTo(backX-perpX,backY-perpY);
+      ctx2.closePath();
+      ctx2.fillStyle=c;
+      ctx2.fill();
+    }
     // seg: no endpoint dots; ray/extended line: endpoint dots only when selected (sel=true)
     if(sel && (d.type === 'ray' || d.type === 'line')){
       [x1,x2].forEach((hx,i)=>{const hy=i===0?y1:y2;ctx2.beginPath();ctx2.arc(hx,hy,5,0,Math.PI*2);ctx2.fillStyle=c;ctx2.fill();});
@@ -5483,15 +5507,19 @@ function initSecondaryChart(){
     // runtime resize alignment in alignSecondaryPriceScale().
     timeScale:{borderColor:borderColor,visible:false,timeVisible:false,rightOffset:persistedRightOffset},
     // ============================================================
-    // Chart2 follows the main chart horizontally but allows
-    // independent vertical adjustment:
-    //  * pressedMouseMove: true  → click-drag pans. Lightweight
-    //    pans both axes; the horizontal piece is immediately
-    //    snapped back to main's range by the listener below
-    //    (search "chart2→main snap-back"). Vertical pan persists.
+    // Chart2 follows main horizontally but allows independent
+    // vertical adjustment:
+    //  * pressedMouseMove: true  → click-drag pans. The gesture
+    //    pans both axes; the chart2→main snap-back listener below
+    //    immediately reverts horizontal drift on the next frame,
+    //    leaving only the vertical shift visible.
     //  * mouseWheel: false       → wheel routes to main chart.
     //  * axisPressedMouseMove.price: true → drag right axis to
     //    scale chart2's price range independently.
+    // The snap-back listener used to (incorrectly) get blamed for
+    // bars not rendering in Chart view — the actual cause was
+    // selectRow() not calling secondaryApplyBars(). With that
+    // fixed, the snap-back is safe to keep.
     // ============================================================
     handleScroll:{pressedMouseMove:true,mouseWheel:false,horzTouchDrag:true,vertTouchDrag:true},
     handleScale:{
@@ -5529,16 +5557,15 @@ function initSecondaryChart(){
     requestAnimationFrame(()=>alignSecondaryPriceScale());
   });
 
-  // chart2→main snap-back. Chart2 has pressedMouseMove enabled so users can
-  // drag-pan vertically, but the same gesture also pans the time axis.
-  // Whenever chart2's logical range diverges from main's, force it back to
-  // main's range immediately. Net effect: vertical pan persists (separate
-  // from logical range), horizontal stays locked to main.
+  // chart2→main snap-back: chart2's pressedMouseMove pans both axes, but
+  // we only want vertical to persist. When chart2's logical range diverges
+  // from main's, force it back to main's range immediately. _syncingTimeRange
+  // prevents the loop with the main→chart2 sync above.
   chart2.timeScale().subscribeVisibleLogicalRangeChange(r=>{
     if(_syncingTimeRange||!chart||!r)return;
     let mainR=null;
     try{mainR=chart.timeScale().getVisibleLogicalRange();}catch(e){return;}
-    if(!mainR)return;
+    if(!mainR||mainR.from==null||mainR.to==null)return;
     if(Math.abs(r.from-mainR.from)<0.001 && Math.abs(r.to-mainR.to)<0.001)return;
     _syncingTimeRange=true;
     try{chart2.timeScale().setVisibleLogicalRange(mainR);}catch(e){}
@@ -5939,6 +5966,12 @@ async function selectRow(i){
     chart.timeScale().fitContent();
     redrawAll();
     updateCrosshairInfo(null);
+    // Re-align secondary against the new main bars. Without this, picking a
+    // main ticker while the secondary is already open leaves the secondary
+    // showing stale (or empty) data — the very symptom that's hidden in sim
+    // mode because simApplyBars() already calls secondaryApplyBars on every
+    // advance/load.
+    try{secondaryApplyBars();}catch(e){}
   }catch(e){
     if(e && e.name === 'AbortError') return;
     console.error(e);
@@ -6783,9 +6816,11 @@ function simRetreat(){
         t.slMaType = last.maType || 'SMA';
         t.slMaPeriod = last.maPeriod || 0;
         t.slTolerancePct = last.tol || 0;
+        t.slCloseOnly = !!last.closeOnly;
       } else {
         t.slKind = 'price';
         delete t.slMaType; delete t.slMaPeriod; delete t.slTolerancePct;
+        delete t.slCloseOnly;
       }
       if(t.stopLoss!=null){
         const totalShares=t.entries.reduce((s,e)=>s+e.shares,0);
@@ -6896,27 +6931,35 @@ function simCheckSL(bar){
     if(!t.stopLoss)continue;
     const isLong=t.direction==='long';
     let hit=false, exitPrice=0, flexNotified=false;
-    // Entry-bar SL protection: on the bar a trade was first entered, bar.low/high
-    // may reflect pre-entry action we didn't participate in. If the bar also
-    // opened past SL (the scenario where strict mode produces an impossible
-    // fill at the open price), use close-only check and cap fill at SL.
-    const isEntryBar=t.entries.length>0 && t.entries[0].date===bar.time;
-    const openPastSL=isLong?bar.open<t.stopLoss:bar.open>t.stopLoss;
-    if(entryBarProtect && isEntryBar && openPastSL){
+    // MA-driven SL with Close-only: ignore the wick. A bar that dips into
+    // (or through) the SL but closes on the right side of it is NOT a stop-out.
+    // Only a bar that closes past the SL triggers, exiting at that close.
+    if(t.slKind === 'ma' && t.slCloseOnly){
       const closePastSL=isLong?bar.close<=t.stopLoss:bar.close>=t.stopLoss;
-      if(closePastSL){
-        hit=true;exitPrice=t.stopLoss;
-        flash(`Flex open-bar SL: stopped at SL $${fmtPrice(t.stopLoss)} (strict would've filled @ $${fmtPrice(bar.open)})`);
-        flexNotified=true;
-      }else{
-        flash(`Flex open-bar SL: stop-out skipped — bar closed back on the right side of SL`);
-        flexNotified=true;
-      }
+      if(closePastSL){ hit=true; exitPrice=bar.close; }
     }else{
-      // Strict: any bar whose low/high crosses SL triggers a stop-out.
-      // Gap fills at open, otherwise fills at SL.
-      hit=isLong?bar.low<=t.stopLoss:bar.high>=t.stopLoss;
-      if(hit)exitPrice=isLong?Math.min(bar.open,t.stopLoss):Math.max(bar.open,t.stopLoss);
+      // Entry-bar SL protection: on the bar a trade was first entered, bar.low/high
+      // may reflect pre-entry action we didn't participate in. If the bar also
+      // opened past SL (the scenario where strict mode produces an impossible
+      // fill at the open price), use close-only check and cap fill at SL.
+      const isEntryBar=t.entries.length>0 && t.entries[0].date===bar.time;
+      const openPastSL=isLong?bar.open<t.stopLoss:bar.open>t.stopLoss;
+      if(entryBarProtect && isEntryBar && openPastSL){
+        const closePastSL=isLong?bar.close<=t.stopLoss:bar.close>=t.stopLoss;
+        if(closePastSL){
+          hit=true;exitPrice=t.stopLoss;
+          flash(`Flex open-bar SL: stopped at SL $${fmtPrice(t.stopLoss)} (strict would've filled @ $${fmtPrice(bar.open)})`);
+          flexNotified=true;
+        }else{
+          flash(`Flex open-bar SL: stop-out skipped — bar closed back on the right side of SL`);
+          flexNotified=true;
+        }
+      }else{
+        // Strict: any bar whose low/high crosses SL triggers a stop-out.
+        // Gap fills at open, otherwise fills at SL.
+        hit=isLong?bar.low<=t.stopLoss:bar.high>=t.stopLoss;
+        if(hit)exitPrice=isLong?Math.min(bar.open,t.stopLoss):Math.max(bar.open,t.stopLoss);
+      }
     }
     if(hit){
       simCloseTrade(t,exitPrice,t.currentShares,bar.time,'sl_hit');
@@ -7039,6 +7082,7 @@ function simModifySL(tradeId){
   if(!t.slHistory)t.slHistory=[];
   // Manual price set always reverts MA-mode trades back to fixed-price SL.
   t.slKind = 'price';
+  delete t.slCloseOnly;
   if(raw===''){
     t.stopLoss=null;t.riskPerShare=null;
     t.slHistory.push({_atIdx:simIdx,price:null});
@@ -7064,6 +7108,7 @@ function simSLBreakeven(tradeId){
   t.stopLoss=avgEntry;
   t.riskPerShare=0;
   t.slKind='price'; // B/E sets a fixed price, exits MA mode if previously active
+  delete t.slCloseOnly;
   if(!t.slHistory)t.slHistory=[];
   t.slHistory.push({_atIdx:simIdx,price:t.stopLoss});
   const el=document.getElementById(`sl-input-${tradeId}`);
@@ -7086,16 +7131,18 @@ function _maSlPrefsRead(){
   let period = parseInt(localStorage.getItem('pivbo.sl_ma_period'), 10);
   let type   = (localStorage.getItem('pivbo.sl_ma_type') || 'SMA').toUpperCase();
   let tol    = parseFloat(localStorage.getItem('pivbo.sl_tolerance_pct'));
+  let closeOnly = localStorage.getItem('pivbo.sl_ma_close_only') === 'true';
   if(!Number.isFinite(period) || period < 1 || period > 999) period = 50;
   if(type !== 'SMA' && type !== 'EMA') type = 'SMA';
   if(!Number.isFinite(tol) || tol < 0 || tol > 50) tol = 1;
-  return {period, type, tol};
+  return {period, type, tol, closeOnly};
 }
-function _maSlPrefsWrite(period, type, tol){
+function _maSlPrefsWrite(period, type, tol, closeOnly){
   try{
     localStorage.setItem('pivbo.sl_ma_period', String(period));
     localStorage.setItem('pivbo.sl_ma_type', type);
     localStorage.setItem('pivbo.sl_tolerance_pct', String(tol));
+    localStorage.setItem('pivbo.sl_ma_close_only', closeOnly ? 'true' : 'false');
   }catch(_){}
 }
 
@@ -7124,9 +7171,11 @@ function simApplyMaSL(tradeId){
   const periodEl = document.getElementById(`sl-ma-period-${tradeId}`);
   const typeEl   = document.getElementById(`sl-ma-type-${tradeId}`);
   const tolEl    = document.getElementById(`sl-ma-tol-${tradeId}`);
+  const coEl     = document.getElementById(`sl-ma-co-${tradeId}`);
   const period = Math.max(1, Math.min(999, parseInt(periodEl?.value, 10) || 0));
   const type   = ((typeEl?.value || 'SMA').toUpperCase() === 'EMA') ? 'EMA' : 'SMA';
   const tol    = Math.max(0, Math.min(50, parseFloat(tolEl?.value) || 0));
+  const closeOnly = !!coEl?.checked;
   if(period < 1){ flash('Invalid MA period'); return; }
   // Compute prospective SL level. Reject if the result would instantly stop
   // out the trade (mirrors the Apply-button disabled check; defensive).
@@ -7142,13 +7191,14 @@ function simApplyMaSL(tradeId){
   t.slMaType = type;
   t.slMaPeriod = period;
   t.slTolerancePct = tol;
+  t.slCloseOnly = closeOnly;
   t.stopLoss = lvl;
   const avgEntry = t.entries.reduce((s,e)=>s+e.price*e.shares,0)/t.entries.reduce((s,e)=>s+e.shares,0);
   t.riskPerShare = Math.abs(avgEntry - lvl);
   if(!Array.isArray(t.slHistory)) t.slHistory = [];
-  t.slHistory.push({_atIdx: simIdx, price: lvl, kind: 'ma', maType: type, maPeriod: period, tol});
-  _maSlPrefsWrite(period, type, tol);
-  flash(`SL → ${period} ${type} with ${tol}% tol`);
+  t.slHistory.push({_atIdx: simIdx, price: lvl, kind: 'ma', maType: type, maPeriod: period, tol, closeOnly});
+  _maSlPrefsWrite(period, type, tol, closeOnly);
+  flash(`SL → ${period} ${type} with ${tol}% tol${closeOnly?' (close-only)':''}`);
   simRecalcAnalytics();
   simRenderTradesList();
   redrawAll();
@@ -7470,10 +7520,13 @@ function simRenderTradesList(){
           const period = inMa ? (t.slMaPeriod || prefs.period) : prefs.period;
           const type   = inMa ? ((t.slMaType || prefs.type).toUpperCase()) : prefs.type;
           const tol    = inMa ? (t.slTolerancePct ?? prefs.tol) : prefs.tol;
+          const closeOnly = inMa ? !!t.slCloseOnly : !!prefs.closeOnly;
           const numS  = `width:34px;padding:2px 4px;font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:2px;font-family:var(--mono);`;
           const tolS  = `width:34px;padding:2px 4px;font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:2px;font-family:var(--mono);`;
           const selS  = `padding:2px 2px;font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:2px;font-family:var(--mono);`;
           const wordS = `font-size:9px;color:var(--muted);`;
+          const coLblS = `display:inline-flex;align-items:center;gap:3px;font-size:9px;color:var(--muted);cursor:pointer;white-space:nowrap;`;
+          const coTip = 'Close-only: a bar that wicks past the SL but closes back on the right side does NOT stop the trade. Stop fires only on a close past the SL, at the close price. Apply to commit.';
           // Wider label cell than lStyle's 24px — "SL→MA" needs ~46px.
           const lStyleMa = lStyle.replace('width:24px','width:46px');
           return `<div style="${rStyle}">
@@ -7486,6 +7539,7 @@ function simRenderTradesList(){
             <span style="${wordS}">with</span>
             <input type="number" id="sl-ma-tol-${t.id}" min="0" max="50" step="0.1" value="${tol}" oninput="simRefreshMaSlApplyState(${t.id})" style="${tolS}">
             <span style="${wordS}">% tol</span>
+            <label style="${coLblS}" title="${coTip}"><input type="checkbox" id="sl-ma-co-${t.id}" ${closeOnly?'checked':''} style="margin:0;"> Close-only</label>
             <button class="otc-btn" id="sl-ma-apply-${t.id}" onclick="simApplyMaSL(${t.id})">Apply</button>
           </div>`;
         })()}
@@ -8001,7 +8055,53 @@ function readTickerFilters(ids){
     minPrice: ids.minPrice ? num(ids.minPrice, 0, 0) : 0,
     skipMaEnabled: !!byId(ids.skipMaEnabled)?.checked,
     skipMaPeriod: Math.max(1, parseInt(byId(ids.skipMaPeriod)?.value, 10) || 50),
+    startDate: ids.startDate ? (byId(ids.startDate)?.value || '') : '',
   };
+}
+
+// Surprise-Me start-date sanity: if start_date + min_years exceeds today,
+// no ticker can possibly satisfy the request (we don't have future data),
+// so the Start button is disabled with an inline message until the user
+// shortens the years or backs up the date. Today's date is the absolute
+// upper bound; per-ticker last-bar dates may be earlier and the server
+// re-validates against actual data when picking.
+function _simSurpriseValidate(){
+  const dateEl  = document.getElementById('sim-surprise-start-date');
+  const yearsEl = document.getElementById('sim-surprise-years');
+  const errEl   = document.getElementById('sim-surprise-start-err');
+  const startBtn= document.getElementById('sim-modal-start');
+  if(!dateEl || !startBtn) return true;
+  const sd = (dateEl.value || '').trim();
+  if(!sd){
+    if(errEl) errEl.style.display = 'none';
+    startBtn.disabled = false;
+    startBtn.removeAttribute('title');
+    return true;
+  }
+  const years = Math.max(1, parseInt(yearsEl?.value, 10) || 2);
+  const d = new Date(sd + 'T00:00:00');
+  if(isNaN(d.getTime())){
+    if(errEl) errEl.style.display = 'none';
+    startBtn.disabled = false;
+    startBtn.removeAttribute('title');
+    return true;
+  }
+  d.setFullYear(d.getFullYear() + years);
+  const endStr = d.toISOString().slice(0, 10);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  if(endStr > todayStr){
+    if(errEl){
+      errEl.textContent = `Start ${sd} + ${years} year${years>1?'s':''} ends ${endStr}, past today (${todayStr}). Pick an earlier date or fewer years.`;
+      errEl.style.display = '';
+    }
+    startBtn.disabled = true;
+    startBtn.title = 'Start date plus min years exceeds today.';
+    return false;
+  }
+  if(errEl) errEl.style.display = 'none';
+  startBtn.disabled = false;
+  startBtn.removeAttribute('title');
+  return true;
 }
 async function pickRandomTicker(filters){
   const resp = await fetch('/api/duel/pick-ticker', {
@@ -10186,6 +10286,16 @@ document.getElementById('sim-modal-cancel').addEventListener('click',()=>{
     modal.querySelectorAll('.sim-mode-panel').forEach(p=>{
       p.style.display = (p.dataset.simModePanel === which) ? '' : 'none';
     });
+    if(which === 'surprise'){
+      _simSurpriseValidate();
+    }else{
+      // Switching back to ticker mode clears any disabled-state the
+      // Surprise-Me validator left on the Start button.
+      const errEl = document.getElementById('sim-surprise-start-err');
+      if(errEl) errEl.style.display = 'none';
+      const startBtn = document.getElementById('sim-modal-start');
+      if(startBtn){ startBtn.disabled = false; startBtn.removeAttribute('title'); }
+    }
   }
   modal.querySelectorAll('.sim-mode-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>setMode(btn.dataset.simMode));
@@ -10227,6 +10337,7 @@ document.getElementById('sim-modal-start').addEventListener('click',async()=>{
           minPrice: 'sim-surprise-minprice',
           skipMaEnabled: 'sim-skip-to-ma',
           skipMaPeriod:  'sim-skip-ma-period',
+          startDate: 'sim-surprise-start-date',
         });
         const choice = await pickRandomTicker(filters);
         ticker = choice.ticker;
@@ -10457,6 +10568,9 @@ window.addEventListener('keydown',e=>{
   if(e.key==='Escape'){e.preventDefault();hideTradeForm();return;}
   const inInput=e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT';
   if(inInput)return;
+  // Never hijack browser-native chords: Ctrl+F find-in-page, Ctrl+N new
+  // window, Cmd+F on macOS, Alt-shortcuts. Plain key only.
+  if(e.ctrlKey||e.metaKey||e.altKey)return;
   if(e.key==='ArrowRight'||e.key==='>'){e.preventDefault();simAdvance();}
   else if(e.key==='ArrowLeft'||e.key==='<'){e.preventDefault();simRetreat();}
   else if(e.key==='f'||e.key==='F'){e.preventDefault();simFlattenAll();}
@@ -12762,24 +12876,23 @@ window.addEventListener('load',async()=>{
     }
     tick();
   })();
-  // Auto-resume active simulation if one was running before the refresh.
-  // sessionStorage is tab-scoped (survives refresh but dies on browser
-  // close). Only when the session ID is present do we treat this as a
-  // genuine refresh and resurrect a live duel along with the sim —
-  // otherwise we just open the sim as a read-able record, no zombie duel.
+  // Auto-resume only on actual page refresh, NOT on a cold app launch.
+  // sessionStorage is tab-scoped (survives Ctrl+R, dies on tab/browser
+  // close). Falling back to localStorage here used to silently drag the
+  // user back into the last sim every time they opened the app, leaking
+  // sim-only UI (equity pane, hidden ticker list, sim panel) into what
+  // looked like a normal chart view. localStorage.bm_active_sim_id stays
+  // written by simStart/simLoadFromServer for compatibility with anything
+  // else that reads it, but is no longer consulted for auto-resume.
   try{
     const sessionId = sessionStorage.getItem('bm_active_sim_id');
-    const localId   = localStorage.getItem('bm_active_sim_id');
-    const activeId  = sessionId || localId;
-    const isRefresh = !!sessionId;
-    if(activeId){
-      await simLoadFromServer(activeId, {restoreDuel: isRefresh});
+    if(sessionId){
+      await simLoadFromServer(sessionId, {restoreDuel: true});
     } else {
       showPage('home');
     }
   }catch(e){
     try{sessionStorage.removeItem('bm_active_sim_id');}catch(_){}
-    try{localStorage.removeItem('bm_active_sim_id');}catch(_){}
     try{ showPage('home'); }catch(_){}
   }
 });

@@ -710,10 +710,17 @@ def _avg_adr_pct(bars, lookback=252):
 @app.route("/api/duel/pick-ticker", methods=["POST"])
 def api_duel_pick_ticker():
     """
-    Pick a random ticker + random start bar matching the duel filters.
+    Pick a random ticker + start bar matching the duel filters.
 
     Request body:
-      { years:int, minAdr:float, skipMaEnabled:bool, skipMaPeriod:int }
+      { years:int, minAdr:float, minPrice:float, skipMaEnabled:bool,
+        skipMaPeriod:int, startDate?:"YYYY-MM-DD" }
+
+    If startDate is omitted, the start bar is chosen at random within the
+    eligible window. If startDate is provided, it is used as a hard pin:
+    eligible tickers must have warmup bars before that date AND duel_bars
+    after, and the chosen ticker's start bar is the first one on/after
+    startDate.
 
     Response:
       { ticker, startDate, endDate, warmupBars, startBarIdx, endBarIdx,
@@ -737,6 +744,7 @@ def api_duel_pick_ticker():
         skip_period = max(1, int(body.get("skipMaPeriod") or 1))
     except (TypeError, ValueError):
         skip_period = 1
+    pinned_start = (body.get("startDate") or "").strip()
 
     warmup = (skip_period - 1) if skip_enabled else 0
     duel_bars = years * _DUEL_BARS_PER_YEAR
@@ -762,42 +770,82 @@ def api_duel_pick_ticker():
             "eligibleCount": 0,
         }), 404
 
-    # Pick a candidate AND a start index together, retrying until we find one
-    # whose close at the start bar meets the min_price floor. Penny stocks get
-    # filtered here per-bar rather than ticker-wide because a ticker may have
-    # been a penny stock years ago and a $50 stock today (or vice versa).
-    attempts_left = max(50, len(eligible))
     chosen = None
     start_idx = 0
     end_idx = 0
     bars_chosen = None
-    while attempts_left > 0:
-        attempts_left -= 1
-        c = random.choice(eligible)
-        bars_c = c["bars"]
-        total_c = c["len"]
-        min_s = warmup
-        max_s = total_c - duel_bars - 1
-        si = random.randint(min_s, max_s) if max_s > min_s else min_s
-        if min_price > 0:
-            try:
-                price_at_start = float(bars_c[si].get("close") or 0)
-            except (TypeError, ValueError):
-                price_at_start = 0.0
-            if price_at_start < min_price:
-                continue
-        chosen = c
-        start_idx = si
-        end_idx = min(si + duel_bars, total_c - 1)
-        bars_chosen = bars_c
-        break
 
-    if chosen is None:
-        return jsonify({
-            "error": (f"No tickers match those filters at the chosen start (lowest acceptable price ${min_price:g}). "
-                      "Relax the criteria and try again."),
-            "eligibleCount": len(eligible),
-        }), 404
+    if pinned_start:
+        # Pinned date branch: pre-filter eligible tickers to those whose
+        # data brackets the requested start with enough warmup before and
+        # duel_bars after. Pick from that filtered set; the start index is
+        # determined, not random.
+        pinned_eligible = []
+        for c in eligible:
+            bars_c = c["bars"]
+            si = None
+            for i, b in enumerate(bars_c):
+                if (b.get("time") or "") >= pinned_start:
+                    si = i
+                    break
+            if si is None:
+                continue
+            if si < warmup:
+                continue
+            if si + duel_bars > c["len"] - 1:
+                continue
+            if min_price > 0:
+                try:
+                    price_at_start = float(bars_c[si].get("close") or 0)
+                except (TypeError, ValueError):
+                    price_at_start = 0.0
+                if price_at_start < min_price:
+                    continue
+            pinned_eligible.append((c, si))
+        if not pinned_eligible:
+            return jsonify({
+                "error": (f"No tickers have enough history at {pinned_start} (need {warmup} warmup bars before "
+                          f"and {duel_bars} bars after, with close >= ${min_price:g} at start). Pick an earlier "
+                          "start date, fewer years, or relax the price filter."),
+                "eligibleCount": len(eligible),
+            }), 404
+        chosen, start_idx = random.choice(pinned_eligible)
+        end_idx = min(start_idx + duel_bars, chosen["len"] - 1)
+        bars_chosen = chosen["bars"]
+    else:
+        # Random branch: pick a candidate AND a start index together,
+        # retrying until we find one whose close at the start bar meets
+        # the min_price floor. Penny stocks get filtered here per-bar
+        # rather than ticker-wide because a ticker may have been a penny
+        # stock years ago and a $50 stock today (or vice versa).
+        attempts_left = max(50, len(eligible))
+        while attempts_left > 0:
+            attempts_left -= 1
+            c = random.choice(eligible)
+            bars_c = c["bars"]
+            total_c = c["len"]
+            min_s = warmup
+            max_s = total_c - duel_bars - 1
+            si = random.randint(min_s, max_s) if max_s > min_s else min_s
+            if min_price > 0:
+                try:
+                    price_at_start = float(bars_c[si].get("close") or 0)
+                except (TypeError, ValueError):
+                    price_at_start = 0.0
+                if price_at_start < min_price:
+                    continue
+            chosen = c
+            start_idx = si
+            end_idx = min(si + duel_bars, total_c - 1)
+            bars_chosen = bars_c
+            break
+
+        if chosen is None:
+            return jsonify({
+                "error": (f"No tickers match those filters at the chosen start (lowest acceptable price ${min_price:g}). "
+                          "Relax the criteria and try again."),
+                "eligibleCount": len(eligible),
+            }), 404
 
     sym = chosen["sym"]
     total_bars = chosen["len"]

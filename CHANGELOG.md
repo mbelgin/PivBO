@@ -8,12 +8,57 @@ The newest version is at the top.
 
 ## Unreleased
 
-- **Secondary chart: independent vertical pan**. After zooming the secondary
-  chart's price axis (drag the right edge), you can now click-drag the chart
-  body up or down to pan vertically, exactly like the main chart. Horizontal
-  position stays locked to the main chart at all times — any horizontal drift
-  introduced by the drag is reverted on the next frame, so the two charts
-  never desync.
+- **Pinned start date in Surprise Me**. Optional date input under the
+  Surprise filters. Leave it blank for the existing behavior (random
+  start within the eligible window). Set it and the simulation pins to
+  the first bar on or after that date for a randomly chosen ticker that
+  has enough warmup before AND the requested years of history after.
+  Start button auto-disables with an inline message when start date plus
+  min years exceeds today.
+- **Auto-uncheck "Use first available bar"** in Pick a Ticker mode when
+  the user picks a date in the calendar. Removes the gotcha where the
+  picked date was silently ignored because the checkbox stayed on.
+- **Secondary chart vertical pan, restored**. Click-drag the chart body
+  up or down on chart2 to shift the visible price range. Horizontal
+  position stays locked to the main chart. Works in BOTH chart view and
+  sim mode (was previously regressed when an unrelated bug masked itself
+  as a pan issue).
+- **Fix: cold launch no longer auto-restores the last simulation**. Boot
+  used to fall back to `localStorage.bm_active_sim_id` when no
+  sessionStorage entry was present, silently re-loading whichever sim was
+  active when you last closed the app. The result: the app appeared to
+  open in chart view but was actually mid-sim — equity pane visible,
+  left-pane ticker list hidden by `sim-active`, sim panel populated. Now
+  cold launches always land on the home page; only an in-tab refresh
+  (sessionStorage survives `Ctrl+R`, dies on tab close) resumes the
+  active sim. Pick a saved sim from the Simulations list to resume after
+  reopening the app.
+- **Fix: Ctrl+F no longer hijacked into "Flatten all"**. The sim playback
+  shortcut for `F` (flatten open positions) was matching on the bare key
+  even when Ctrl, Cmd, or Alt was held, so Ctrl+F (browser find-in-page)
+  triggered a flatten attempt and the "No open positions" toast in places
+  like the Saved Simulations analysis view. Same applied to `N` (new
+  trade) vs Ctrl+N. Both shortcuts now require no modifiers.
+- **Arrow drawing tool, properly bounded with a visible tip**. The toolbar's
+  arrow tool (Alt+R) used to draw an unbounded ray that extended several
+  screen-widths past the second click, putting the tip far off-screen so
+  the arrow looked like a plain line going nowhere. Now it draws a regular
+  bounded arrow from the first click to the second, with a filled
+  arrowhead at the tip. The "Extended Line" tool (Alt+A) still extends in
+  both directions for trend-line use.
+- **Fix: fullscreen teal flash during sim load**. The "Start Simulation"
+  button briefly bloated to cover the entire viewport in solid accent
+  color while the data fetch was in flight. Caused by the button's
+  loading-state class colliding with an unrelated bare `.loading` rule
+  intended for the chart-data overlay (`position:absolute; inset:0; ...`).
+  The rule is now scoped to its actual target so only the chart overlay
+  gets it; buttons keep their native size when entering loading state.
+- **Fix: secondary chart bars not rendering in Chart view**. Picking a
+  ticker on the main chart updated the main view but never refreshed the
+  secondary, so the secondary stayed frozen on stale or empty data. Sim
+  mode wasn't affected because the per-bar advance path already re-aligns
+  the secondary on every step. Chart view now does the same after a
+  ticker pick.
 
 ## v0.0.4 (2026-04-26)
 
@@ -103,6 +148,12 @@ The newest version is at the top.
   trade. Last-used period / type / tolerance persist across trades and
   sessions. Manual Set or B/E reverts the trade to fixed-price SL. R is
   unaffected — still anchored to initial risk frozen at entry.
+- **Close-only checkbox on SL→MA row**. Optional. When checked, a bar
+  that wicks past the MA-driven SL but closes back on the right side
+  does NOT stop the trade. The stop fires only on a close past the SL,
+  exiting at that close price. Useful for trend-following exits that
+  shouldn't react to noise wicks into the average. Persists with the
+  trade and as a last-used preference. Re-Apply commits a change.
 - **R-multiple display mode preference (Adjusted vs Simple)**. Preferences →
   Trading → "R-multiple display." Adjusted (default) is today's behavior:
   total realized $ P/L ÷ initial $ risk, partial closes weighted by share
