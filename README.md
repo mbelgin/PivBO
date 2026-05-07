@@ -1,4 +1,6 @@
-# PivBO — Pivot BreakOut
+# PivBO - Pivot BreakOut
+
+![PivBO main page](assets/pivbo_main_page.png)
 
 Bar-by-bar trading simulator for studying momentum setups on historical
 US equity data. Self-hosted, offline, free.
@@ -9,6 +11,10 @@ US equity data. Self-hosted, offline, free.
 
 **Contributing or building from source**: see
 [DEVELOPER_README.md](DEVELOPER_README.md).
+
+**Keyboard shortcuts**:
+[https://pivbo.com/#docs](https://pivbo.com/#docs) (Keyboard shortcuts
+section).
 
 ## Acknowledgments
 

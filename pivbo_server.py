@@ -355,6 +355,7 @@ _DEFAULT_PREFS = {
     "equityMode": "trades",   # "trades" | "timeline"
     "rMultipleMode": "adjusted",  # "adjusted" (position-weighted, $ P/L based) | "simple" (per-share R at final exit)
     "defaultFlexOpenBarSL": True,  # default value of the New-Simulation modal's "Flexed opening-bar SL" checkbox
+    "defaultTemplateId": "",  # template ID pre-selected in the New-Simulation modal; "" = no default
 }
 
 
@@ -965,6 +966,16 @@ def _rebuild_sim_index():
             last_opened = sim.get("lastOpenedAt", "")
             is_stale = bool(has_cache) and bool(last_opened) and cache_gen and cache_gen < last_opened
 
+            # Surface duel kind ("duel" or "self-duel") for the saved-sims
+            # list badge. Read from the saved duelState block; only sims that
+            # were saved while a duel was active will have this populated.
+            duel_state = sim.get("duelState") or {}
+            duel_kind = ""
+            if isinstance(duel_state, dict):
+                cfg = duel_state.get("duelConfig") or {}
+                if isinstance(cfg, dict):
+                    duel_kind = cfg.get("kind") or ("duel" if duel_state.get("roomCode") else "")
+
             index.append({
                 "id": sim.get("id", fname[:-5]),
                 "name": sim.get("name", ""),
@@ -982,6 +993,7 @@ def _rebuild_sim_index():
                 "currentBarDate": cur_date_resolved,
                 "hasAnalysis": has_cache,
                 "analysisStale": is_stale,
+                "duelKind": duel_kind,
             })
         except Exception:
             continue
@@ -994,7 +1006,7 @@ def _rebuild_sim_index():
 def api_simulations_list():
     _ensure_sim_dir()
     index = _load_sim_index()
-    if not index or any("hasAnalysis" not in e or "startDate" not in e for e in index):
+    if not index or any("hasAnalysis" not in e or "startDate" not in e or "duelKind" not in e for e in index):
         index = _rebuild_sim_index()
     # Refresh analysis-cache status on every read (cheap file-stat check).
     # Without this the list stays stale until the next sim write.

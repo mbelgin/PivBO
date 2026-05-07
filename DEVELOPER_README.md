@@ -1,8 +1,8 @@
-# PivBO — Developer Guide
+# PivBO - Developer Guide
 
 Covers pulling source, running in dev, packaging, releasing, and a
 quick tour of the moving parts. If you're a user wanting to try the
-app, start with `README.md` instead — it has download links and
+app, start with `README.md` instead. It has download links and
 install instructions.
 
 ## Prerequisites
@@ -51,14 +51,14 @@ first-launch seeding and migrations.
 ```
 pivbo/                          # Python package (everything bundled into installers)
   __init__.py
-  __main__.py                   # Entry point — the installed app launches here
+  __main__.py                   # Entry point. The installed app launches here
   launcher.py                   # Toga control window (Start/Stop/Port/Open browser)
   pivbo.html                    # Single-page web UI (chart, sim, duel, prefs)
   collected_stocks_manifest.txt # Ticker list consumed by the first-launch seeder
   assets/                       # Icons, favicon
-pivbo_server.py                 # Flask server — serves pivbo.html + /api/*
+pivbo_server.py                 # Flask server. Serves pivbo.html + /api/*
 collected_stocks/               # 931 historical .csv.gz files (repo-tracked seed data,
-                                # NOT bundled into the installer — fetched by seeder
+                                # NOT bundled into the installer; fetched by seeder
                                 # from raw.githubusercontent.com on first launch)
 simulations/ templates/ analyses/   # Per-user runtime data (gitignored)
 pyproject.toml                  # Briefcase config (project_name, icon, deps, per-OS)
@@ -71,7 +71,7 @@ requirements.txt                # Dev-time dependencies
 - **Backend**: single Flask app in `pivbo_server.py`, served by
   [waitress](https://pypi.org/project/waitress/) (pure-Python WSGI,
   cross-platform). Flask's built-in dev server is not used in either
-  dev or packaged mode — waitress is both faster and silent about the
+  dev or packaged mode. Waitress is both faster and silent about the
   usual "do not use in production" warning. All state (simulations,
   templates, analyses, preferences) is per-user JSON under
   `USER_DATA_DIR`. No database. Thread pool size is derived from
@@ -89,7 +89,7 @@ requirements.txt                # Dev-time dependencies
 - **First-launch seeder**: `pivbo_server.py :: _seed_run()`. On startup a
   daemon thread iterates `collected_stocks_manifest.txt` and pulls any
   missing `.csv.gz` from `raw.githubusercontent.com/mbelgin/PivBO/main/collected_stocks/<TICKER>.csv.gz`
-  into `USER_DATA_DIR/collected_stocks/`. Existence-only check — never
+  into `USER_DATA_DIR/collected_stocks/`. Existence-only check; never
   overwrites an existing file, so a user's own wider-range downloads
   survive re-runs. `/api/seed/status` drives the UI banner.
 
@@ -144,7 +144,7 @@ briefcase package linux AppImage
 ```
 
 Output: `dist/PivBO-<version>-x86_64.AppImage`. AppImage requires Docker
-on the host — Briefcase runs the build inside a containerized Ubuntu
+on the host. Briefcase runs the build inside a containerized Ubuntu
 22.04 so the glibc baseline stays broad.
 
 ## Release workflow
@@ -152,7 +152,7 @@ on the host — Briefcase runs the build inside a containerized Ubuntu
 The git tag is the version source of truth. CI reads `github.ref_name`
 (e.g. `v0.0.2`), strips the leading `v`, and writes the version into
 BOTH `pyproject.toml` and `pivbo/__init__.py` via `scripts/pin_version.py`
-before briefcase runs. So locally you don't need to bump anything — just
+before briefcase runs. So locally you don't need to bump anything; just
 tag and push.
 
 ```bash
@@ -160,8 +160,8 @@ tag and push.
 python scripts/pin_version.py            # shows current version, no changes
 
 # Optional: bump the committed version so dev-mode `/api/version`
-# reflects what's coming next. CI doesn't care what's committed — it
-# uses the tag — so this is cosmetic for dev-mode users only.
+# reflects what's coming next. CI doesn't care what's committed; it
+# uses the tag, so this is cosmetic for dev-mode users only.
 python scripts/pin_version.py 0.0.2
 
 git commit -am "Bump version to 0.0.2"   # only if you ran pin_version
@@ -178,7 +178,7 @@ artifacts land on the Release page with the tag's version baked in:
 - `PivBO-x86_64.AppImage`
 
 (If wired) winget and Homebrew tap manifests auto-bump from the same
-workflow — see the workflow file for details.
+workflow. See the workflow file for details.
 
 ### Regenerating the ticker manifest
 
@@ -193,7 +193,7 @@ python -c "import os; names = sorted(n[:-7].upper() for n in os.listdir('collect
 `pivbo/__init__.py` defines `__version__`. `pivbo_server.py` imports it.
 The landing page reads `/api/version` at runtime, so the about / footer
 line updates without code changes once the server has the right version.
-`pyproject.toml`'s `version` field must match — `scripts/pin_version.py`
+`pyproject.toml`'s `version` field must match. `scripts/pin_version.py`
 keeps them in sync with one command.
 
 ## Package manager integrations
@@ -263,7 +263,7 @@ up until a restart.
 ## Gotchas
 
 - **Adding / bumping a dependency**: `briefcase update <platform>` does
-  NOT re-resolve the `requires` list in `pyproject.toml` by default —
+  NOT re-resolve the `requires` list in `pyproject.toml` by default.
   it only copies source-tree changes. If you add or bump a dep there
   (for example when we switched from werkzeug to waitress) the next
   build will crash with `ModuleNotFoundError` inside the packaged
@@ -283,7 +283,7 @@ up until a restart.
   Gatekeeper blocks the app even for the local user.
 - **Toga + Briefcase on an older Python**: 3.9 / 3.10 hit edge cases
   with newer Toga versions. 3.11 / 3.12 are the tested range.
-- **Concurrent AppImage builds**: Docker containerized — if a previous
+- **Concurrent AppImage builds**: Docker containerized. If a previous
   build left a dangling container, `docker rm` it or reboot Docker
   Desktop.
 - **Port 5051 already in use**: pick another via the launcher UI or

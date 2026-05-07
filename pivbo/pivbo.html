@@ -1268,6 +1268,13 @@
   .sim-mode-toggle{display:flex;gap:2px;padding:3px;margin-bottom:14px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;}
   .sim-mode-btn{flex:1;padding:7px 12px;background:transparent;color:var(--muted);border:none;border-radius:4px;font-family:var(--mono);font-size:12px;cursor:pointer;transition:background 0.15s,color 0.15s;}
   .sim-mode-btn:hover:not(.active){color:var(--text);}
+  /* Quick-pick relative start dates next to a date input. Click 6M and the
+     date snaps to today-6M (or the ticker's IPO bar — whichever's later —
+     handled server-side in pick-ticker, or by `findIndex(b=>b.time>=date)`
+     in client-side sim load). */
+  .qd-row{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;}
+  .qd-btn{padding:3px 8px;background:var(--bg3);border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:10px;border-radius:3px;cursor:pointer;}
+  .qd-btn:hover{color:var(--accent);border-color:var(--accent);}
   .sim-mode-btn.active{background:var(--accent);color:#04110d;font-weight:600;}
   .sim-mode-panel{padding:4px 0;}
   .sim-modal .sim-row>div{flex:1;}
@@ -1401,8 +1408,12 @@
   /* Simulation left panel (replaces table when sim active) */
   .sim-panel{display:flex;flex-direction:column;overflow:hidden;padding:0;font-family:var(--mono);font-size:11px;}
   .sim-panel-header{padding:10px 12px;background:var(--bg3);border-bottom:1px solid var(--border);}
-  .sim-panel-header .sim-name{font-size:13px;font-weight:600;color:var(--accent);}
+  .sim-panel-header .sim-name{font-size:13px;font-weight:600;color:var(--accent);display:flex;align-items:center;gap:6px;}
   .sim-panel-header .sim-meta{font-size:10px;color:var(--muted);margin-top:4px;}
+  .sim-panel-header .sim-name-text{cursor:text;border-radius:3px;padding:1px 4px;border:1px solid transparent;min-width:60px;}
+  .sim-panel-header .sim-name-text:hover{border-color:var(--border);background:var(--bg3);}
+  .sim-panel-header .sim-name-text.editing{border-color:var(--accent);background:var(--bg3);outline:none;cursor:text;}
+  .sim-panel-header .sim-unsaved-badge{display:inline-block;padding:1px 6px;font-size:9px;font-weight:600;letter-spacing:0.5px;background:var(--bg3);border:1px solid var(--accent2);color:var(--accent2);border-radius:3px;}
   /* Compact vertical layout for the sim-active right rail. The Capital
      and Statistics sections eat real estate on smaller laptop screens
      and squeeze the trade-history list. Tightening padding + line-height
@@ -1455,6 +1466,11 @@
   .duel-tab:hover:not(.active){color:var(--text);}
   .duel-tab-panel{display:none;}
   .duel-tab-panel.active{display:block;}
+  /* Mode-conditional fields. The host/join forms are shared between Duel
+     (vs-opponent) and Self-Duel; fields tagged data-duel-mode-only show
+     only in the matching mode (data-duel-mode is set on #duel-modal). */
+  #duel-modal[data-duel-mode="vs-opponent"] [data-duel-mode-only="self-duel"]{display:none;}
+  #duel-modal[data-duel-mode="self-duel"]   [data-duel-mode-only="vs-opponent"]{display:none;}
   .duel-status{margin-top:14px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--muted);min-height:20px;line-height:1.5;}
   .duel-status.connected{border-color:var(--green);color:var(--text);}
   .duel-status.error{border-color:var(--red);color:var(--red);}
@@ -2173,7 +2189,10 @@
       <div class="trade-panel-top">
         <!-- Simulation header + stats (was the left panel) -->
         <div class="sim-panel-header">
-          <div class="sim-name" id="sim-panel-name">—</div>
+          <div class="sim-name" id="sim-panel-name">
+            <span id="sim-panel-name-text" class="sim-name-text" title="Click to rename">—</span>
+            <span id="sim-panel-unsaved-badge" class="sim-unsaved-badge" hidden>UNSAVED</span>
+          </div>
           <div class="sim-meta" id="sim-panel-meta">—</div>
         </div>
         <div class="sim-panel-section collapsible" data-section="capital">
@@ -2259,60 +2278,31 @@
   <div class="sim-modal">
     <h2>New Simulation</h2>
 
-    <!-- Common preferences (apply to either mode). -->
-    <label>Name</label>
-    <input type="text" id="sim-name" placeholder="e.g. NVDA Bull Run A">
-    <label>Starting Capital</label>
-    <input type="number" id="sim-capital" value="100000" step="1000">
-
-    <div class="sim-check" style="margin-top:10px;align-items:center;gap:6px;flex-wrap:wrap;">
-      <input type="checkbox" id="sim-skip-to-ma">
-      <span>Skip to first bar with</span>
-      <input type="number" id="sim-skip-ma-period" value="50" min="1" max="999" style="width:50px;padding:2px 4px;font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:2px;font-family:var(--mono);">
-      <select id="sim-skip-ma-type" style="padding:2px 4px;font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:2px;font-family:var(--mono);">
-        <option value="SMA">SMA</option>
-        <option value="EMA">EMA</option>
-      </select>
-      <span>data available</span>
-    </div>
-    <div style="font-size:10px;color:var(--muted);margin-top:2px;padding-left:20px;line-height:1.4;">
-      Shifts the start bar forward so the MA line is visible from bar 1. Previous bars still show as context. No-op if your chosen start date is already past the MA's warmup.
+    <!-- Mode tabs at the top so users see the choice first.
+         Standard:    full-control sim setup (former "Pick a Ticker").
+         Surprise Me: random eligible ticker + start window.
+         Fast:        ticker + start date only, defaults for everything else,
+                      auto-download if missing, optional don't-save. -->
+    <div class="sim-mode-toggle" style="margin-top:0;">
+      <button type="button" class="sim-mode-btn active" data-sim-mode="ticker" title="Full-control sim setup: pick a ticker and configure name, capital, template, etc.">Standard</button>
+      <button type="button" class="sim-mode-btn" data-sim-mode="surprise" title="Random ticker matching your filters, random eligible start date.">Surprise Me</button>
+      <button type="button" class="sim-mode-btn" data-sim-mode="fast" title="Ticker + start date only. Uses your defaults. Auto-downloads if missing.">Quick</button>
     </div>
 
-    <details class="sim-modal-details" style="margin-top:12px;">
-      <summary style="cursor:pointer;font-size:11px;color:var(--muted);padding:4px 0;user-select:none;">Advanced — Flexed opening-bar SL</summary>
-      <div style="margin-top:6px;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:11px;">
-          <input type="checkbox" id="sim-entry-bar-protect" checked style="margin:0;">
-          <span style="font-weight:600;">Flexed opening-bar SL</span>
-        </label>
-        <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5;">
-          When on, the SL check on the bar a trade enters uses only the bar's <strong>close</strong>, and any fill is capped at the SL price. Addresses the edge case where a bar opens below your SL (long), rallies to trigger your entry, dips back, then closes above — strict mode would report an impossible stop-out at the open.
-        </div>
-      </div>
-    </details>
-
-    <label style="margin-top:10px;">Template (optional)</label>
-    <select id="sim-template-picker" style="width:100%;padding:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;border-radius:4px;">
-      <option value="">— None —</option>
-    </select>
-    <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.4;">
-      Manage your templates (save / load / delete) from the Templates button in the sim controls.
-    </div>
-
-    <!-- Mode selector: all common settings above apply either way. Only
-         the mode-specific panel below changes with the choice. -->
-    <div class="sim-mode-toggle" style="margin-top:16px;">
-      <button type="button" class="sim-mode-btn active" data-sim-mode="ticker">Pick a Ticker</button>
-      <button type="button" class="sim-mode-btn" data-sim-mode="surprise">Surprise Me</button>
-    </div>
-
-    <!-- Mode panel: Pick a Ticker -->
+    <!-- Mode panel: Standard -->
     <div class="sim-mode-panel" data-sim-mode-panel="ticker">
       <label style="margin-top:0;">Ticker</label>
       <input type="text" id="sim-ticker" placeholder="AAPL" style="text-transform:uppercase">
       <label>Start Date</label>
       <input type="date" id="sim-start-date" oninput="(function(){var c=document.getElementById('sim-use-first');if(c)c.checked=false;})()">
+      <div class="qd-row">
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-start-date',3)">3M</button>
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-start-date',6)">6M</button>
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-start-date',9)">9M</button>
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-start-date',12)">1Y</button>
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-start-date',36)">3Y</button>
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-start-date',60)">5Y</button>
+      </div>
       <div class="sim-check">
         <input type="checkbox" id="sim-use-first" checked>
         <span>Use first available bar</span>
@@ -2342,7 +2332,82 @@
       </div>
       <label style="margin-top:10px;" title="Leave blank for a random start date. If set, the sim starts on the first bar on or after this date.">Start date (optional)</label>
       <input type="date" id="sim-surprise-start-date" oninput="_simSurpriseValidate()">
+      <div class="qd-row">
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-surprise-start-date',3)">3M</button>
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-surprise-start-date',6)">6M</button>
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-surprise-start-date',9)">9M</button>
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-surprise-start-date',12)">1Y</button>
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-surprise-start-date',36)">3Y</button>
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-surprise-start-date',60)">5Y</button>
+      </div>
       <div id="sim-surprise-start-err" style="font-size:10px;color:var(--red);margin-top:4px;display:none;"></div>
+    </div>
+
+    <!-- Mode panel: Quick. data-sim-mode stays "fast" internally; only the
+         user-visible label is "Quick". Inputs are self-evident; no preamble. -->
+    <div class="sim-mode-panel" data-sim-mode-panel="fast" style="display:none;">
+      <label style="margin-top:0;">Ticker</label>
+      <input type="text" id="sim-fast-ticker" placeholder="AAPL" style="text-transform:uppercase">
+      <label>Start Date (optional)</label>
+      <input type="date" id="sim-fast-start-date">
+      <div class="qd-row">
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-fast-start-date',3)">3M</button>
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-fast-start-date',6)">6M</button>
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-fast-start-date',9)">9M</button>
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-fast-start-date',12)">1Y</button>
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-fast-start-date',36)">3Y</button>
+        <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-fast-start-date',60)">5Y</button>
+      </div>
+      <div class="sim-check" style="margin-top:10px;">
+        <input type="checkbox" id="sim-fast-dont-save" checked>
+        <span title="Don't write this sim to the Saved Simulations list. Closing the tab loses it.">Don't save (ephemeral)</span>
+      </div>
+      <div id="sim-fast-status" style="font-size:11px;color:var(--muted);margin-top:8px;min-height:14px;"></div>
+    </div>
+
+    <!-- Common preferences below the per-mode inputs. Standard / Surprise Me
+         use them as written; Fast hides this block via #sim-common-block
+         toggling and reads the inputs' default values transparently. -->
+    <div id="sim-common-block" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">
+      <label style="margin-top:0;">Name</label>
+      <input type="text" id="sim-name" placeholder="e.g. NVDA Bull Run A">
+      <label>Starting Capital</label>
+      <input type="number" id="sim-capital" value="100000" step="1000">
+
+      <div class="sim-check" style="margin-top:10px;align-items:center;gap:6px;flex-wrap:wrap;">
+        <input type="checkbox" id="sim-skip-to-ma">
+        <span>Skip to first bar with</span>
+        <input type="number" id="sim-skip-ma-period" value="50" min="1" max="999" style="width:50px;padding:2px 4px;font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:2px;font-family:var(--mono);">
+        <select id="sim-skip-ma-type" style="padding:2px 4px;font-size:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:2px;font-family:var(--mono);">
+          <option value="SMA">SMA</option>
+          <option value="EMA">EMA</option>
+        </select>
+        <span>data available</span>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:2px;padding-left:20px;line-height:1.4;">
+        Shifts the start bar forward so the MA line is visible from bar 1. Previous bars still show as context. No-op if your chosen start date is already past the MA's warmup.
+      </div>
+
+      <details class="sim-modal-details" style="margin-top:12px;">
+        <summary style="cursor:pointer;font-size:11px;color:var(--muted);padding:4px 0;user-select:none;">Advanced — Flexed opening-bar SL</summary>
+        <div style="margin-top:6px;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:11px;">
+            <input type="checkbox" id="sim-entry-bar-protect" checked style="margin:0;">
+            <span style="font-weight:600;">Flexed opening-bar SL</span>
+          </label>
+          <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5;">
+            When on, the SL check on the bar a trade enters uses only the bar's <strong>close</strong>, and any fill is capped at the SL price. Addresses the edge case where a bar opens below your SL (long), rallies to trigger your entry, dips back, then closes above — strict mode would report an impossible stop-out at the open.
+          </div>
+        </div>
+      </details>
+
+      <label style="margin-top:10px;">Template (optional)</label>
+      <select id="sim-template-picker" style="width:100%;padding:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;border-radius:4px;">
+        <option value="">— None —</option>
+      </select>
+      <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.4;">
+        Mark a template as default (★) from the Templates dialog (sim controls).
+      </div>
     </div>
 
     <div class="sim-actions">
@@ -2366,23 +2431,29 @@
 
       <div class="duel-tab-panel active" data-duel-panel="host">
         <div id="duel-host-precode">
-          <label>Your email (used for display name only, never shared)</label>
-          <input type="email" id="duel-host-email" placeholder="alice@example.com" autocomplete="email">
-          <div class="duel-err" id="duel-host-email-err"></div>
+          <div data-duel-mode-only="vs-opponent">
+            <label>Your email (used for display name only, never shared)</label>
+            <input type="email" id="duel-host-email" placeholder="alice@example.com" autocomplete="email">
+            <div class="duel-err" id="duel-host-email-err"></div>
+          </div>
 
           <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">
-            <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:4px;">
+            <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:4px;" data-duel-mode-only="vs-opponent">
               Pick the duel's constraints. A random ticker matching them will be selected,
               and the sim will run for exactly the chosen number of years (252 trading
               bars per year). Eligible tickers are those with enough history to cover
               that range plus any MA warmup.
             </div>
+            <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:4px;" data-duel-mode-only="self-duel">
+              Pick the simulation's constraints. After Create Room, share the
+              code with your second window's Self-Duel → Join.
+            </div>
             <div class="sim-row" style="margin-top:10px;">
               <div>
-                <label title="Length of the duel in trading years (252 bars/year). Also the minimum history a ticker must have to qualify.">Years for simulation</label>
+                <label title="Length of the simulation in trading years (252 bars/year). Also the minimum history a ticker must have to qualify.">Years for simulation</label>
                 <input type="number" id="duel-cfg-years" value="2" min="1" max="20" step="1">
               </div>
-              <div>
+              <div data-duel-mode-only="vs-opponent">
                 <label>Decision timeout (sec)</label>
                 <input type="number" id="duel-cfg-to" value="45" min="5" max="120" step="1">
               </div>
@@ -2400,7 +2471,7 @@
               </select>
               <span>data available</span>
             </div>
-            <div class="sim-check" style="margin-top:10px;align-items:flex-start;gap:6px;">
+            <div class="sim-check" style="margin-top:10px;align-items:flex-start;gap:6px;" data-duel-mode-only="vs-opponent">
               <input type="checkbox" id="duel-cfg-hidden" style="margin-top:2px;">
               <div style="flex:1;line-height:1.5;">
                 <span>Keep ticker hidden until the end of the duel</span>
@@ -2410,6 +2481,16 @@
                 </div>
               </div>
             </div>
+            <label style="margin-top:10px;" title="Leave blank to pick a random start date. If set, the simulation starts on the first bar on or after this date for any ticker that has enough history.">Start date (optional)</label>
+            <input type="date" id="duel-cfg-start-date">
+            <div class="qd-row">
+              <button type="button" class="qd-btn" onclick="applyRelativeStartDate('duel-cfg-start-date',3)">3M</button>
+              <button type="button" class="qd-btn" onclick="applyRelativeStartDate('duel-cfg-start-date',6)">6M</button>
+              <button type="button" class="qd-btn" onclick="applyRelativeStartDate('duel-cfg-start-date',9)">9M</button>
+              <button type="button" class="qd-btn" onclick="applyRelativeStartDate('duel-cfg-start-date',12)">1Y</button>
+              <button type="button" class="qd-btn" onclick="applyRelativeStartDate('duel-cfg-start-date',36)">3Y</button>
+              <button type="button" class="qd-btn" onclick="applyRelativeStartDate('duel-cfg-start-date',60)">5Y</button>
+            </div>
           </div>
 
           <div class="sim-actions" style="margin-top:14px;">
@@ -2418,22 +2499,25 @@
           </div>
         </div>
         <div id="duel-host-postcode" style="display:none;">
-          <div class="duel-code-label">Share this code with your opponent</div>
+          <div class="duel-code-label" data-duel-mode-only="vs-opponent">Share this code with your opponent</div>
+          <div class="duel-code-label" data-duel-mode-only="self-duel">Open a second window, switch to <b>Self-Duel → Join</b>, paste this code:</div>
           <div class="duel-code-display" id="duel-host-code" title="Click to copy">—</div>
           <div class="duel-code-label" style="margin-top:-2px;font-size:9px;">(click to copy)</div>
           <div class="duel-status" id="duel-host-status">Connecting…</div>
           <div class="sim-actions">
             <button class="sim-btn danger" id="duel-host-abort">End</button>
-            <button class="sim-btn primary" id="duel-host-proceed" disabled>Continue</button>
+            <button class="sim-btn primary" id="duel-host-proceed" disabled data-duel-mode-only="vs-opponent">Continue</button>
           </div>
         </div>
       </div>
 
       <div class="duel-tab-panel" data-duel-panel="join">
         <div id="duel-join-prejoin">
-          <label>Your email (used for display name only, never shared)</label>
-          <input type="email" id="duel-join-email" placeholder="bob@example.com" autocomplete="email">
-          <div class="duel-err" id="duel-join-email-err"></div>
+          <div data-duel-mode-only="vs-opponent">
+            <label>Your email (used for display name only, never shared)</label>
+            <input type="email" id="duel-join-email" placeholder="bob@example.com" autocomplete="email">
+            <div class="duel-err" id="duel-join-email-err"></div>
+          </div>
           <label>Room code</label>
           <input type="text" id="duel-join-code" placeholder="ABCDEF" maxlength="6"
                  style="text-transform:uppercase;letter-spacing:4px;font-size:16px;text-align:center;">
@@ -2447,10 +2531,11 @@
           <div class="duel-status" id="duel-join-status">Connecting…</div>
           <div class="sim-actions">
             <button class="sim-btn danger" id="duel-join-abort">End</button>
-            <button class="sim-btn primary" id="duel-join-proceed" disabled>Continue</button>
+            <button class="sim-btn primary" id="duel-join-proceed" disabled data-duel-mode-only="vs-opponent">Continue</button>
           </div>
         </div>
       </div>
+
     </div>
 
     <!-- STAGE: config (guest-only waiting screen; host fills config on connect) -->
@@ -2695,14 +2780,14 @@
             <path d="M19 21l2-2"></path>
           </svg>
         </div>
-        <div class="home-card-title">Duel Mode</div>
+        <div class="home-card-title">Duel</div>
         <div class="home-card-desc">
-          Head-to-head practice against a friend. Same ticker, same bars, synchronized countdowns.
-          Trade blind or visible. Side-by-side comparison report at the end.
+          Trade against a friend over the network, or race two of your own approaches
+          across two browser windows. Pick a mode below to set up Host/Join or Side A/B.
         </div>
         <div class="home-card-cta-row">
-          <button class="home-card-cta" data-home-nav="duel-host">Host</button>
-          <button class="home-card-cta" data-home-nav="duel-join">Join</button>
+          <button class="home-card-cta" data-home-nav="duel-vs">vs Friend</button>
+          <button class="home-card-cta" data-home-nav="duel-self">vs Self</button>
         </div>
       </div>
 
@@ -4852,9 +4937,18 @@ function showTextInput(px,py,price,time,initialText='',onConfirm){
 // KEYBOARD
 // ==============================================
 document.addEventListener('keydown',e=>{
-  const inInput=document.activeElement===document.getElementById('txt-input')
-    ||document.activeElement.tagName==='INPUT'
-    ||document.activeElement.tagName==='SELECT';
+  // Detect text-entry context including contenteditable surfaces (the
+  // inline sim-name rename uses contenteditable on a <span>). Without
+  // this, Backspace inside the rename would delete a selected drawing
+  // and Alt-keys would swap chart tools while the user is typing.
+  const ae = document.activeElement;
+  const inInput = ae && (
+    ae === document.getElementById('txt-input')
+    || ae.tagName==='INPUT'
+    || ae.tagName==='TEXTAREA'
+    || ae.tagName==='SELECT'
+    || ae.isContentEditable
+  );
   if((e.key==='Delete'||e.key==='Backspace')&&selectedId!=null&&!inInput){
     if(!currentSymbol||!drawings[currentSymbol])return;
     pushUndo();
@@ -6840,6 +6934,12 @@ function simRetreat(){
   simRenderOpenTrades();
   simRenderTradesList();
   simAutoSave();
+  // Self-Duel: tell the other window to retreat too. publishLocalRetreat
+  // is a no-op outside self-duel; suppressed when the retreat was itself
+  // triggered by a remote message (the handler sets _remoteRetreating).
+  if(window.duelGate && !window.duelGate._remoteRetreating){
+    try { window.duelGate.publishLocalRetreat(); } catch(_){}
+  }
   return true;
 }
 
@@ -7635,6 +7735,45 @@ function simBuildSavePayload(){
   return payload;
 }
 
+// Create a brand-new sim record on the server from the current simConfig.
+// Used by simStart for normal sims AND by the Quick-sim Save promotion.
+// Sets simId + active-sim-id storage on success; throws on failure so the
+// caller can decide what to do (simStart sets simId=null; Save shows an
+// error flash). For duels we also seed duelState so an immediate hard
+// reset before the first PUT still leaves a restorable sim.
+async function simCreateServerRecord(){
+  if(!simConfig) throw new Error('No simConfig');
+  const createBody = {
+    name: simConfig.name,
+    ticker: simConfig.ticker,
+    config: {
+      startingCapital: simConfig.startingCapital,
+      startDate: simConfig.startDate || simAllBars[simStartIdx]?.time,
+      useFirstBar: simConfig.useFirstBar,
+      entryBarSLProtection: simConfig.entryBarSLProtection !== false,
+    }
+  };
+  if(window.duelPersistence){
+    const dsnap = window.duelPersistence.snapshot();
+    if(dsnap) createBody.duelState = dsnap;
+  }
+  const resp = await fetch('/api/simulations', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(createBody)
+  });
+  const sim = await resp.json();
+  if(!resp.ok || sim.error) throw new Error(sim.error || `HTTP ${resp.status}`);
+  simId = sim.id;
+  // sessionStorage is tab-scoped (so two tabs on the same browser — e.g.
+  // host + guest of a local duel — each remember THEIR own active sim);
+  // localStorage is the cross-session fallback for "close the browser,
+  // reopen tomorrow".
+  try{ sessionStorage.setItem('bm_active_sim_id', String(simId)); }catch(_){}
+  try{ localStorage.setItem('bm_active_sim_id', String(simId)); }catch(_){}
+  return simId;
+}
+
 function simAutoSave(){
   if(!simId)return;
   clearTimeout(_simSaveTimer);
@@ -8059,6 +8198,25 @@ function readTickerFilters(ids){
   };
 }
 
+// Quick-pick relative start date. Click 3M / 6M / ... and the input
+// snaps to today minus that span. Fires the input's 'input' event so any
+// listeners (validators, "use first bar" auto-uncheck) fire as if the
+// user had typed it. The IPO clamp is automatic downstream:
+//   - Standard sim: simStart's findIndex(b=>b.time>=startDate) returns 0
+//     when the picked date predates IPO, so sim begins at the first bar.
+//   - Surprise/Duel pinned: server's pick-ticker filters out tickers
+//     whose first bar is later than the pinned date.
+function applyRelativeStartDate(inputId, months){
+  const d = new Date();
+  d.setMonth(d.getMonth() - months);
+  const iso = d.toISOString().slice(0, 10);
+  const el = document.getElementById(inputId);
+  if(!el) return;
+  el.value = iso;
+  el.dispatchEvent(new Event('input', {bubbles: true}));
+  el.dispatchEvent(new Event('change', {bubbles: true}));
+}
+
 // Surprise-Me start-date sanity: if start_date + min_years exceeds today,
 // no ticker can possibly satisfy the request (we don't have future data),
 // so the Start button is disabled with an inline message until the user
@@ -8170,26 +8328,16 @@ async function simStart(config){
 
   // Create on server. For duels we also seed duelState in the create body so
   // an immediate hard reset (before the first PUT fires) still leaves a sim
-  // that can be restored with a live duel.
-  try{
-    const createBody={
-      name:config.name,ticker:config.ticker,
-      config:{startingCapital:config.startingCapital,startDate:config.startDate||simAllBars[simStartIdx]?.time,useFirstBar:config.useFirstBar,entryBarSLProtection:config.entryBarSLProtection!==false}
-    };
-    if(window.duelPersistence){
-      const dsnap=window.duelPersistence.snapshot();
-      if(dsnap)createBody.duelState=dsnap;
-    }
-    const resp=await fetch('/api/simulations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(createBody)});
-    const sim=await resp.json();
-    simId=sim.id;
-    // Write to both stores: sessionStorage is tab-scoped (so two tabs on
-    // the same browser — e.g. host + guest of a local duel — each remember
-    // THEIR own active sim); localStorage is the cross-session fallback
-    // for "close the browser, reopen tomorrow".
-    try{sessionStorage.setItem('bm_active_sim_id',String(simId));}catch(e){}
-    try{localStorage.setItem('bm_active_sim_id',String(simId));}catch(e){}
-  }catch(e){simId=null;}
+  // that can be restored with a live duel. Fast-mode "don't save" skips the
+  // POST entirely; simId stays null, simAutoSave/simFlushSave become no-ops,
+  // and the sim never appears in Saved Simulations.
+  if(config.dontSave){
+    simId = null;
+    try{ sessionStorage.removeItem('bm_active_sim_id'); }catch(e){}
+    try{ localStorage.removeItem('bm_active_sim_id'); }catch(e){}
+  } else {
+    try{ await simCreateServerRecord(); }catch(e){ simId=null; }
+  }
 
   // Switch UI
   document.getElementById('ct-sym').textContent=config.ticker;
@@ -8198,7 +8346,8 @@ async function simStart(config){
   document.getElementById('ct-range').textContent='';
   document.getElementById('ct-vol').textContent='';
   simSetLayoutActive(true);
-  document.getElementById('sim-panel-name').textContent=config.name;
+  _simSetPanelName(config.name);
+  _simSetUnsavedBadge(!!config.dontSave);
   document.getElementById('sim-panel-meta').textContent=`${config.ticker} | $${config.startingCapital.toLocaleString()} | Start ${(d=>d?`${d.slice(5,7)}-${d.slice(8,10)}-${d.slice(0,4)}`:'—')(simAllBars[simStartIdx]?.time)}`;
   document.getElementById('placeholder').classList.add('hidden');
   document.getElementById('loading').classList.add('hidden');
@@ -8547,7 +8696,8 @@ async function simLoadFromServer(id, opts){
     document.getElementById('ct-cond').textContent='SIM';
     document.getElementById('ct-gain').textContent='';document.getElementById('ct-range').textContent='';document.getElementById('ct-vol').textContent='';
     simSetLayoutActive(true);
-    document.getElementById('sim-panel-name').textContent=config.name;
+    _simSetPanelName(config.name);
+    _simSetUnsavedBadge(false); // loaded sims are always saved
     document.getElementById('sim-panel-meta').textContent=`${config.ticker} | $${config.startingCapital.toLocaleString()} | Start ${(d=>d?`${d.slice(5,7)}-${d.slice(8,10)}-${d.slice(0,4)}`:'—')(simAllBars[simStartIdx]?.time)}`;
     document.getElementById('placeholder').classList.add('hidden');
     document.getElementById('loading').classList.add('hidden');
@@ -8677,7 +8827,7 @@ async function loadSimsList(){
           : '—';
         return `<tr style="border-bottom:1px solid var(--row-border);" class="sim-list-row" data-id="${s.id}" data-name="${(s.name||'').replace(/"/g,'&quot;')}">
           <td style="padding:6px;text-align:center;"><input type="checkbox" class="sim-row-check" data-id="${s.id}"></td>
-          <td style="padding:6px;color:var(--text);font-weight:500;cursor:pointer;" class="sim-row-name">${s.name}</td>
+          <td style="padding:6px;color:var(--text);font-weight:500;cursor:pointer;" class="sim-row-name">${s.duelKind==='self-duel'?'<span style="display:inline-block;padding:1px 5px;margin-right:5px;background:var(--accent);color:#000;font-size:9px;font-weight:600;border-radius:3px;vertical-align:1px;">SELF-DUEL</span>':s.duelKind==='duel'?'<span style="display:inline-block;padding:1px 5px;margin-right:5px;background:var(--bg3);color:var(--accent);font-size:9px;font-weight:600;border-radius:3px;border:1px solid var(--accent);vertical-align:1px;">DUEL</span>':''}${s.name}</td>
           <td style="text-align:center;color:var(--accent);cursor:pointer;" class="sim-row-name">${s.ticker}</td>
           <td style="text-align:center;cursor:pointer;" class="sim-row-name">$${s.startingCapital?.toLocaleString()||'—'}</td>
           <td style="text-align:center;color:${pl>=0?'var(--green)':'var(--red)'};cursor:pointer;" class="sim-row-name">${plStr}</td>
@@ -9860,10 +10010,13 @@ document.querySelectorAll('.nav-tab').forEach(t=>t.addEventListener('click',()=>
         const btn = document.getElementById('yahoo-dl-btn');
         if(btn) btn.click();
       }, 50);
-    } else if(target === 'duel-host' || target === 'duel-join'){
-      const tab = (target === 'duel-join') ? 'join' : 'host';
+    } else if(target === 'duel-vs' || target === 'duel-self'){
+      // Open the duel modal in the chosen mode. The user picks Host/Join
+      // (or Side A/Side B in self-duel) FROM the dialog itself — that's
+      // what its top tabs are for.
+      const mode = (target === 'duel-self') ? 'self-duel' : 'vs-opponent';
       showPage('simulations');
-      setTimeout(()=>{ if(window.duelUI) window.duelUI.open({tab}); }, 50);
+      setTimeout(()=>{ if(window.duelUI) window.duelUI.open({mode}); }, 50);
     } else if(target === 'sim-new'){
       // New Simulation: jump to the sims list page so closing the modal
       // leaves the user on a useful screen, then pop the dialog.
@@ -9883,24 +10036,39 @@ document.querySelectorAll('.nav-tab').forEach(t=>t.addEventListener('click',()=>
       if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); handleNav(nav); }
     });
   });
+
 })();
 
 async function openNewSimModal(){
   document.getElementById('sim-modal').classList.remove('hidden');
   await loadTemplatesIntoPicker();
-  // Pull the user's preferred default starting capital from preferences so
-  // the dialog reflects it without hard-coding 100k.
+  // Pull defaults from preferences: starting capital, flex SL toggle,
+  // default template (pre-selected in the picker; user sets it from the
+  // Templates dialog via the per-row ☆/★ toggle).
   try{
     const r=await fetch('/api/preferences');
     const p=await r.json();
     const cap=document.getElementById('sim-capital');
     if(cap&&Number.isFinite(p.defaultStartingCapital))cap.value=p.defaultStartingCapital;
-    // Flex open-bar SL: default value comes from prefs (defaults to true).
-    // The user can still flip it per-sim; this just controls the initial
-    // checkbox state when the modal opens.
     const flexBox=document.getElementById('sim-entry-bar-protect');
     if(flexBox) flexBox.checked = (p.defaultFlexOpenBarSL !== false);
+    const defaultTplId = (p.defaultTemplateId || '');
+    const picker=document.getElementById('sim-template-picker');
+    if(picker && defaultTplId){
+      const opt = picker.querySelector(`option[value="${defaultTplId}"]`);
+      if(opt) picker.value = defaultTplId;
+    }
   }catch(_){}
+  // Reset to the default mode every open (Fast/Surprise from a previous
+  // open shouldn't stick — the common-block-hidden state is mode-driven).
+  const modal = document.getElementById('sim-modal');
+  if(modal && modal.dataset.simMode !== 'ticker'){
+    const tBtn = modal.querySelector('.sim-mode-btn[data-sim-mode="ticker"]');
+    if(tBtn) tBtn.click();
+  }
+  // Clear stale Fast-mode status text from a prior open.
+  const fStatus = document.getElementById('sim-fast-status');
+  if(fStatus) fStatus.textContent = '';
   document.getElementById('sim-name').focus();
   simTickerValidate();
 }
@@ -10286,10 +10454,17 @@ document.getElementById('sim-modal-cancel').addEventListener('click',()=>{
     modal.querySelectorAll('.sim-mode-panel').forEach(p=>{
       p.style.display = (p.dataset.simModePanel === which) ? '' : 'none';
     });
+    // Fast mode hides the common-settings block; the inputs there still
+    // hold default values (from preferences) and Fast reads them as-is.
+    const common = document.getElementById('sim-common-block');
+    if(common) common.style.display = (which === 'fast') ? 'none' : '';
+    // Fast-mode status line is per-open; clear stale text on every switch.
+    const fStatus = document.getElementById('sim-fast-status');
+    if(fStatus) fStatus.textContent = '';
     if(which === 'surprise'){
       _simSurpriseValidate();
     }else{
-      // Switching back to ticker mode clears any disabled-state the
+      // Switching away from Surprise clears any disabled-state the
       // Surprise-Me validator left on the Start button.
       const errEl = document.getElementById('sim-surprise-start-err');
       if(errEl) errEl.style.display = 'none';
@@ -10318,16 +10493,75 @@ document.getElementById('sim-modal-start').addEventListener('click',async()=>{
   try {
     const modal=document.getElementById('sim-modal');
     const mode=modal.dataset.simMode || 'ticker';
-    const name=document.getElementById('sim-name').value.trim()||(mode==='surprise'?'Surprise Sim':'Untitled');
+    const name=document.getElementById('sim-name').value.trim()||(mode==='surprise'?'Surprise Sim':(mode==='fast'?'Quick':'Untitled'));
     const capital=parseFloat(document.getElementById('sim-capital').value)||100000;
     const entryBarSLProtection=document.getElementById('sim-entry-bar-protect')?.checked!==false;
     const skipToMa=document.getElementById('sim-skip-to-ma')?.checked||false;
     const skipMaPeriod=Math.max(1,parseInt(document.getElementById('sim-skip-ma-period')?.value,10)||0);
     const skipMaType=(document.getElementById('sim-skip-ma-type')?.value||'SMA').toUpperCase();
 
-    let ticker, startDate, useFirstBar;
+    let ticker, startDate, useFirstBar, dontSave = false;
 
-    if(mode === 'surprise'){
+    if(mode === 'fast'){
+      // Fast: ticker + start date only. Auto-download if missing.
+      // Defaults flow through from the (hidden) common-block inputs which
+      // are pre-filled from preferences when the modal opens.
+      const tEl = document.getElementById('sim-fast-ticker');
+      ticker = (tEl?.value || '').trim().toUpperCase();
+      if(!ticker){ tEl.classList.add('invalid'); tEl.focus(); return; }
+      const sdRaw = (document.getElementById('sim-fast-start-date')?.value || '').trim();
+      startDate = sdRaw || null;
+      useFirstBar = !sdRaw;
+      dontSave = !!document.getElementById('sim-fast-dont-save')?.checked;
+      const statusEl = document.getElementById('sim-fast-status');
+      const setStatus = (t, isErr) => { if(statusEl){ statusEl.textContent = t || ''; statusEl.style.color = isErr ? 'var(--red)' : 'var(--muted)'; } };
+      // Quick mode always extends local data to the latest available bar.
+      // Two paths: missing ticker => full-history download; existing ticker
+      // with stale tail => merge-mode top-up from last local bar to today.
+      // Skip the round-trip only when the local last-bar date already equals
+      // today (no new data possible). Same pattern the bulk-update job uses.
+      const localRow = Array.isArray(allRows) ? allRows.find(r => (r.symbol || '').toUpperCase() === ticker) : null;
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const needsTopUp = !!localRow && (localRow.to || '') < todayIso;
+      const needsFullDl = !localRow;
+      if(needsFullDl || needsTopUp){
+        setBusy();
+        const body = needsFullDl
+          ? { symbol: ticker }                                   // empty start/end => server resolves full available range
+          : { symbol: ticker, start: localRow.to, end: todayIso, mode: 'merge' };
+        setStatus(needsFullDl
+          ? `Downloading ${ticker} from Yahoo (full history)...`
+          : `Updating ${ticker} (${localRow.to} → ${todayIso})...`);
+        try {
+          const dlResp = await fetch('/api/yahoo/download', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(body)
+          });
+          const dlJson = await dlResp.json().catch(()=>({}));
+          if(!dlResp.ok){
+            setStatus(dlJson.error || `Download failed (HTTP ${dlResp.status})`, true);
+            return;
+          }
+        } catch(e) {
+          setStatus(`Download failed: ${e.message}`, true);
+          return;
+        }
+        try { await loadTickers(); } catch(_) {}
+        const nowExists = Array.isArray(allRows) && allRows.some(r => (r.symbol || '').toUpperCase() === ticker);
+        if(!nowExists){
+          setStatus(`${ticker} downloaded but not visible in local data. Try Standard.`, true);
+          return;
+        }
+        setStatus(needsFullDl ? `${ticker} downloaded.` : `${ticker} updated to ${todayIso}.`);
+      }
+      // Auto-name so unsaved sims that DO get saved (don't-save unchecked)
+      // are easy to find later.
+      const nameInput = document.getElementById('sim-name');
+      if(nameInput && !nameInput.value.trim()){
+        const tag = sdRaw ? ` (${sdRaw})` : '';
+        nameInput.value = `Quick: ${ticker}${tag}`;
+      }
+    } else if(mode === 'surprise'){
       // Random pick: server chooses ticker + start bar from filters.
       setBusy();
       try {
@@ -10362,7 +10596,13 @@ document.getElementById('sim-modal-start').addEventListener('click',async()=>{
         if(!wantDownload) return;
         document.getElementById('sim-modal').classList.add('hidden');
         if (typeof window.openYahooModal === 'function') {
-          window.openYahooModal(ticker, { autoCheck: true, onClose: ()=>{
+          window.openYahooModal(ticker, { autoCheck: true, onClose: async ()=>{
+            // The download (if any) wrote a new CSV to disk, but allRows
+            // is the in-memory snapshot from the last /api/ticker-ranges
+            // fetch and is stale. Refresh it before reopening the sim
+            // modal so the existence check picks up the new ticker on the
+            // next Start click.
+            try { await loadTickers(); } catch(_) {}
             document.getElementById('sim-modal').classList.remove('hidden');
             simTickerValidate();
           }});
@@ -10375,7 +10615,10 @@ document.getElementById('sim-modal-start').addEventListener('click',async()=>{
 
     setBusy();
 
-    const templateId=document.getElementById('sim-template-picker').value;
+    // Fast mode uses whichever template the picker is set to (persisted
+    // across page loads via localStorage; see loadTemplatesIntoPicker).
+    // Empty selection = no template, which is also the original default.
+    const templateId = document.getElementById('sim-template-picker').value;
     let tpl=null;
     if(templateId){
       try{const r=await fetch(`/api/templates/${templateId}`);tpl=await r.json();if(tpl.error)tpl=null;}catch(e){}
@@ -10383,7 +10626,7 @@ document.getElementById('sim-modal-start').addEventListener('click',async()=>{
     document.getElementById('sim-modal').classList.add('hidden');
     showPage('chart');
     try {
-      await simStart({name,ticker,startingCapital:capital,startDate,useFirstBar,entryBarSLProtection,template:tpl,skipToMa,skipMaPeriod,skipMaType});
+      await simStart({name,ticker,startingCapital:capital,startDate,useFirstBar,entryBarSLProtection,template:tpl,skipToMa,skipMaPeriod,skipMaType,dontSave});
     } catch(e) {
       flash(`Simulation failed: ${e.message}`);
     }
@@ -10435,23 +10678,37 @@ async function loadTemplatesIntoPicker(pickerId){
   function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
   let cachedItems = [];
+  let cachedDefaultId = '';
   async function refreshList(){
     try{
-      const r = await fetch('/api/templates');
-      cachedItems = await r.json();
-    }catch(e){ cachedItems = []; }
+      const [tplResp, prefResp] = await Promise.all([
+        fetch('/api/templates'),
+        fetch('/api/preferences'),
+      ]);
+      cachedItems = await tplResp.json();
+      const prefs = await prefResp.json();
+      cachedDefaultId = prefs.defaultTemplateId || '';
+    }catch(e){ cachedItems = []; cachedDefaultId = ''; }
     if(!Array.isArray(cachedItems) || cachedItems.length===0){
       listEl.innerHTML = '<div class="tpl-empty">No saved templates yet. Use the form above to save your first one.</div>';
       return;
     }
-    listEl.innerHTML = cachedItems.map(t=>`
+    listEl.innerHTML = cachedItems.map(t=>{
+      const isDefault = (t.id === cachedDefaultId);
+      const star = isDefault ? '★' : '☆';
+      const starColor = isDefault ? 'var(--accent)' : 'var(--muted)';
+      const starTitle = isDefault
+        ? 'Default template (pre-selected in New Simulation). Click to clear.'
+        : 'Set as default template (pre-selected in New Simulation).';
+      return `
       <div class="tpl-row" data-id="${t.id}">
+        <button class="tpl-row-star" data-tpl-action="toggle-default" title="${starTitle}" style="background:none;border:none;color:${starColor};font-size:16px;line-height:1;cursor:pointer;padding:0 4px;">${star}</button>
         <span class="tpl-row-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
         <button class="sim-btn" data-tpl-action="load" title="Apply to current sim">Load</button>
         <button class="sim-btn" data-tpl-action="overwrite" title="Replace with current chart settings">Overwrite</button>
         <button class="sim-btn danger" data-tpl-action="delete" title="Delete">×</button>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   }
 
   async function open(){
@@ -10548,6 +10805,18 @@ async function loadTemplatesIntoPicker(pickerId){
         await refreshList();
         await loadTemplatesIntoPicker();
       }catch(err){ flash('Delete failed: '+err.message); }
+    } else if(action === 'toggle-default'){
+      const newDefault = (id === cachedDefaultId) ? '' : id;
+      try{
+        const r = await fetch('/api/preferences', {
+          method: 'PUT', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({defaultTemplateId: newDefault})
+        });
+        if(!r.ok) throw new Error(`HTTP ${r.status}`);
+        cachedDefaultId = newDefault;
+        flash(newDefault ? `Default template: ${name}` : 'Default template cleared');
+        await refreshList();
+      }catch(err){ flash('Failed to update default: '+err.message); }
     }
   });
 })();
@@ -10566,15 +10835,18 @@ window.addEventListener('keydown',e=>{
   if(simState!=='playing'&&simState!=='paused'&&simState!=='trading')return;
   // Esc always closes trade form, even from inside inputs
   if(e.key==='Escape'){e.preventDefault();hideTradeForm();return;}
-  const inInput=e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT';
+  // Skip when typing in any text-entry surface — INPUT/TEXTAREA/SELECT
+  // and contenteditable spans (e.g. the inline sim-name rename). Without
+  // the contenteditable check, arrows / N would silently invoke chart
+  // actions while the user thinks they're typing.
+  const t = e.target;
+  const inInput = t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.tagName==='SELECT' || t.isContentEditable);
   if(inInput)return;
   // Never hijack browser-native chords: Ctrl+F find-in-page, Ctrl+N new
   // window, Cmd+F on macOS, Alt-shortcuts. Plain key only.
   if(e.ctrlKey||e.metaKey||e.altKey)return;
   if(e.key==='ArrowRight'||e.key==='>'){e.preventDefault();simAdvance();}
   else if(e.key==='ArrowLeft'||e.key==='<'){e.preventDefault();simRetreat();}
-  else if(e.key==='f'||e.key==='F'){e.preventDefault();simFlattenAll();}
-  else if(e.key==='n'||e.key==='N'){e.preventDefault();showTradeForm();} // reset + focus SL
 });
 
 // Inline trade form
@@ -10813,9 +11085,116 @@ _tfForm.addEventListener('keydown',e=>{
   if(e.key==='Escape'){e.preventDefault();hideTradeForm();}
 });
 
+// ----- Sim panel name: display + inline rename -------------------------------
+// Single source of truth for the sim-panel-name text and UNSAVED badge.
+// Used by simStart, simLoadFromServer, the explicit Save promotion path,
+// and the inline-rename commit. The two pieces of UI never get tangled
+// (renaming edits the name span; saving toggles the badge sibling).
+function _simSetPanelName(name){
+  const el = document.getElementById('sim-panel-name-text');
+  if(el) el.textContent = name || '—';
+}
+function _simSetUnsavedBadge(unsaved){
+  const el = document.getElementById('sim-panel-unsaved-badge');
+  if(el) el.hidden = !unsaved;
+}
+
+// Click the sim name to rename in place. Works for solo, duel, self-duel,
+// and ephemeral Quick sims. For ephemeral sims (no simId), the rename is
+// local-only — clicking Save later POSTs the current name. For saved
+// sims, the new name is PUT to the server immediately. The server doesn't
+// enforce name uniqueness (matches the behavior of rename-from-list).
+(function(){
+  const nameEl = document.getElementById('sim-panel-name-text');
+  if(!nameEl) return;
+
+  let editing = false;
+  function startEdit(){
+    if(editing) return;
+    if(simState === 'idle' || !simConfig){ return; }
+    editing = true;
+    const current = (simConfig && simConfig.name) || nameEl.textContent || '';
+    nameEl.classList.add('editing');
+    nameEl.contentEditable = 'true';
+    nameEl.spellcheck = false;
+    nameEl.textContent = current;
+    // Select all so the user can type to overwrite, or click to position.
+    const range = document.createRange(); range.selectNodeContents(nameEl);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    nameEl.focus();
+  }
+  function endEdit(commit){
+    if(!editing) return;
+    editing = false;
+    nameEl.classList.remove('editing');
+    nameEl.contentEditable = 'false';
+    const original = (simConfig && simConfig.name) || '';
+    const next = (nameEl.textContent || '').trim();
+    if(!commit || !next || next === original){
+      // Revert to canonical name (also strips any stray newlines from paste).
+      nameEl.textContent = original || '—';
+      return;
+    }
+    if(simConfig) simConfig.name = next;
+    nameEl.textContent = next;
+    // Persist if this is a saved sim. Ephemeral Quick sims defer to the
+    // explicit Save button (which POSTs with simConfig.name).
+    if(simId){
+      fetch(`/api/simulations/${simId}`, {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({name: next})
+      }).then(r=>{
+        if(!r.ok) throw new Error(`HTTP ${r.status}`);
+        flash(`Renamed to "${next}"`);
+      }).catch(e=>{
+        flash('Rename failed: ' + (e.message || e));
+        if(simConfig) simConfig.name = original;
+        nameEl.textContent = original;
+      });
+    } else {
+      flash(`Renamed (will save when you click Save): "${next}"`);
+    }
+  }
+
+  nameEl.addEventListener('click', startEdit);
+  nameEl.addEventListener('keydown', e=>{
+    if(e.key === 'Enter'){ e.preventDefault(); endEdit(true); nameEl.blur(); }
+    else if(e.key === 'Escape'){ e.preventDefault(); endEdit(false); nameEl.blur(); }
+  });
+  nameEl.addEventListener('blur', ()=>endEdit(true));
+  // Block paste of multi-line content; squash newlines.
+  nameEl.addEventListener('paste', e=>{
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData('text').replace(/[\r\n\t]/g,' ').trim();
+    document.execCommand('insertText', false, text);
+  });
+})();
+
 document.getElementById('sim-flatten').addEventListener('click',simFlattenAll);
-document.getElementById('sim-save').addEventListener('click',()=>{
-  simAutoSave();flash('Saved');
+document.getElementById('sim-save').addEventListener('click', async () => {
+  // Saved sim: just push the latest state via the existing debounced
+  // autosave path (and confirm to the user).
+  if(simId){
+    simAutoSave();
+    flash('Saved');
+    return;
+  }
+  // Ephemeral Quick sim (simId is null because Don't-save was on at
+  // creation). Explicit Save promotes it to a real saved record by
+  // creating the server-side sim, then flushing the full current state
+  // into it. After this, simId is set and future autosaves work normally.
+  if(!simConfig){ flash('Nothing to save'); return; }
+  try{
+    await simCreateServerRecord();
+    // Flush the full current state (trades, indicators, position, notes,
+    // chart layout) so the new server record matches what the user sees.
+    await simFlushSave();
+    _simSetUnsavedBadge(false);
+    flash('Saved');
+  } catch(e){
+    flash('Save failed: ' + (e.message || e));
+  }
 });
 
 // Notes autosave — uses the existing debounced autosave, with transient status indicator
@@ -10845,7 +11224,12 @@ function simSyncSlModeUI(){
   if(cb&&simConfig)cb.checked=simConfig.entryBarSLProtection!==false;
 }
 document.getElementById('sim-exit').addEventListener('click',()=>{
-  if(!confirm('Exit simulation? It will be saved and you can resume from the Simulations tab.'))return;
+  // simId is null for ephemeral sims (Quick mode with "Don't save" on),
+  // so they won't appear in Saved Simulations. Warn the user accordingly.
+  const msg = simId
+    ? 'Exit simulation? It will be saved and you can resume from the Simulations tab.'
+    : 'Exit simulation? This is an unsaved Quick sim — it will be discarded and cannot be recovered.';
+  if(!confirm(msg)) return;
   simExit();
 });
 
@@ -11429,7 +11813,10 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
     _lastRepublishAt: 0,     // last time we re-published our advance
 
     canAdvance(){ return !this.active || this.phase === 'active'; },
-    canRetreat(){ return !this.active; },
+    // Self-Duel allows retreat even while active — the timer pressure that
+    // justified disabling it in real Duel doesn't apply when the same person
+    // owns both sides.
+    canRetreat(){ return !this.active || (duelConfig && duelConfig.kind === 'self-duel'); },
     advanceBlockReason(){
       if(this.phase === 'prep') return 'Click READY on both sides to start the duel.';
       if(this.phase === 'ended') return 'Duel has ended.';
@@ -11454,6 +11841,13 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
       // countdowns converged without needing a host or shared clock.
       try { duelRelay.publish('advance', {barIdx: this.currentBar, deadline: this.deadline}); } catch(_){}
       this._updateBanner();
+      // Self-Duel: single press advances BOTH windows. Don't wait for opp
+      // — commit immediately. The publish above still fires so the other
+      // window's relay handler can advance there too.
+      if(duelConfig && duelConfig.kind === 'self-duel'){
+        this._commit();
+        return false;
+      }
       if(this.oppAdvanced) this._commit();
       return false;
     },
@@ -11468,6 +11862,14 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
       if(this.oppAdvanced) return;
       this.oppAdvanced = true;
       this._updateBanner();
+      // Self-Duel: opp's press also advances THIS window, no need for the
+      // local user to press → too. myAdvanced is forced true so _commit's
+      // postconditions are clean.
+      if(duelConfig && duelConfig.kind === 'self-duel'){
+        this.myAdvanced = true;
+        this._commit();
+        return;
+      }
       if(this.myAdvanced) this._commit();
     },
 
@@ -11508,6 +11910,18 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
       // always starts fresh on the new bar.
       this._lockInAt = 0;
       this._lastRepublishAt = 0;
+      // Self-Duel: no per-bar timer; single press in either window advances
+      // both. If a buffered opp-advance for THIS bar landed before we got
+      // here (opp racing ahead), commit immediately so we don't stall.
+      if(duelConfig && duelConfig.kind === 'self-duel'){
+        this.deadline = 0;
+        this._updateBanner();
+        if(this.oppAdvanced){
+          this.myAdvanced = true;
+          this._commit();
+        }
+        return;
+      }
       const toSec = (duelConfig && duelConfig.toSec) ? duelConfig.toSec : 45;
       this.deadline = Date.now() + (toSec * 1000);
       this._startCountdown();
@@ -11562,6 +11976,16 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
     _updateBanner(msLeftExplicit){
       // Delegate to the unified renderer so banner layout stays in one place.
       try { updateReadyBanner(msLeftExplicit); } catch(_){}
+    },
+
+    // Self-Duel only. Called from simRetreat after a successful local
+    // retreat to broadcast the move to the other window so it retreats
+    // too. No-op outside self-duel; the relay 'retreat' handler is
+    // self-duel-gated as well, so this can't accidentally affect Duel.
+    publishLocalRetreat(){
+      if(!this.active) return;
+      if(!duelConfig || duelConfig.kind !== 'self-duel') return;
+      try { duelRelay.publish('retreat', {barIdx: simIdx}); } catch(_){}
     },
   };
   window.duelGate = duelGate;
@@ -11632,6 +12056,10 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
   function resetAll(){
     setStage('connect');
     setTab('host');
+    // Default to vs-opponent on every open. The landing-page card click
+    // handler overrides via duelUI.open({mode}) before showing the modal.
+    modal.dataset.duelMode = 'vs-opponent';
+    $('duel-modal-title').textContent = 'Duel Mode';
     resetHost();
     resetJoin();
     duelConfig = null;
@@ -11659,6 +12087,17 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
   function open(opts){
     modal.classList.remove('hidden');
     resetAll();
+    const mode = (opts && opts.mode === 'self-duel') ? 'self-duel' : 'vs-opponent';
+    modal.dataset.duelMode = mode;
+    $('duel-modal-title').textContent = (mode === 'self-duel') ? 'Self-Duel' : 'Duel Mode';
+    // Self-Duel has no host/guest framing — the same person owns both
+    // windows. Top tabs read "Side A" / "Side B" instead. The internal
+    // data-duel-tab values stay "host"/"join" so the rest of the JS works
+    // unchanged (slot assignment, MQTT roles, etc).
+    const hostTab = modal.querySelector('.duel-tab[data-duel-tab="host"]');
+    const joinTab = modal.querySelector('.duel-tab[data-duel-tab="join"]');
+    if(hostTab) hostTab.textContent = (mode === 'self-duel') ? 'Side A' : 'Host';
+    if(joinTab) joinTab.textContent = (mode === 'self-duel') ? 'Side B' : 'Join';
     const tab = opts && opts.tab;
     if(tab === 'host' || tab === 'join') setTab(tab);
     // Seed the email fields from saved preferences when they're empty.
@@ -11684,22 +12123,35 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
   // and published retained the moment the relay connects so the guest sees
   // the settings as soon as they join.
   $('duel-host-create').addEventListener('click', ()=>{
-    if(!validateEmail($('duel-host-email'), 'duel-host-email-err')) return;
-    const email = $('duel-host-email').value.trim();
-    const name = duelRelay.nameFromEmail(email);
+    const isSelfDuel = modal.dataset.duelMode === 'self-duel';
+    let name;
+    if(isSelfDuel){
+      name = 'Side A';
+    } else {
+      if(!validateEmail($('duel-host-email'), 'duel-host-email-err')) return;
+      name = duelRelay.nameFromEmail($('duel-host-email').value.trim());
+    }
 
-    // Read duel config from the form (moved into precode).
+    // Read duel config from the form. Self-duel skips toSec (no per-bar
+    // timer) and tickerHidden (no point — same user owns both windows).
     const years = Math.max(1, parseInt($('duel-cfg-years').value, 10) || 2);
-    const toSec = Math.max(5, parseInt($('duel-cfg-to').value, 10) || 45);
     const minAdr = Math.max(0, parseFloat($('duel-cfg-adr').value) || 0);
     const skipEnabled = $('duel-cfg-skipma').checked;
     const skipPeriod = Math.max(1, parseInt($('duel-cfg-skipma-period').value, 10) || 50);
     const skipType = ($('duel-cfg-skipma-type').value || 'SMA').toUpperCase();
-    const tickerHidden = $('duel-cfg-hidden').checked;
+    const pinnedStartDate = ($('duel-cfg-start-date').value || '').trim();
     duelConfig = {
-      years, toSec, minAdr, tickerHidden,
+      years, minAdr,
       skipMa: { enabled: skipEnabled, period: skipPeriod, type: skipType }
     };
+    if(pinnedStartDate) duelConfig.startDate = pinnedStartDate;
+    if(isSelfDuel){
+      duelConfig.kind = 'self-duel';
+      duelConfig.tickerHidden = false;
+    } else {
+      duelConfig.toSec = Math.max(5, parseInt($('duel-cfg-to').value, 10) || 45);
+      duelConfig.tickerHidden = $('duel-cfg-hidden').checked;
+    }
 
     const code = duelRelay.genRoomCode();
     $('duel-host-code').textContent = code;
@@ -11708,14 +12160,23 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
     setDuelStatus('duel-host-status', 'Connecting to relay…');
 
     duelRelay.setOpponentHandler(opp=>{
-      setDuelStatus('duel-host-status', `Connected! Opponent: ${opp}`, 'connected');
+      setDuelStatus('duel-host-status',
+        isSelfDuel ? 'Side B connected.' : `Connected! Opponent: ${opp}`,
+        'connected');
       $('duel-host-proceed').disabled = false;
-      // Guest just appeared on the wire (we got their hello). They're
+      // Side B just appeared on the wire (we got their hello). They're
       // guaranteed to be subscribed now, so push the config live. Publishing
       // it earlier (on host connect) is unreliable since non-retained
       // messages are lost when nobody is subscribed yet.
       if(duelConfig){
         try { duelRelay.publish('config', {config: duelConfig}); } catch(_){}
+      }
+      // Self-duel: host pre-picked the ticker before Side B joined. Re-emit
+      // tickerChoice + data_ready so Side B can verify locally and we don't
+      // sit waiting for it to be picked.
+      if(isSelfDuel){
+        if(tickerChoice){ try { duelRelay.publish('ticker_choice', {choice: tickerChoice}); } catch(_){} }
+        if(myDataReady){ try { duelRelay.publish('data_ready', {}); } catch(_){} }
       }
       // If a duel is already in progress (i.e. we're resuming after a refresh
       // and the opponent is still online OR has also reconnected), re-sync
@@ -11734,7 +12195,22 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
     duelRelay.connect(code, 'host', name,
       ()=>{
         if(!duelRelay.opponentName){
-          setDuelStatus('duel-host-status', 'Waiting for opponent. Share the code with them.');
+          setDuelStatus('duel-host-status', isSelfDuel
+            ? 'Picking a ticker. Open a second window, switch to Self-Duel → Join, paste the code.'
+            : 'Waiting for opponent. Share the code with them.');
+        }
+        // Self-duel: as soon as our MQTT is up, pick the ticker locally so
+        // Side B can start verifying the moment it connects. Don't wait for
+        // a Side B that may take a while to open.
+        if(isSelfDuel && !tickerChoice && !_verifyInFlight){
+          hostPickTickerAndVerify().then(()=>{
+            // After our own data is ready, surface a status update on the
+            // postcode panel (we never transitioned to the preparing stage).
+            if(myDataReady && !duelRelay.opponentName){
+              setDuelStatus('duel-host-status',
+                `Ready. Waiting for Side B. Ticker: ${tickerChoice ? tickerChoice.ticker : '?'}`);
+            }
+          }).catch(()=>{});
         }
       },
       err=>{ setDuelStatus('duel-host-status', err, 'error'); });
@@ -11752,22 +12228,32 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
 
   // ---- Stage: connect (join) ----
   $('duel-join-submit').addEventListener('click', ()=>{
-    const emailOk = validateEmail($('duel-join-email'), 'duel-join-email-err');
+    const isSelfDuel = modal.dataset.duelMode === 'self-duel';
     const code = ($('duel-join-code').value||'').trim().toUpperCase();
     const codeOk = code.length >= 4;
     $('duel-join-code').classList.toggle('invalid', !codeOk);
     const codeErr = $('duel-join-code-err');
-    if(codeErr) codeErr.textContent = codeOk ? '' : 'Enter the room code your opponent sent you.';
-    if(!emailOk || !codeOk) return;
-    const email = $('duel-join-email').value.trim();
-    const name = duelRelay.nameFromEmail(email);
+    if(codeErr) codeErr.textContent = codeOk ? '' : (isSelfDuel
+      ? 'Enter the room code from your first window.'
+      : 'Enter the room code your opponent sent you.');
+    let name;
+    if(isSelfDuel){
+      if(!codeOk) return;
+      name = 'Side B';
+    } else {
+      const emailOk = validateEmail($('duel-join-email'), 'duel-join-email-err');
+      if(!emailOk || !codeOk) return;
+      name = duelRelay.nameFromEmail($('duel-join-email').value.trim());
+    }
 
     $('duel-join-prejoin').style.display='none';
     $('duel-join-postjoin').style.display='block';
     setDuelStatus('duel-join-status', 'Connecting to relay…');
 
     duelRelay.setOpponentHandler(opp=>{
-      setDuelStatus('duel-join-status', `Connected! Opponent: ${opp}`, 'connected');
+      setDuelStatus('duel-join-status',
+        isSelfDuel ? 'Side A connected.' : `Connected! Opponent: ${opp}`,
+        'connected');
       $('duel-join-proceed').disabled = false;
       // If we're resuming a duel (refreshed mid-game), re-sync to host.
       if(duelGate.active){
@@ -11783,7 +12269,9 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
     duelRelay.connect(code, 'guest', name,
       ()=>{
         if(!duelRelay.opponentName){
-          setDuelStatus('duel-join-status', `Looking for host at code ${code}…`);
+          setDuelStatus('duel-join-status', isSelfDuel
+            ? `Looking for Side A at code ${code}…`
+            : `Looking for host at code ${code}…`);
         }
       },
       err=>{ setDuelStatus('duel-join-status', err, 'error'); });
@@ -11871,6 +12359,16 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
       oppReady = true;
       updateReadyBanner();
       checkBothReady();
+    });
+
+    // Self-Duel only: lockstep retreat. ← in either window retreats both.
+    duelRelay.onMessage('retreat', (msg)=>{
+      if(!duelGate.active) return;
+      if(!duelConfig || duelConfig.kind !== 'self-duel') return;
+      // Guard: don't re-publish from inside the local retreat triggered by
+      // this handler, otherwise the two windows ping retreats forever.
+      duelGate._remoteRetreating = true;
+      try { simRetreat(); } finally { duelGate._remoteRetreating = false; }
     });
 
     duelRelay.onMessage('advance', (msg)=>{
@@ -11979,6 +12477,16 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
   function goToHonor(){
     // Defense-in-depth: never reset honor state once a duel is active.
     if(duelGate.active) return;
+    // Self-Duel skips the honor pact entirely (single user, no adversary
+    // friction needed). Auto-accept on both sides and jump to preparing.
+    // No 'honor' MQTT message is exchanged; both windows transition
+    // independently when their own duelConfig is available.
+    if(duelConfig && duelConfig.kind === 'self-duel'){
+      myHonorAccepted = true;
+      oppHonorAccepted = true;
+      enterPreparingStage();
+      return;
+    }
     setStage('honor');
     renderConfigSummary();
     myHonorAccepted = false;
@@ -11990,15 +12498,18 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
   function renderConfigSummary(){
     if(!duelConfig) return;
     const c = duelConfig;
+    const isSelfDuel = c.kind === 'self-duel';
     const skipTxt = c.skipMa && c.skipMa.enabled
       ? `start once ${c.skipMa.period}-${c.skipMa.type} is defined`
       : 'no MA warmup';
     const hiddenTxt = c.tickerHidden
       ? ' <span style="color:var(--yellow);">Ticker stays hidden until the end.</span>'
       : '';
+    const perBarTxt = isSelfDuel ? 'no per-bar timer' : `${c.toSec}s per bar`;
+    const label = isSelfDuel ? 'Self-Duel parameters' : 'Duel parameters';
     const html =
-      `<b style="color:var(--text);">Duel parameters:</b> `+
-      `${c.years}y history · ADR ≥ ${c.minAdr}% · ${c.toSec}s per bar · ${skipTxt}.`+
+      `<b style="color:var(--text);">${label}:</b> `+
+      `${c.years}y history · ADR ≥ ${c.minAdr}% · ${perBarTxt} · ${skipTxt}.`+
       hiddenTxt;
     // Populate both the honor-stage and prep-stage summary boxes. Prep can
     // sit on screen for a while (data downloads, ticker pick) and the
@@ -12060,13 +12571,22 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
 
   function updatePrepStatus(){
     const oppName = duelRelay.opponentName || 'Opponent';
+    const isSelfDuel = !!(duelConfig && duelConfig.kind === 'self-duel');
+    const isHost = duelRelay.mySlot === 'host';
+
     if(myDataReady){
       setDuelStatus('duel-prep-mine-status', 'Data ready on your side.', 'connected');
+    } else if(isSelfDuel && !isHost && !tickerChoice){
+      // Side B sees no own action — Side A is the one doing the work.
+      setDuelStatus('duel-prep-mine-status', `Side A is picking the ticker for both sides…`);
     }
+
     if(oppDataReady){
       setDuelStatus('duel-prep-opp-status', `${oppName}: data ready.`, 'connected');
     } else if(tickerChoice){
       setDuelStatus('duel-prep-opp-status', `${oppName}: verifying data…`);
+    } else if(isSelfDuel && isHost){
+      setDuelStatus('duel-prep-opp-status', `${oppName} will receive the ticker once it's picked.`);
     } else {
       setDuelStatus('duel-prep-opp-status', `Waiting for ${oppName}…`);
     }
@@ -12087,22 +12607,41 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
     }
   }
 
+  // Self-duel host pre-picks the ticker before Side B joins, while still
+  // visually on the connect stage (room code panel). Mirror prep status to
+  // duel-host-status so the user sees progress there instead of in the
+  // hidden preparing-stage element.
+  function setHostStatusIfConnectVisible(text, modeStr){
+    if(!duelConfig || duelConfig.kind !== 'self-duel') return;
+    if(duelRelay.mySlot !== 'host') return;
+    const connectStage = modal.querySelector('.duel-stage[data-duel-stage="connect"]');
+    if(connectStage && connectStage.style.display !== 'none'){
+      setDuelStatus('duel-host-status', text, modeStr);
+    }
+  }
+
   async function hostPickTickerAndVerify(){
-    setDuelStatus('duel-prep-mine-status', 'Randomly selecting a ticker that matches the filters…');
+    const msg1 = 'Picking a random ticker that matches your filters…';
+    setDuelStatus('duel-prep-mine-status', msg1);
+    setHostStatusIfConnectVisible(msg1);
     try{
       tickerChoice = await pickRandomTicker({
         years: duelConfig.years,
         minAdr: duelConfig.minAdr,
         skipMaEnabled: !!(duelConfig.skipMa && duelConfig.skipMa.enabled),
         skipMaPeriod: (duelConfig.skipMa && duelConfig.skipMa.period) || 0,
+        startDate: duelConfig.startDate || '',
       });
     } catch(e){
-      setDuelStatus('duel-prep-mine-status', 'Ticker pick failed: '+e.message, 'error');
+      const errMsg = 'Ticker pick failed: '+e.message;
+      setDuelStatus('duel-prep-mine-status', errMsg, 'error');
+      setHostStatusIfConnectVisible(errMsg, 'error');
       duelRelay.publish('data_error', {reason:'Host could not pick a ticker: '+e.message});
       return;
     }
 
-    // Publish retained so a late-reconnecting guest sees it.
+    // Publish so any already-connected guest gets it. Re-published in
+    // opponentHandler when a late guest joins.
     duelRelay.publish('ticker_choice', {choice: tickerChoice});
 
     // Host already has the data locally (they loaded it to pick it), but
@@ -12124,11 +12663,13 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
     const nameForUi = hidden ? 'the duel data' : tickerChoice.ticker;
 
     setDuelStatus('duel-prep-mine-status', `Checking ${nameForUi}…`);
+    setHostStatusIfConnectVisible(`Picked ${nameForUi}. Verifying data…`);
 
     try{
       let ok = await hasEnoughCoverage(tickerChoice);
       if(!ok){
         setDuelStatus('duel-prep-mine-status', `Downloading ${nameForUi}…`);
+        setHostStatusIfConnectVisible(`Downloading ${nameForUi}…`);
         const dl = await fetch('/api/yahoo/download', {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({symbol: tickerChoice.ticker, mode:'merge'})
@@ -12144,6 +12685,7 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
       const raw = e.message || 'data fetch failed';
       const shown = hidden ? 'data fetch failed' : raw;
       setDuelStatus('duel-prep-mine-status', 'Data problem: '+shown, 'error');
+      setHostStatusIfConnectVisible('Data problem: '+shown, 'error');
       duelRelay.publish('data_error', {reason: shown});
       _verifyInFlight = false;
       return;
@@ -12153,6 +12695,12 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
     _verifyInFlight = false;
     duelRelay.publish('data_ready', {});
     updatePrepStatus();
+    // Self-duel host pre-pick: surface the "ready, waiting for Side B"
+    // state on the connect-stage host-status (the user is still seeing the
+    // room code panel, not the preparing stage).
+    if(duelConfig && duelConfig.kind === 'self-duel' && duelRelay.mySlot === 'host' && !duelRelay.opponentName){
+      setHostStatusIfConnectVisible(`Ready. Waiting for Side B. Ticker: ${tickerChoice.ticker}.`, 'connected');
+    }
     checkBothDataReady();
   }
 
@@ -12278,12 +12826,18 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
       phaseEl.className = 'duel-banner-phase live';
       readyBtn.style.display = 'none';
 
-      const ms  = (msLeftExplicit !== undefined) ? msLeftExplicit : Math.max(0, duelGate.deadline - Date.now());
-      const sec = Math.max(0, Math.ceil(ms/1000));
-      const mm  = Math.floor(sec/60);
-      const ss  = sec % 60;
-      cdEl.textContent = `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
-      cdEl.className = 'duel-countdown' + (sec <= 5 && !duelGate.myAdvanced ? ' urgent' : '');
+      const isSelfDuel = !!(duelConfig && duelConfig.kind === 'self-duel');
+      if(isSelfDuel){
+        cdEl.textContent = '--';
+        cdEl.className = 'duel-countdown idle';
+      } else {
+        const ms  = (msLeftExplicit !== undefined) ? msLeftExplicit : Math.max(0, duelGate.deadline - Date.now());
+        const sec = Math.max(0, Math.ceil(ms/1000));
+        const mm  = Math.floor(sec/60);
+        const ss  = sec % 60;
+        cdEl.textContent = `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+        cdEl.className = 'duel-countdown' + (sec <= 5 && !duelGate.myAdvanced ? ' urgent' : '');
+      }
 
       applyCard(meCard,  meBadge,  duelGate.myAdvanced  ? 'locked' : 'waiting pulse', duelGate.myAdvanced  ? 'LOCKED'   : 'DECIDING');
       applyCard(oppCard, oppBadge, duelGate.oppAdvanced ? 'locked' : 'waiting',       duelGate.oppAdvanced ? 'LOCKED'   : 'DECIDING');
@@ -12363,15 +12917,30 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
   async function launchDuelSim(){
     hideModal();
 
-    duelGate.active = true;
-    duelGate.phase = 'prep';
-    myReady = false;
-    oppReady = false;
+    const isSelfDuel = !!(duelConfig && duelConfig.kind === 'self-duel');
 
+    duelGate.active = true;
+    if(isSelfDuel){
+      // Self-Duel skips the prep/READY handshake stage. Both sides go
+      // straight to active; per-bar gating begins immediately. beginGating
+      // is invoked at the bottom of this function (after simStart).
+      duelGate.phase = 'active';
+      myReady = true;
+      oppReady = true;
+    } else {
+      duelGate.phase = 'prep';
+      myReady = false;
+      oppReady = false;
+    }
+
+    const labelTag = isSelfDuel
+      ? (duelRelay.mySlot === 'host' ? 'Side A' : 'Side B')
+      : (duelRelay.mySlot === 'host' ? 'Host' : 'Guest');
+    const kindLabel = isSelfDuel ? 'Self-Duel' : 'Duel';
     const cfg = {
-      // Side-tag the sim name so each player can tell their own file apart
-      // in the sims list ("Duel ABC123 Host" vs "Duel ABC123 Guest").
-      name: `Duel ${duelRelay.roomCode} ${duelRelay.mySlot === 'host' ? 'Host' : 'Guest'}`,
+      // Side-tag the sim name so each side can tell its own file apart
+      // in the sims list ("Self-Duel ABC123 Side A" vs "Side B").
+      name: `${kindLabel} ${duelRelay.roomCode} ${labelTag}`,
       ticker: tickerChoice.ticker,
       startingCapital: 100000,
       startDate: tickerChoice.startDate,
@@ -12413,6 +12982,19 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
     try { publishDuelEquity(true); } catch(_){}
     try { startDuelEquityRepublisher(); } catch(_){}
     try { setOppEquityToggleVisible(true); syncOppEquityToggleUI(); } catch(_){}
+    // Self-Duel: skipped the prep/READY handshake, so kick off the per-bar
+    // gate here (regular Duel does this from checkBothReady when both
+    // players click READY). Also default the opponent-equity overlay off:
+    // both equity curves are visible to the same person across the two
+    // windows, so overlaying them is redundant clutter. Toggle stays
+    // available if the user wants it on.
+    if(isSelfDuel){
+      oppEquityVisible = false;
+      try { localStorage.setItem('bm_duel_opp_eq_hidden', '1'); } catch(_){}
+      try { syncOppEquityToggleUI(); } catch(_){}
+      duelGate.beginGating();
+      flash('Self-Duel started. Press → in BOTH windows to advance each bar.');
+    }
     // First save after the duel gate becomes active: writes duelState into
     // the sim JSON so a refresh now has something to restore from. Use the
     // synchronous flush (not the 500ms-debounced simAutoSave) — otherwise a

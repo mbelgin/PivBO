@@ -8,6 +8,41 @@ The newest version is at the top.
 
 ## Unreleased
 
+- **Self-Duel mode**. Third tab in the Duel modal alongside Host and Join.
+  Race two trading approaches across two browser windows on the same
+  ticker, same bars, no opponent friction. Window 1 picks Self-Duel →
+  Create (Side A), sets years / ADR / MA warmup, gets a room code.
+  Window 2 picks Self-Duel → Join (Side B), pastes the code. Both
+  windows then run as full regular sims, paired through the same
+  relay Duel mode uses, with the differences:
+  - No per-bar decision timer.
+  - No I'M READY handshake (auto-ready).
+  - No Duel Pact (auto-accepted).
+  - Retreat (←) is enabled.
+  - Opponent-equity overlay defaults off (toggle still works).
+  - Saved Sims list shows a SELF-DUEL badge.
+  Each side advances by pressing → in its own window; the bar flips
+  for both sides once both windows have pressed. Use it for fast A/B
+  testing of methodologies, system variants, or risk settings on
+  identical market conditions.
+- **Fast mode in New Simulation**. Third tab next to Pick a Ticker and
+  Surprise Me. For quick previews of a ticker before committing to a
+  real sim. Inputs: ticker, optional start date, "Don't save" checkbox
+  (on by default). Hides the common settings (name, capital, flex SL,
+  skip-to-MA, template) and uses your preference defaults. If the
+  ticker isn't in local data, it auto-downloads the full available
+  history from Yahoo with no separate dialog. With Don't save on, the
+  sim runs in-memory only and never appears in Saved Simulations; the
+  sim header shows "(unsaved)" so you don't lose track.
+- **Fix: New Sim sent users back to the Download dialog after a successful
+  download**. Pick a Ticker mode validates against an in-memory snapshot
+  of available tickers loaded once at app start. After the user followed
+  the prompt to download a missing ticker, the snapshot was never
+  refreshed, so the next Start click still saw "missing" and re-opened
+  the Download dialog. The snapshot is now refreshed when the Download
+  dialog closes, so a successful download is picked up on the next
+  Start click.
+
 ## v0.0.5 (2026-04-30)
 
 - **Container image** at `ghcr.io/mbelgin/pivbo`, amd64 and arm64.

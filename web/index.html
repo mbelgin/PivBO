@@ -528,8 +528,8 @@ python pivbo_server.py</code></pre>
             <strong>&frac13;</strong>, <strong>&frac12;</strong>,
             <strong>&frac34;</strong>, <strong>ALL</strong>, or type an
             exact share count.</li>
-          <li><strong>Flatten</strong> (<kbd>F</kbd>) closes every open
-            position at the current bar's close.</li>
+          <li><strong>Flatten</strong> closes every open position at the
+            current bar's close.</li>
         </ul>
         <p>
           R-multiples use the risk frozen at entry, so moving your SL
@@ -596,16 +596,16 @@ python pivbo_server.py</code></pre>
         </ul>
         <p>What's inside:</p>
         <ul>
-          <li><code>collected_stocks/</code> &mdash; the historical
+          <li><code>collected_stocks/</code>: the historical
             ticker CSVs (around 900 daily-bar files seeded on first launch,
             plus anything you've downloaded since).</li>
-          <li><code>simulations/</code> &mdash; one JSON per saved sim.</li>
-          <li><code>templates/</code> &mdash; saved chart-and-indicator
+          <li><code>simulations/</code>: one JSON per saved sim.</li>
+          <li><code>templates/</code>: saved chart-and-indicator
             presets.</li>
-          <li><code>analyses/</code> &mdash; saved Analysis and Compare
+          <li><code>analyses/</code>: saved Analysis and Compare
             reports.</li>
-          <li><code>preferences.json</code> &mdash; your gear-icon settings.</li>
-          <li><code>drawings.json</code> &mdash; per-ticker drawings.</li>
+          <li><code>preferences.json</code>: your gear-icon settings.</li>
+          <li><code>drawings.json</code>: per-ticker drawings.</li>
         </ul>
         <p>
           <strong>Reinstalling or upgrading never touches this folder.</strong>
@@ -747,6 +747,57 @@ python pivbo_server.py</code></pre>
             replace itself; if a newer version exists, the banner links
             you to the <a href="#download">Download</a> section.</li>
         </ul>
+      </div>
+    </details>
+
+    <details class="accordion-item">
+      <summary class="accordion-summary">
+        <span class="accordion-title">Keyboard shortcuts</span>
+        <span class="accordion-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </span>
+      </summary>
+      <div class="accordion-body">
+        <p><strong>Sim playback</strong> (active during a simulation):</p>
+        <ul>
+          <li><kbd>&rarr;</kbd> or <kbd>&gt;</kbd>: advance one bar.</li>
+          <li><kbd>&larr;</kbd> or <kbd>&lt;</kbd>: retreat one bar.
+            Disabled in Duel mode; enabled in Self-Duel.</li>
+          <li><kbd>Esc</kbd>: close the trade form (always wins, even from
+            inside inputs).</li>
+        </ul>
+        <p><strong>Drawing tools</strong> (chart view):</p>
+        <ul>
+          <li><kbd>Alt</kbd>+<kbd>V</kbd>: pan tool</li>
+          <li><kbd>Alt</kbd>+<kbd>H</kbd>: horizontal line</li>
+          <li><kbd>Alt</kbd>+<kbd>A</kbd>: extended line (trendline)</li>
+          <li><kbd>Alt</kbd>+<kbd>R</kbd>: arrow</li>
+          <li><kbd>Alt</kbd>+<kbd>S</kbd>: segment</li>
+          <li><kbd>Alt</kbd>+<kbd>T</kbd>: text label</li>
+          <li><kbd>Alt</kbd>+<kbd>N</kbd>: note</li>
+          <li><kbd>Alt</kbd>+<kbd>M</kbd>: measure</li>
+          <li><kbd>Esc</kbd>: switch back to pan tool, also reverts a
+            pending stop-loss drag.</li>
+          <li><kbd>Delete</kbd> or <kbd>Backspace</kbd>: delete the
+            selected drawing.</li>
+          <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> (<kbd>&#8984;</kbd>+<kbd>Z</kbd> on
+            macOS): undo the last drawing change.</li>
+          <li><kbd>&uarr;</kbd> / <kbd>&darr;</kbd>: navigate the ticker
+            list (chart view only, not during a sim).</li>
+        </ul>
+        <p><strong>Modals:</strong></p>
+        <ul>
+          <li><kbd>Esc</kbd>: close the Preferences page or any open modal.</li>
+          <li><kbd>Enter</kbd>: submit code/symbol inputs (Duel join, Yahoo
+            data dialog, etc.).</li>
+        </ul>
+        <p>
+          Browser-native chords (<kbd>Ctrl</kbd>+<kbd>F</kbd> find,
+          <kbd>Ctrl</kbd>+<kbd>R</kbd> reload, etc.) are never hijacked.
+          Typing in any input or the inline-rename field also disables
+          the sim and drawing shortcuts so keystrokes go to the input
+          you're focused on.
+        </p>
       </div>
     </details>
 
