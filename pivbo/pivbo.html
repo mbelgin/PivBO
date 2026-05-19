@@ -6268,27 +6268,39 @@ function computeTradeIndexEquity(){
   let runningEq=cap;
   realized.push({time:encodeTradeIndex(0),value:cap});
   let dayOff=1;
-  for(const t of visTrades){
+  // Display ordinal mirrors the trade-list label (#0001, #0002 ...) — see
+  // simRenderTradesList where the same chronological numbering is built.
+  visTrades.forEach((t,i)=>{
+    const ordinal=i+1;
     const totalShares=t.entries.reduce((s,e)=>s+e.shares,0);
-    if(!totalShares)continue;
+    if(!totalShares)return;
     const avgEntry=t.entries.reduce((s,e)=>s+e.price*e.shares,0)/totalShares;
     const sign=t.direction==='long'?1:-1;
     const visExits=t.exits.filter(e=>(e._atIdx||0)<=simIdx);
     const realizedShares=visExits.reduce((s,e)=>s+e.shares,0);
     const realizedPL=visExits.reduce((s,e)=>s+sign*(e.price-avgEntry)*e.shares,0);
     const remainShares=totalShares-realizedShares;
+    const curBar=simCurrentBar();
+    const curPrice=curBar?curBar.close:null;
+    // R contribution at this point. Honors the user's adjusted/simple
+    // preference via computeTradeR(); the hover tip renders rUnit().
+    let realizedR=0,unrealizedR=0;
+    try{
+      const ri=computeTradeR(t,visExits,totalShares,avgEntry,curPrice);
+      realizedR=ri.realizedR||0;
+      unrealizedR=ri.unrealizedR||0;
+    }catch(e){}
     if(realizedShares>0){
       runningEq+=realizedPL;
-      realized.push({time:encodeTradeIndex(dayOff++),value:runningEq});
+      realized.push({time:encodeTradeIndex(dayOff++),value:runningEq,tradeId:ordinal,r:realizedR});
     }
     if(remainShares>0){
-      const curBar=simCurrentBar();
       const unrealizedPL=curBar?remainShares*sign*(curBar.close-avgEntry):0;
       const lastRealized=realized[realized.length-1];
-      unrealized.push({time:lastRealized.time,value:lastRealized.value});
-      unrealized.push({time:encodeTradeIndex(dayOff++),value:runningEq+unrealizedPL});
+      unrealized.push({time:lastRealized.time,value:lastRealized.value,tradeId:ordinal,r:realizedR});
+      unrealized.push({time:encodeTradeIndex(dayOff++),value:runningEq+unrealizedPL,tradeId:ordinal,r:unrealizedR});
     }
-  }
+  });
   return{realized,unrealized};
 }
 
@@ -6520,9 +6532,24 @@ function drawEquityCanvas(canvasId, data){
       tip.style.top  = (e.clientY - rect.top) + 'px';
       const delta = pt.value - d.capital;
       const cls = delta >= 0 ? 'v' : 'v neg';
+      // Trade tag: "#NNNN +X.XXR/adjR" appended when the hovered point
+      // corresponds to a specific trade event (skipped for the starting
+      // capital point at trade index 0). R unit follows rUnit() — adjusted
+      // vs simple per the user's R-multiple display preference.
+      let tradeTag = '';
+      if (pt.tradeId != null) {
+        const idStr = '#' + String(pt.tradeId).padStart(4,'0');
+        let rStr = '';
+        if (typeof pt.r === 'number' && Number.isFinite(pt.r)) {
+          const sign = pt.r >= 0 ? '+' : '';
+          rStr = ' ' + sign + pt.r.toFixed(2) + (typeof rUnit === 'function' ? rUnit() : 'R');
+        }
+        tradeTag = ' &middot; ' + idStr + rStr;
+      }
       tip.innerHTML = '<span class="' + cls + '">$' +
         Math.round(pt.value).toLocaleString() + '</span> ' +
-        (delta >= 0 ? '+' : '') + Math.round(delta).toLocaleString();
+        (delta >= 0 ? '+' : '') + Math.round(delta).toLocaleString() +
+        tradeTag;
       tip.classList.remove('hidden');
       line.style.left = xPx + 'px';
       line.classList.remove('hidden');

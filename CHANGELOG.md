@@ -8,6 +8,13 @@ The newest version is at the top.
 
 ## Unreleased
 
+- **Equity hover tip now shows trade ID and R**. Hovering over the
+  equity curve in the right-rail equity pane appends the trade ordinal
+  (`#0001`, `#0002`, ...) and the R contribution (`+1.40adjR` or
+  `-0.80R` depending on your R-multiple display preference) next to
+  the existing dollar value and delta. The starting-capital point still
+  shows just the dollar/delta. Useful for spotting which trade caused
+  a step-change in equity without having to count points.
 - **Self-Duel mode**. Third tab in the Duel modal alongside Host and Join.
   Race two trading approaches across two browser windows on the same
   ticker, same bars, no opponent friction. Window 1 picks Self-Duel →
