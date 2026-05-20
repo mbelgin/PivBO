@@ -8,6 +8,12 @@ The newest version is at the top.
 
 ## Unreleased
 
+- **Faster server startup**. The ticker date-range index is now
+  persisted to disk between runs (keyed by file mtime). First boot
+  still does the full scan; every subsequent boot reuses the cached
+  ranges in ~20 ms instead of re-decompressing every `.csv.gz`. Any
+  individual file that changes (new bars downloaded, manual edit)
+  invalidates just that one entry on the next start.
 - **Equity hover tip now shows trade ID and R**. Hovering over the
   equity curve in the right-rail equity pane appends the trade ordinal
   (`#0001`, `#0002`, ...) and the R contribution (`+1.40adjR` or

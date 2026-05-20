@@ -630,12 +630,79 @@ def api_drawings():
 # TICKER RANGES
 # ==============================================
 
+# Persisted on disk so a server restart doesn't repeat the per-file
+# decompress + full scan that the original implementation did on every
+# first call. Keyed by symbol; each entry records the file mtime and
+# size so any change (download, edit, replace) invalidates that one
+# entry but leaves the rest cached.
+_RANGES_DISK_CACHE_FILE = os.path.join(USER_DATA_DIR, "pivbo_ticker_ranges_cache.json")
+
+
+def _load_ranges_disk_cache():
+    try:
+        with open(_RANGES_DISK_CACHE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except (OSError, ValueError):
+        pass
+    return {}
+
+
+def _save_ranges_disk_cache(cache):
+    tmp_path = _RANGES_DISK_CACHE_FILE + ".tmp"
+    try:
+        os.makedirs(os.path.dirname(_RANGES_DISK_CACHE_FILE), exist_ok=True)
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False)
+        os.replace(tmp_path, _RANGES_DISK_CACHE_FILE)
+    except OSError:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+
+
+def _scan_ticker_range(fpath):
+    """Return (first_date, last_date) for a CSV/.csv.gz, or (None, None) on error.
+
+    Pulled out of _load_ticker_ranges so the per-file scan path is
+    isolated from the cache plumbing.
+    """
+    try:
+        first_date = None
+        last_date = None
+        with _open_csv(fpath, "r") as f:
+            reader = csv.reader(f)
+            header = next(reader, None)
+            if not header:
+                return None, None
+            date_col = 1 if (len(header) >= 2 and "date" in (header[1] or "").lower()) else 0
+            for row in reader:
+                if len(row) <= date_col:
+                    continue
+                dt = row[date_col].strip()
+                if not dt or len(dt) < 10:
+                    continue
+                if first_date is None:
+                    first_date = dt
+                last_date = dt
+        return first_date, last_date
+    except Exception:
+        return None, None
+
+
 def _load_ticker_ranges():
     global _TICKER_RANGES_CACHE
     if _TICKER_RANGES_CACHE is not None:
         return _TICKER_RANGES_CACHE
 
+    disk_cache = _load_ranges_disk_cache()
+    new_cache = {}
     ranges = {}
+    dirty = False
+
     for d in STOCKS_DIRS:
         if not os.path.isdir(d):
             continue
@@ -649,27 +716,42 @@ def _load_ticker_ranges():
                 continue
             fpath = os.path.join(d, fname)
             try:
-                first_date = None
-                last_date = None
-                with _open_csv(fpath, "r") as f:
-                    reader = csv.reader(f)
-                    header = next(reader, None)
-                    if not header:
-                        continue
-                    date_col = 1 if (len(header) >= 2 and "date" in (header[1] or "").lower()) else 0
-                    for row in reader:
-                        if len(row) <= date_col:
-                            continue
-                        dt = row[date_col].strip()
-                        if not dt or len(dt) < 10:
-                            continue
-                        if first_date is None:
-                            first_date = dt
-                        last_date = dt
-                if first_date and last_date:
-                    ranges[symbol] = {"from": first_date[:10], "to": last_date[:10]}
-            except Exception:
+                st = os.stat(fpath)
+                mtime = st.st_mtime
+                size = st.st_size
+            except OSError:
                 continue
+
+            entry = disk_cache.get(symbol)
+            if (entry
+                    and entry.get("path") == fpath
+                    and entry.get("mtime") == mtime
+                    and entry.get("size") == size
+                    and entry.get("from")
+                    and entry.get("to")):
+                # Disk-cache hit: file unchanged since last scan, reuse dates.
+                new_cache[symbol] = entry
+                ranges[symbol] = {"from": entry["from"], "to": entry["to"]}
+                continue
+
+            first_date, last_date = _scan_ticker_range(fpath)
+            if first_date and last_date:
+                first_iso = first_date[:10]
+                last_iso = last_date[:10]
+                ranges[symbol] = {"from": first_iso, "to": last_iso}
+                new_cache[symbol] = {
+                    "path": fpath,
+                    "mtime": mtime,
+                    "size": size,
+                    "from": first_iso,
+                    "to": last_iso,
+                }
+                dirty = True
+
+    # If the symbol set or any entry differs from disk, persist. Avoids
+    # writing a 100 KB JSON every server boot when nothing changed.
+    if dirty or set(new_cache.keys()) != set(disk_cache.keys()):
+        _save_ranges_disk_cache(new_cache)
 
     _TICKER_RANGES_CACHE = ranges
     return _TICKER_RANGES_CACHE
