@@ -4575,7 +4575,14 @@ function setupChartEvents(){
   setupDrag();
 
   chart.timeScale().subscribeVisibleTimeRangeChange(redrawAll);
-  setInterval(redrawAll,200);
+  // Heartbeat redraw as a safety net for any state change that didn't
+  // call redrawAll explicitly. All interactive paths (mousemove, sim
+  // advance/retreat, time-range change, drawing mutations) already
+  // trigger immediate redraws; this only catches stragglers. 1 Hz
+  // keeps a CPU core idle most of the time without sacrificing the
+  // catch-all behavior. The preview-level pulse uses its own rAF
+  // loop (simStartPulse) and is unaffected.
+  setInterval(redrawAll,1000);
 }
 
 function setupDrag(){
