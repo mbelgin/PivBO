@@ -8,6 +8,8 @@ The newest version is at the top.
 
 ## Unreleased
 
+## v0.0.6 (2026-05-19)
+
 - **Save As (fork) in the sim panel header**. New button next to
   Templates / Exit. Clones the current sim into a new saved copy under
   a name you pick, then opens the copy so you can branch from this
