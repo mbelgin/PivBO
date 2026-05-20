@@ -1413,7 +1413,6 @@
   .sim-panel-header .sim-name-text{cursor:text;border-radius:3px;padding:1px 4px;border:1px solid transparent;min-width:60px;}
   .sim-panel-header .sim-name-text:hover{border-color:var(--border);background:var(--bg3);}
   .sim-panel-header .sim-name-text.editing{border-color:var(--accent);background:var(--bg3);outline:none;cursor:text;}
-  .sim-panel-header .sim-unsaved-badge{display:inline-block;padding:1px 6px;font-size:9px;font-weight:600;letter-spacing:0.5px;background:var(--bg3);border:1px solid var(--accent2);color:var(--accent2);border-radius:3px;}
   /* Compact vertical layout for the sim-active right rail. The Capital
      and Statistics sections eat real estate on smaller laptop screens
      and squeeze the trade-history list. Tightening padding + line-height
@@ -2182,7 +2181,7 @@
         </div>
       </div>
       <div class="sim-controls" id="sim-controls">
-        <button class="sim-btn" id="sim-save">Save</button>
+        <button class="sim-btn" id="sim-save-as" title="Fork this sim into a new saved copy. The current sim stays as-is; the new copy opens so you can try a different approach from this same point.">Save As</button>
         <button class="sim-btn" id="sim-templates-btn" title="Save, load, or delete chart/indicator templates">Templates</button>
         <button class="sim-btn danger" id="sim-exit">Exit</button>
       </div>
@@ -2191,7 +2190,6 @@
         <div class="sim-panel-header">
           <div class="sim-name" id="sim-panel-name">
             <span id="sim-panel-name-text" class="sim-name-text" title="Click to rename">—</span>
-            <span id="sim-panel-unsaved-badge" class="sim-unsaved-badge" hidden>UNSAVED</span>
           </div>
           <div class="sim-meta" id="sim-panel-meta">—</div>
         </div>
@@ -8381,7 +8379,6 @@ async function simStart(config){
   document.getElementById('ct-vol').textContent='';
   simSetLayoutActive(true);
   _simSetPanelName(config.name);
-  _simSetUnsavedBadge(!!config.dontSave);
   document.getElementById('sim-panel-meta').textContent=`${config.ticker} | $${config.startingCapital.toLocaleString()} | Start ${(d=>d?`${d.slice(5,7)}-${d.slice(8,10)}-${d.slice(0,4)}`:'—')(simAllBars[simStartIdx]?.time)}`;
   document.getElementById('placeholder').classList.add('hidden');
   document.getElementById('loading').classList.add('hidden');
@@ -8731,7 +8728,6 @@ async function simLoadFromServer(id, opts){
     document.getElementById('ct-gain').textContent='';document.getElementById('ct-range').textContent='';document.getElementById('ct-vol').textContent='';
     simSetLayoutActive(true);
     _simSetPanelName(config.name);
-    _simSetUnsavedBadge(false); // loaded sims are always saved
     document.getElementById('sim-panel-meta').textContent=`${config.ticker} | $${config.startingCapital.toLocaleString()} | Start ${(d=>d?`${d.slice(5,7)}-${d.slice(8,10)}-${d.slice(0,4)}`:'—')(simAllBars[simStartIdx]?.time)}`;
     document.getElementById('placeholder').classList.add('hidden');
     document.getElementById('loading').classList.add('hidden');
@@ -11120,23 +11116,15 @@ _tfForm.addEventListener('keydown',e=>{
 });
 
 // ----- Sim panel name: display + inline rename -------------------------------
-// Single source of truth for the sim-panel-name text and UNSAVED badge.
-// Used by simStart, simLoadFromServer, the explicit Save promotion path,
-// and the inline-rename commit. The two pieces of UI never get tangled
-// (renaming edits the name span; saving toggles the badge sibling).
 function _simSetPanelName(name){
   const el = document.getElementById('sim-panel-name-text');
   if(el) el.textContent = name || '—';
 }
-function _simSetUnsavedBadge(unsaved){
-  const el = document.getElementById('sim-panel-unsaved-badge');
-  if(el) el.hidden = !unsaved;
-}
 
 // Click the sim name to rename in place. Works for solo, duel, self-duel,
 // and ephemeral Quick sims. For ephemeral sims (no simId), the rename is
-// local-only — clicking Save later POSTs the current name. For saved
-// sims, the new name is PUT to the server immediately. The server doesn't
+// local-only and is discarded along with the sim on exit. For saved sims,
+// the new name is PUT to the server immediately. The server doesn't
 // enforce name uniqueness (matches the behavior of rename-from-list).
 (function(){
   const nameEl = document.getElementById('sim-panel-name-text');
@@ -11187,7 +11175,7 @@ function _simSetUnsavedBadge(unsaved){
         nameEl.textContent = original;
       });
     } else {
-      flash(`Renamed (will save when you click Save): "${next}"`);
+      flash(`Renamed to "${next}"`);
     }
   }
 
@@ -11206,28 +11194,46 @@ function _simSetUnsavedBadge(unsaved){
 })();
 
 document.getElementById('sim-flatten').addEventListener('click',simFlattenAll);
-document.getElementById('sim-save').addEventListener('click', async () => {
-  // Saved sim: just push the latest state via the existing debounced
-  // autosave path (and confirm to the user).
-  if(simId){
-    simAutoSave();
-    flash('Saved');
-    return;
-  }
-  // Ephemeral Quick sim (simId is null because Don't-save was on at
-  // creation). Explicit Save promotes it to a real saved record by
-  // creating the server-side sim, then flushing the full current state
-  // into it. After this, simId is set and future autosaves work normally.
+
+// Save As: fork the current sim into a new saved copy and open it. The
+// original is preserved at its current state (autosave already pushed it,
+// and we flush once more here to be sure). The fork copies position,
+// trades, indicators, secondary chart, notes, chart layout, etc., so the
+// user can branch from this exact point and try a different approach. For
+// ephemeral Quick sims (no simId), there's no source record to duplicate
+// server-side; we create one from the current state instead, which
+// effectively promotes it under the new name.
+document.getElementById('sim-save-as').addEventListener('click', async () => {
   if(!simConfig){ flash('Nothing to save'); return; }
+  const defaultName = `${simConfig.name || 'Untitled'} (copy)`;
+  const newName = prompt('Save as new name:', defaultName);
+  if(!newName) return;
   try{
-    await simCreateServerRecord();
-    // Flush the full current state (trades, indicators, position, notes,
-    // chart layout) so the new server record matches what the user sees.
-    await simFlushSave();
-    _simSetUnsavedBadge(false);
-    flash('Saved');
+    if(simId){
+      // Saved sim: flush latest state, then ask server to clone it.
+      await simFlushSave();
+      const resp = await fetch(`/api/simulations/${simId}/duplicate`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({name: newName})
+      });
+      const sim = await resp.json();
+      if(!resp.ok || sim.error) throw new Error(sim.error || `HTTP ${resp.status}`);
+      // Switch into the clone so the user can immediately start branching.
+      // The original sits in Saved Simulations at the fork point.
+      await simLoadFromServer(sim.id);
+      flash(`Forked into "${newName}"`);
+    } else {
+      // Ephemeral Quick sim: no server record yet. Create one with the
+      // current state under the new name, then keep the user in it.
+      simConfig.name = newName;
+      _simSetPanelName(newName);
+      await simCreateServerRecord();
+      await simFlushSave();
+      flash(`Saved as "${newName}"`);
+    }
   } catch(e){
-    flash('Save failed: ' + (e.message || e));
+    flash('Save As failed: ' + (e.message || e));
   }
 });
 

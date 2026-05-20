@@ -8,6 +8,24 @@ The newest version is at the top.
 
 ## Unreleased
 
+- **Save As (fork) in the sim panel header**. New button next to
+  Templates / Exit. Clones the current sim into a new saved copy under
+  a name you pick, then opens the copy so you can branch from this
+  exact point: same ticker, same start, same bar index, same trades and
+  position so far, same indicators, secondary chart, and notes. The
+  original stays in Saved Simulations at the fork point so you can
+  come back to it. Useful for trying "what if I held this winner" vs
+  "what if I scaled out half" without contaminating the original run.
+  For Quick sims started with "Don't save", Save As promotes the
+  current state to a real saved record under the new name (the only
+  way to keep an otherwise-ephemeral run).
+- **Removed redundant Save button and UNSAVED badge** from the sim
+  panel header. Sims autosave on every state change, so the manual Save
+  button was never doing anything the next click wouldn't have done
+  automatically, and the UNSAVED badge had a CSS bug that left it stuck
+  visible even after explicit saves succeeded. Quick sims started with
+  "Don't save" still stay ephemeral and are discarded on exit (the exit
+  confirm spells that out). Templates and Exit buttons unchanged.
 - **Faster server startup**. The ticker date-range index is now
   persisted to disk between runs (keyed by file mtime). First boot
   still does the full scan; every subsequent boot reuses the cached
