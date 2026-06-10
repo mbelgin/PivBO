@@ -982,6 +982,77 @@
     position: relative;
     min-height: 0;
   }
+
+  /* Pattern Select band overlay. Lives inside .chart-wrap (relative).
+     The band is a vertical strip spanning chart height anchored to two
+     bar times. Edges resize, body pans, action bar commits or clears.
+     Visible only when a draft selection exists. */
+  .patsel-band{position:absolute;top:0;bottom:0;background:rgba(0,212,170,0.10);border-left:2px solid var(--accent);border-right:2px solid var(--accent);z-index:30;pointer-events:none;}
+  .patsel-band.hidden{display:none;}
+  .patsel-edge{position:absolute;top:0;bottom:0;width:10px;cursor:ew-resize;pointer-events:auto;}
+  .patsel-edge-left{left:-6px;}
+  .patsel-edge-right{right:-6px;}
+  .patsel-body{position:absolute;inset:0;cursor:grab;pointer-events:auto;}
+  .patsel-body:active{cursor:grabbing;}
+  .patsel-chip{position:absolute;left:50%;top:8px;transform:translateX(-50%);background:var(--bg3);color:var(--accent);border:1px solid var(--accent);padding:2px 8px;font-family:var(--mono);font-size:11px;border-radius:3px;pointer-events:none;}
+  .patsel-actions{position:absolute;left:50%;top:36px;transform:translateX(-50%);display:flex;gap:6px;pointer-events:auto;}
+  .patsel-actions .sim-btn{padding:3px 10px;font-size:11px;}
+
+  /* Pattern Library page */
+  #page-patterns{position:absolute;inset:0;top:46px;background:var(--bg);z-index:40;overflow-y:auto;padding:18px 24px;}
+  #page-patterns.hidden{display:none;}
+  #page-patterns h2{font-family:var(--mono);font-size:14px;color:var(--accent);margin:0 0 14px 0;}
+  .pat-row{padding:8px;border-bottom:1px solid var(--border);cursor:pointer;}
+  .pat-row:hover{background:var(--bg3);}
+  .pat-row .pat-name{color:var(--text);font-weight:600;font-size:12px;}
+  .pat-row .pat-meta{color:var(--muted);font-size:10px;margin-top:2px;}
+  .pat-row .pat-status{color:var(--accent);font-size:10px;}
+  .pat-row .pat-status.error{color:var(--red);}
+  .pat-row .pat-status.paused{color:var(--yellow);}
+
+  /* Pattern Scan modal */
+  .pat-modal{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;display:flex;align-items:center;justify-content:center;}
+  .pat-modal.hidden{display:none;}
+  .pat-modal-box{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:18px 22px;width:420px;max-width:90vw;font-family:var(--mono);font-size:11px;color:var(--text);}
+  .pat-modal-box h3{margin:0 0 14px 0;font-size:13px;color:var(--accent);}
+  .pat-modal-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+  .pat-modal-row label{flex:0 0 130px;color:var(--muted);}
+  .pat-modal-row input[type="text"],.pat-modal-row input[type="number"],.pat-modal-row select{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 6px;font-family:var(--mono);font-size:11px;flex:1;}
+  .pat-modal-row input[type="range"]{flex:1;}
+  .pat-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
+
+  /* Pattern results view */
+  #page-pattern-view{position:absolute;inset:0;top:46px;background:var(--bg);z-index:40;display:flex;}
+  #page-pattern-view.hidden{display:none;}
+  #patv-list{flex:0 0 280px;border-right:1px solid var(--border);overflow-y:auto;background:var(--bg2);}
+  #patv-list-header{padding:10px 12px;border-bottom:1px solid var(--border);}
+  #patv-list-header .patv-title{font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:600;margin-top:6px;}
+  #patv-list-header .patv-back{display:inline-block;color:var(--muted);cursor:pointer;font-size:11px;}
+  .patv-export-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:8px;font-family:var(--mono);font-size:10px;}
+  .patv-export-row .sim-btn{padding:2px 8px;font-size:10px;}
+  .patv-export-label{color:var(--muted);font-size:10px;margin-left:4px;}
+  .patv-export-num{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;font-family:var(--mono);font-size:10px;width:42px;}
+  .patv-export-count{color:var(--muted);font-size:10px;margin-top:4px;}
+  .patv-row{padding:6px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-family:var(--mono);font-size:11px;display:flex;align-items:center;gap:8px;}
+  .patv-row:hover{background:var(--bg3);}
+  .patv-row.active{background:var(--row-active);}
+  .patv-row.original{background:var(--bg3);border-bottom:2px solid var(--accent);}
+  .patv-row .patv-check{flex:0 0 auto;margin:0;}
+  .patv-row .patv-body{flex:1;min-width:0;}
+  .patv-row .patv-ticker{color:var(--text);font-weight:600;}
+  .patv-row .patv-dates{color:var(--muted);font-size:10px;margin-top:2px;}
+  .patv-row .patv-score{color:var(--accent);font-size:10px;flex:0 0 auto;}
+  #patv-chart-wrap{flex:1;position:relative;background:var(--bg);}
+  #patv-chart{width:100%;height:100%;}
+  #patv-info{position:absolute;top:10px;left:10px;font-family:var(--mono);font-size:11px;color:var(--muted);background:rgba(0,0,0,0.4);padding:4px 8px;border-radius:3px;z-index:10;}
+  /* Match highlight overlay. Sits over the chart, doesn't intercept
+     mouse events, repositioned on pan/zoom/resize. The two edges are
+     thin vertical lines at the exact start/end bar columns. */
+  .patv-match-band{position:absolute;top:0;bottom:0;background:rgba(0,212,170,0.10);pointer-events:none;z-index:5;}
+  .patv-match-band.hidden{display:none;}
+  .patv-match-edge{position:absolute;top:0;bottom:0;width:2px;background:rgba(0,212,170,0.65);}
+  .patv-match-edge-left{left:0;}
+  .patv-match-edge-right{right:0;}
   .vol-pane{
     height: 140px;
     border-top: 1px solid var(--border);
@@ -1275,11 +1346,25 @@
   .qd-row{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;}
   .qd-btn{padding:3px 8px;background:var(--bg3);border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:10px;border-radius:3px;cursor:pointer;}
   .qd-btn:hover{color:var(--accent);border-color:var(--accent);}
+  .qd-btn.active{background:var(--accent);color:#04110d;border-color:var(--accent);font-weight:600;}
   .sim-mode-btn.active{background:var(--accent);color:#04110d;font-weight:600;}
   .sim-mode-panel{padding:4px 0;}
   .sim-modal .sim-row>div{flex:1;}
   .sim-modal .sim-check{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--muted);}
   .sim-modal .sim-actions{display:flex;gap:8px;margin-top:20px;justify-content:flex-end;}
+
+  /* Yahoo-search live results panel inside the Data modal. */
+  .yd-search-results{position:absolute;left:0;right:0;top:100%;background:var(--bg);border:1px solid var(--border);border-top:none;max-height:280px;overflow-y:auto;z-index:5;}
+  .yd-search-results.hidden{display:none;}
+  .yd-search-row{padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:11px;display:flex;align-items:center;gap:8px;}
+  .yd-search-row:last-child{border-bottom:none;}
+  .yd-search-row:hover{background:var(--bg3);}
+  .yd-search-row .yd-sym{color:var(--text);font-weight:600;min-width:60px;}
+  .yd-search-row .yd-name{color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .yd-search-row .yd-tag{font-size:9px;padding:1px 6px;border-radius:3px;border:1px solid var(--border);color:var(--muted);}
+  .yd-search-row .yd-tag.local{color:var(--accent);border-color:var(--accent);}
+  .yd-search-row .yd-tag.missing{color:var(--yellow);border-color:var(--yellow);}
+  .yd-search-empty{padding:8px 10px;font-size:10px;color:var(--muted);}
   /* Global button theme — used everywhere. Scoped overrides only for sizing. */
   .sim-btn{padding:5px 12px;border-radius:4px;font-family:var(--mono);font-size:11px;cursor:pointer;border:1px solid var(--border);background:var(--bg);color:var(--text);}
   .sim-btn.primary{background:var(--accent);color:#000;border-color:var(--accent);font-weight:600;}
@@ -1673,12 +1758,14 @@
       <label style="font-size:11px;color:var(--muted);font-family:var(--mono);">Symbol</label>
       <input id="f-sym" type="text" placeholder="AAPL" style="width:5em;text-transform:uppercase;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 7px;border-radius:3px;outline:none;">
       <div class="stat-badge">Showing <span id="count">0</span> stocks</div>
+      <button class="tb-pill" id="dl-current-btn" title="Download full available history from Yahoo. Uses what you typed in the Symbol box, or the selected ticker if the box is empty.">⬇ Full</button>
     </div>
     <div class="spacer"></div>
     <!-- View group: page navigation -->
     <div class="tb-group">
       <button class="nav-tab tb-pill active" id="nav-chart" data-page="chart">Chart</button>
       <button class="nav-tab tb-pill" id="nav-sims" data-page="simulations">Simulations</button>
+      <button class="nav-tab tb-pill" id="nav-patterns" data-page="patterns">Pattern Library</button>
       <button class="nav-tab tb-pill tb-pill-duel" id="nav-duel" title="Start or join a remote duel">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path>
@@ -1694,6 +1781,7 @@
     <!-- Utility group: panels, theme, preferences -->
     <div class="tb-group">
       <button id="panels-btn" class="tb-pill" title="Show or hide chart panels" aria-haspopup="dialog" aria-expanded="false">▤ Panels</button>
+      <button id="topbar-templates-btn" class="tb-pill" title="Save, load, or delete chart/indicator templates">▦ Templates</button>
       <button id="theme-toggle" class="tb-pill" title="Toggle theme">☀ Light</button>
     </div>
     <button id="global-prefs-btn" class="global-prefs-btn" title="Preferences" aria-label="Preferences">
@@ -1737,7 +1825,6 @@
        opponent equity pane. Anchored under the Panels button in the topbar. -->
   <div id="panels-popover" class="panels-popover hidden" role="dialog" aria-label="Chart panels">
     <h3>Chart panels</h3>
-    <p class="panels-hint">Main chart is always on. Everything else is optional.</p>
     <label class="panels-row">
       <input type="checkbox" id="panel-secondary">
       <span class="panels-row-label">Secondary chart</span>
@@ -2083,15 +2170,40 @@
                 </select>
               </div>
             </span>
-            <button class="tb-btn" id="tool-measure" title="Measure [Alt+M]" aria-label="Measure">
+            <button class="tb-btn" id="tool-patsel" title="Pattern Select: drag a time range on the chart, then Run Pattern Scan" aria-label="Pattern Select">
               <span class="tb-ico" aria-hidden="true">
-                <svg viewBox="0 0 20 20">
-                  <path d="M5 14L15 4" />
-                  <circle cx="7" cy="6" r="1.6" />
-                  <circle cx="13" cy="12" r="1.6" />
-                </svg>
+                <svg viewBox="0 0 20 20"><path d="M4 5v10M16 5v10M4 10h12"/></svg>
               </span>
             </button>
+            <span class="tool-group">
+              <button class="tb-btn" id="tool-measure" title="Measure [Alt+M]" aria-label="Measure">
+                <span class="tb-ico" aria-hidden="true">
+                  <svg viewBox="0 0 20 20">
+                    <path d="M5 14L15 4" />
+                    <circle cx="7" cy="6" r="1.6" />
+                    <circle cx="13" cy="12" r="1.6" />
+                  </svg>
+                </span>
+              </button>
+              <button class="tool-cfg-btn" id="cfg-measure" title="Measure style" aria-label="Measure settings">
+                <svg viewBox="0 0 20 20"><path d="M10 2l1.4 2.5 2.9.6-2 2.2.3 3-2.6-1.2-2.6 1.2.3-3-2-2.2 2.9-.6L10 2z"/></svg>
+              </button>
+              <div class="tool-popup hidden" id="popup-measure">
+                <label>Color</label><input type="color" class="cfg-color" value="#ffffff">
+                <label>Style</label>
+                <select class="cfg-style">
+                  <option value="solid">——</option><option value="dash" selected>- -</option><option value="dot">···</option>
+                </select>
+                <label>Shade</label>
+                <select class="cfg-shade">
+                  <option value="0">0%</option><option value="5">5%</option><option value="8" selected>8%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="30">30%</option>
+                </select>
+                <label>ATR</label>
+                <select class="cfg-atr">
+                  <option value="5">5</option><option value="7">7</option><option value="10">10</option><option value="14" selected>14</option><option value="20">20</option><option value="21">21</option><option value="50">50</option><option value="100">100</option><option value="200">200</option>
+                </select>
+              </div>
+            </span>
             <button class="tb-btn" id="tool-clear" title="Clear all drawings" aria-label="Clear">
               <span class="tb-ico" aria-hidden="true">
                 <!-- trash can icon -->
@@ -2108,6 +2220,16 @@
           <div class="loading hidden" id="loading">Loading chart data...</div>
           <div id="chart"></div>
           <canvas id="draw-canvas"></canvas>
+          <div id="patsel-band" class="patsel-band hidden">
+            <div class="patsel-edge patsel-edge-left" data-edge="left"></div>
+            <div class="patsel-edge patsel-edge-right" data-edge="right"></div>
+            <div class="patsel-body" data-edge="body"></div>
+            <div class="patsel-chip" id="patsel-chip">0 bars</div>
+            <div class="patsel-actions">
+              <button class="sim-btn primary" id="patsel-run">Run Pattern Scan</button>
+              <button class="sim-btn" id="patsel-clear" title="Clear selection">×</button>
+            </div>
+          </div>
           <div id="txt-wrap">
             <div id="txt-hint">Shift+Enter: new line &nbsp;|&nbsp; Enter: confirm &nbsp;|&nbsp; Esc: cancel</div>
             <textarea id="txt-input" rows="1"></textarea>
@@ -2489,6 +2611,10 @@
               <button type="button" class="qd-btn" onclick="applyRelativeStartDate('duel-cfg-start-date',36)">3Y</button>
               <button type="button" class="qd-btn" onclick="applyRelativeStartDate('duel-cfg-start-date',60)">5Y</button>
             </div>
+            <div data-duel-mode-only="self-duel">
+              <label style="margin-top:10px;" title="Leave blank to pick a random ticker that matches your filters. Set a ticker to use that specific symbol (ADR and other filters are ignored when a ticker is specified).">Specific ticker (optional)</label>
+              <input type="text" id="duel-cfg-ticker" placeholder="e.g. AAPL" style="text-transform:uppercase;">
+            </div>
           </div>
 
           <div class="sim-actions" style="margin-top:14px;">
@@ -2679,7 +2805,13 @@
 
     <h2 style="font-size:13px;margin-bottom:10px;">Download / Update a Single Ticker</h2>
 
-    <label>Symbol</label>
+    <label>Search Yahoo (symbol or company name)</label>
+    <div style="position:relative;">
+      <input type="text" id="yd-search" placeholder="e.g. apple, nvidia, AAPL" style="width:100%;">
+      <div id="yd-search-results" class="yd-search-results hidden"></div>
+    </div>
+
+    <label style="margin-top:6px;">Symbol</label>
     <div style="display:flex;gap:6px;">
       <input type="text" id="yd-symbol" placeholder="AAPL" style="flex:1;text-transform:uppercase">
       <button class="sim-btn" id="yd-check">Check</button>
@@ -2713,6 +2845,89 @@
 
 <!-- Saved Simulations Page -->
 <!-- Landing / Home Page — shown on first load when no sim is active -->
+<!-- Pattern Library page (list of saved pattern scans). -->
+<div class="hidden" id="page-patterns">
+  <h2>Pattern Library</h2>
+  <div id="pat-list-toolbar" style="display:flex;gap:8px;margin-bottom:10px;align-items:center;font-family:var(--mono);font-size:11px;color:var(--muted);">
+    <span>Tip: Activate the Pattern Select tool on the chart toolbar, drag a time range, then click Run Pattern Scan to add an entry here.</span>
+    <span style="flex:1"></span>
+    <span>Max cores:</span>
+    <select id="pat-cfg-cores" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 6px;font-family:var(--mono);font-size:11px;">
+      <option value="1">1</option><option value="2">2</option><option value="4" selected>4</option><option value="8">8</option><option value="max">max</option>
+    </select>
+  </div>
+  <div id="pat-list"></div>
+</div>
+
+<!-- Pattern results view: list of matches on the left, focused chart on the right. -->
+<div class="hidden" id="page-pattern-view">
+  <div id="patv-list">
+    <div id="patv-list-header">
+      <a class="patv-back" id="patv-back">&larr; Back to Pattern Library</a>
+      <div class="patv-title" id="patv-title">Pattern</div>
+      <div class="patv-export-row">
+        <button class="sim-btn sim-btn-sm" id="patv-select-all" title="Check every match">All</button>
+        <button class="sim-btn sim-btn-sm" id="patv-select-none" title="Uncheck every match">None</button>
+        <span class="patv-export-label">pre</span>
+        <input type="number" id="patv-pre" class="patv-export-num" value="20" min="0" max="500" title="Bars before the matched range to include in the export">
+        <span class="patv-export-label">post</span>
+        <input type="number" id="patv-post" class="patv-export-num" value="40" min="0" max="500" title="Bars after the matched range to include in the export">
+        <button class="sim-btn sim-btn-sm primary" id="patv-export-pdf" title="Export checked matches as PDF">PDF</button>
+        <button class="sim-btn sim-btn-sm" id="patv-export-csv" title="Export checked matches as CSV">CSV</button>
+      </div>
+      <div class="patv-export-count" id="patv-export-count">0 selected</div>
+    </div>
+    <div id="patv-rows"></div>
+  </div>
+  <div id="patv-chart-wrap">
+    <div id="patv-chart"></div>
+    <div id="patv-match-band" class="patv-match-band hidden">
+      <div class="patv-match-edge patv-match-edge-left"></div>
+      <div class="patv-match-edge patv-match-edge-right"></div>
+    </div>
+    <div id="patv-info">No match selected</div>
+  </div>
+</div>
+
+<!-- Run Pattern Scan modal: confirm settings before kicking off the corpus scan. -->
+<div class="pat-modal hidden" id="pat-scan-modal">
+  <div class="pat-modal-box">
+    <h3>Run Pattern Scan</h3>
+    <div class="pat-modal-row">
+      <label>Name</label>
+      <input type="text" id="pat-scan-name" placeholder="e.g. Flat Bases">
+    </div>
+    <div class="pat-modal-row">
+      <label>Min correlation</label>
+      <input type="range" id="pat-scan-mincorr" min="0.80" max="0.99" step="0.01" value="0.90">
+      <span id="pat-scan-mincorr-val" style="width:42px;text-align:right;color:var(--accent);">0.90</span>
+    </div>
+    <div class="pat-modal-row">
+      <label>Max results</label>
+      <select id="pat-scan-max">
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+        <option value="200">200</option>
+        <option value="500">500</option>
+      </select>
+    </div>
+    <div class="pat-modal-row">
+      <label></label>
+      <label style="flex:1;color:var(--text);">
+        <input type="checkbox" id="pat-scan-multi" checked> Allow multiple matches per ticker
+      </label>
+    </div>
+    <div class="pat-modal-row" style="color:var(--muted);font-size:10px;">
+      <label></label>
+      <div style="flex:1;" id="pat-scan-summary"></div>
+    </div>
+    <div class="pat-modal-actions">
+      <button class="sim-btn" id="pat-scan-cancel">Cancel</button>
+      <button class="sim-btn primary" id="pat-scan-submit">Run Scan</button>
+    </div>
+  </div>
+</div>
+
 <div class="hidden" id="page-home">
   <button id="home-prefs-btn" class="global-prefs-btn home-prefs-btn" title="Preferences" aria-label="Preferences">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -3170,6 +3385,7 @@ const toolSettings={
   line: {color:'#ffffff',width:2,style:'solid'},
   text: {color:'#ffffff',fontSize:12,fontFamily:'Arial'},
   note: {color:'#ffffff',width:2,style:'solid',fontSize:12,fontFamily:'Arial'},
+  measure: {color:'#ffffff',style:'dash',shade:8,atrPeriod:14},
 };
 
 // current active tool settings (shorthand)
@@ -3834,30 +4050,48 @@ function setLog(v){
 document.getElementById('log-toggle').addEventListener('click',()=>{setLog(!isLogScale);saveSettings();});
 
 // per-tool popup setup
-['hline','line','ray','seg','text','note'].forEach(tool=>{
+['hline','line','ray','seg','text','note','measure'].forEach(tool=>{
   const cfgBtn=document.getElementById('cfg-'+tool);
   const popup=document.getElementById('popup-'+tool);
   if(!cfgBtn||!popup)return;
+  // Reflect the current saved settings in the popup controls each time it opens,
+  // so it stays correct regardless of when settings were loaded.
+  const syncPopupInputs=()=>{
+    const ts=toolSettings[tool]||{};
+    const cc=popup.querySelector('.cfg-color');    if(cc&&ts.color)cc.value=ts.color;
+    const cw=popup.querySelector('.cfg-width');     if(cw&&ts.width!=null)cw.value=String(ts.width);
+    const cs=popup.querySelector('.cfg-style');     if(cs&&ts.style)cs.value=ts.style;
+    const cf=popup.querySelector('.cfg-fontsize');  if(cf&&ts.fontSize!=null)cf.value=String(ts.fontSize);
+    const cd=popup.querySelector('.cfg-shade');     if(cd&&ts.shade!=null)cd.value=String(ts.shade);
+    const ca=popup.querySelector('.cfg-atr');       if(ca&&ts.atrPeriod!=null)ca.value=String(ts.atrPeriod);
+  };
   cfgBtn.addEventListener('click',e=>{
     e.stopPropagation();
     e.preventDefault();
     const wasHidden=popup.classList.contains('hidden');
     document.querySelectorAll('.tool-popup').forEach(p=>p.classList.add('hidden'));
-    if(wasHidden) popup.classList.remove('hidden');
+    if(wasHidden){ syncPopupInputs(); popup.classList.remove('hidden'); }
   });
   popup.addEventListener('click',e=>e.stopPropagation());
   popup.addEventListener('mousedown',e=>e.stopPropagation());
   popup.querySelector('.cfg-color')?.addEventListener('input',e=>{
-    toolSettings[tool].color=e.target.value; syncDrawVars(); saveSettings();
+    toolSettings[tool].color=e.target.value; syncDrawVars(); saveSettings(); redrawAll();
   });
   popup.querySelector('.cfg-width')?.addEventListener('change',e=>{
-    toolSettings[tool].width=parseInt(e.target.value); syncDrawVars(); saveSettings();
+    toolSettings[tool].width=parseInt(e.target.value); syncDrawVars(); saveSettings(); redrawAll();
   });
   popup.querySelector('.cfg-style')?.addEventListener('change',e=>{
-    toolSettings[tool].style=e.target.value; syncDrawVars(); saveSettings();
+    toolSettings[tool].style=e.target.value; syncDrawVars(); saveSettings(); redrawAll();
   });
   popup.querySelector('.cfg-fontsize')?.addEventListener('change',e=>{
-    toolSettings[tool].fontSize=parseInt(e.target.value); syncDrawVars(); saveSettings();
+    toolSettings[tool].fontSize=parseInt(e.target.value); syncDrawVars(); saveSettings(); redrawAll();
+  });
+  popup.querySelector('.cfg-shade')?.addEventListener('change',e=>{
+    toolSettings[tool].shade=parseInt(e.target.value); saveSettings(); redrawAll();
+  });
+  popup.querySelector('.cfg-atr')?.addEventListener('change',e=>{
+    const v=parseInt(e.target.value,10);
+    toolSettings[tool].atrPeriod=(Number.isFinite(v)&&v>0)?v:14; saveSettings(); redrawAll();
   });
 });
 document.addEventListener('click',e=>{ if(!e.target.closest('.tool-group')) document.querySelectorAll('.tool-popup').forEach(p=>p.classList.add('hidden')); });
@@ -4026,7 +4260,15 @@ function updateSpyOverlay(){
 function setTimeframe(tf){
   currentTF=tf;
   ['D','W','M'].forEach(t=>document.getElementById('tf-'+t).classList.toggle('active',t===tf));
-  if(activeIdx>=0) selectRow(activeIdx);
+  // During a sim the chart is driven by simApplyBars (selectRow is the
+  // chart-view-only path). simVisibleBars() are daily; resampleBars regroups
+  // them into the active W/M timeframe, with the latest period rendered as a
+  // forming bar that fills in as daily arrows advance.
+  if(simState!=='idle'){
+    try{simApplyBars();}catch(e){}
+  }else if(activeIdx>=0){
+    selectRow(activeIdx);
+  }
 }
 
 function applyTimeframe(){
@@ -4305,16 +4547,21 @@ function drawMeasure(){
   if(x1==null||y1==null)return;
 
   const endPrice=priceSeries?.coordinateToPrice(y2);
-  if(!endPrice)return;
+  if(endPrice==null)return;
+
+  const ms=toolSettings.measure||{};
+  const color=ms.color||'#ffffff';
+  const shadeAlpha=(typeof ms.shade==='number'?ms.shade:8)/100;
+  const atrP=Math.max(1,parseInt(ms.atrPeriod||14,10)||14);
 
   const priceDiff=endPrice-measureStart.price;
-  const pct=(priceDiff/measureStart.price*100).toFixed(2);
-  const sign=priceDiff>=0?'+':'';
-  const color=priceDiff>=0?'#26a69a':'#ef5350';
+  const absDiff=Math.abs(priceDiff);
+  const pct=measureStart.price ? (priceDiff/measureStart.price*100) : 0;
 
-  let bars=0;
+  // Bars spanned + end-bar index, on the active (resampled) timeframe.
+  let bars=0, ei=-1, tfBars=null;
   if(currentBars.length){
-    const tfBars=resampleBars(currentBars,currentTF);
+    tfBars=resampleBars(currentBars,currentTF);
     const nearestBar=(px)=>{
       let best=-1,bestDist=Infinity;
       for(let i=0;i<tfBars.length;i++){
@@ -4326,34 +4573,70 @@ function drawMeasure(){
       return best;
     };
     const si=nearestBar(x1);
-    const ei=nearestBar(x2);
+    ei=nearestBar(x2);
     if(si>=0&&ei>=0) bars=Math.abs(ei-si);
+  }
+
+  // Move size as a multiple of ATR(atrP) at the measurement's end bar.
+  let atrMult=null;
+  if(tfBars && ei>=0){
+    const atrVal=calcATR(tfBars, atrP, ei);
+    if(atrVal && atrVal>0) atrMult=absDiff/atrVal;
   }
 
   ctx2.save();
 
   const rx=Math.min(x1,x2), ry=Math.min(y1,y2);
   const rw=Math.abs(x2-x1), rh=Math.abs(y2-y1);
-  ctx2.fillStyle=priceDiff>=0?'rgba(38,166,154,0.08)':'rgba(239,83,80,0.08)';
+
+  // Shaded box: configured colour at the configured opacity.
+  ctx2.globalAlpha=shadeAlpha;
+  ctx2.fillStyle=color;
   ctx2.fillRect(rx,ry,rw,rh);
+  ctx2.globalAlpha=1;
+
+  // Border: configured colour + line style.
   ctx2.strokeStyle=color;
   ctx2.lineWidth=1;
-  ctx2.setLineDash([4,3]);
+  if(ms.style==='dot') ctx2.setLineDash([1,3]);
+  else if(ms.style==='solid') ctx2.setLineDash([]);
+  else ctx2.setLineDash([4,3]);
   ctx2.strokeRect(rx,ry,rw,rh);
   ctx2.setLineDash([]);
 
-  const label=`${sign}${pct}%  ${bars}bars`;
-  // Match chart axis/crosshair UI font
-  ctx2.font='bold 12px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
-  const lw=ctx2.measureText(label).width;
-  const lx=rx+rw/2-lw/2;
-  const ly=ry+rh/2+5;
-  ctx2.fillStyle='rgba(10,12,15,0.85)';
-  ctx2.fillRect(lx-6,ly-14,lw+12,20);
-  ctx2.fillStyle=color;
-  ctx2.fillText(label,lx,ly);
+  // Stacked readout, centered above the box:
+  //   N bars
+  //   ±$diff (pct%)
+  //   m ATR(p)
+  const signStr = priceDiff<0 ? '-' : '';
+  const l1 = `${bars} ${bars===1?'bar':'bars'}`;
+  const l2 = `${signStr}$${fmtPrice(absDiff)} (${Math.abs(pct).toFixed(2)}%)`;
+  const l3 = atrMult!=null ? `${atrMult.toFixed(1)} ATR(${atrP})` : `— ATR(${atrP})`;
+  const lines=[l1,l2,l3];
 
+  ctx2.font='bold 12px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+  ctx2.textAlign='center';
+  ctx2.textBaseline='top';
+  const lineH=15, padX=8, padY=5, gap=6;
+  let maxW=0;
+  for(const ln of lines) maxW=Math.max(maxW, ctx2.measureText(ln).width);
+  const boxW=maxW+padX*2, boxH=lines.length*lineH+padY*2;
+  const cx=rx+rw/2;
+  let labLeft=cx-boxW/2;
+  labLeft=Math.max(2, Math.min(labLeft, canvas.width-boxW-2)); // keep on-screen
+  let labTop=ry-gap-boxH;
+  if(labTop<2) labTop=ry+rh+gap; // fall back below the box when there is no room above
+
+  ctx2.fillStyle='rgba(10,12,15,0.85)';
+  ctx2.fillRect(labLeft, labTop, boxW, boxH);
+  ctx2.fillStyle=color;
+  const textCx=labLeft+boxW/2;
+  lines.forEach((ln,i)=>ctx2.fillText(ln, textCx, labTop+padY+i*lineH));
+
+  // Endpoint price tags.
   ctx2.font='10px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+  ctx2.textAlign='left';
+  ctx2.textBaseline='alphabetic';
   ctx2.fillStyle=color;
   ctx2.fillText(fmtPrice(measureStart.price),x1+4,y1-3);
   ctx2.fillText(fmtPrice(endPrice),x2+4,y2-3);
@@ -5236,6 +5519,11 @@ function initChart(){
     try { if (typeof resizeEqCharts === 'function') resizeEqCharts(); } catch(e) {}
     try { resizeCanvas(); } catch(e) {}
     try { resizeCrosshairOverlay(); } catch(e) {}
+    // Main and vol charts auto-size their right price scales independently
+    // (price labels vs volume labels differ in width), so identical logical
+    // ranges map to different plot-area widths and the bars misalign. Match
+    // vol's plot width to main's by resizing vol by the scale-width diff.
+    try { requestAnimationFrame(alignVolPriceScale); } catch(e) {}
   }
 
   function ensureVolumePane(enabled, skipSave=false){
@@ -5411,6 +5699,8 @@ function initChart(){
             _syncingVolRange = true;
             try { volChart?.timeScale().setVisibleLogicalRange(range); } catch(e) {}
             _syncingVolRange = false;
+            // Widest price/volume label can change as the view scrolls — re-align.
+            try { requestAnimationFrame(alignVolPriceScale); } catch(e) {}
           });
           volChart.timeScale().subscribeVisibleLogicalRangeChange((range)=>{
             if (_syncingVolRange) return;
@@ -5707,6 +5997,33 @@ async function secondaryLoadSymbol(sym){
       candle2Series?.setData([]);
     }else{
       secondaryAllBars=Array.isArray(bars)?bars:[];
+      // During a sim, make sure the secondary symbol covers the sim's start
+      // date. If the local history begins after the sim start, pull the full
+      // history from Yahoo (merge) and re-load. If Yahoo still has nothing
+      // earlier (genuine IPO / delisting), we keep whatever exists and move on.
+      const reqStart = (simState!=='idle' && simAllBars[simStartIdx]) ? (simAllBars[simStartIdx].time||'').slice(0,10) : null;
+      const earliest = secondaryAllBars.length ? (secondaryAllBars[0].time||'').slice(0,10) : null;
+      if(reqStart && (!earliest || earliest>reqStart)){
+        infoEl.textContent=`${sym}: fetching history…`;
+        flash(`${sym}: downloading history to cover sim start (${reqStart})…`);
+        try{
+          const dl=await fetch('/api/yahoo/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,mode:'merge'})});
+          const dr=await dl.json();
+          if(!dl.ok||dr.error)throw new Error(dr.error||`HTTP ${dl.status}`);
+          // Re-load the now-merged local history (symbol may have changed mid-await).
+          if(secondarySymbol===sym){
+            const resp2=await fetch(`/api/ohlcv?symbol=${encodeURIComponent(sym)}`);
+            const bars2=await resp2.json();
+            if(resp2.ok && Array.isArray(bars2)) secondaryAllBars=bars2;
+          }
+          const newEarliest=secondaryAllBars.length ? (secondaryAllBars[0].time||'').slice(0,10) : null;
+          if(newEarliest && newEarliest<=reqStart) flash(`${sym}: history updated (from ${newEarliest})`);
+          else flash(`${sym}: earliest available is ${newEarliest||'n/a'} (no data before sim start)`);
+        }catch(dlErr){
+          flash(`${sym}: history download failed (${dlErr && dlErr.message || 'unknown'})`);
+        }
+      }
+      if(secondarySymbol!==sym) return; // a newer selection superseded this load
       infoEl.textContent=`${sym} · ${secondaryAllBars.length} bars`;
       try{
         secondaryApplyBars();
@@ -5748,10 +6065,22 @@ function secondaryApplyBars(){
   // mirror of main's visible data. Every regression of this file
   // has stemmed from trying to be "clever" here.
   // ============================================================
-  const mainVis=(simState!=='idle')?simVisibleBars():currentBars;
+  // Mirror main's ACTIVE timeframe: resample both sides to currentTF so the
+  // two charts share the same period grid (D/W/M). resampleBars produces the
+  // same period-key dates for both, so the date-exact mirror still holds.
+  const mainVisRaw=(simState!=='idle')?simVisibleBars():currentBars;
+  if(!mainVisRaw.length){candle2Series.setData([]);return;}
+  const mainVis=resampleBars(mainVisRaw, currentTF);
   if(!mainVis.length){candle2Series.setData([]);return;}
+  // No-lookahead: clip secondary daily bars to main's current cutoff date
+  // BEFORE resampling, so the latest W/M period is a forming partial bar that
+  // grows as daily arrows advance (matching the main chart). Without the clip,
+  // resampling the full history yields an already-complete current period that
+  // only changes when a new period starts.
+  const cutoff=(mainVisRaw[mainVisRaw.length-1].time||'').slice(0,10);
+  const secClipped=secondaryAllBars.filter(b=>(b.time||'').slice(0,10)<=cutoff);
   const secByDate=new Map();
-  for(const b of secondaryAllBars)secByDate.set((b.time||'').slice(0,10),b);
+  for(const b of resampleBars(secClipped, currentTF))secByDate.set((b.time||'').slice(0,10),b);
   const data=mainVis.map(mb=>{
     const d=(mb.time||'').slice(0,10);
     const sb=secByDate.get(d);
@@ -5783,22 +6112,35 @@ function secondaryApplyBars(){
   requestAnimationFrame(()=>alignSecondaryPriceScale());
 }
 
-function alignSecondaryPriceScale(){
-  if(!chart||!chart2)return;
-  const el=document.getElementById('chart-secondary');
-  if(!el||!el.clientWidth)return;
-  let mainW=0,ch2W=0;
+// lightweight-charts v3.8 auto-sizes each chart's right price scale
+// independently (no minimumWidth until v4.1), so a dependent chart's plot area
+// (and scale border) can diverge from main's by a few pixels, misaligning bars.
+// Resize the dependent chart by the scale-width difference so its right edge
+// lands at the same absolute X as main's. `height` defaults to the host's
+// clientHeight. Shared by the volume pane and the secondary chart.
+function alignPriceScaleToMain(depChart, hostEl, height){
+  if(!chart||!depChart||!hostEl||!hostEl.clientWidth)return;
+  let mainW=0,depW=0;
   try{mainW=chart.priceScale('right').width();}catch(e){return;}
-  try{ch2W=chart2.priceScale('right').width();}catch(e){return;}
-  if(!mainW||!ch2W)return;
-  const diff=mainW-ch2W;
+  try{depW=depChart.priceScale('right').width();}catch(e){return;}
+  if(!mainW||!depW)return;
+  const diff=mainW-depW;
   if(Math.abs(diff)<1)return;
-  // If main's scale is wider (diff > 0), chart2's scale border sits further
-  // right than main's. Shrink chart2 by 'diff' px so its right edge (and
-  // therefore its scale border) moves left to match main's.
-  // If chart2's scale is wider, expand chart2 similarly.
-  const targetW=el.clientWidth-diff;
-  if(targetW>100)try{chart2.resize(targetW,el.clientHeight);}catch(e){}
+  const targetW=hostEl.clientWidth-diff;
+  const h=(typeof height==='number'&&height>0)?height:hostEl.clientHeight;
+  if(targetW>100)try{depChart.resize(targetW,h);}catch(e){}
+}
+
+function alignVolPriceScale(){
+  const el=document.getElementById('vol-pane');
+  const volEl=document.getElementById('vol-chart');
+  const h=(volEl&&volEl.clientHeight)?volEl.clientHeight:((el&&el.clientHeight)||volPaneHeight||140);
+  alignPriceScaleToMain(volChart, el, h);
+}
+
+function alignSecondaryPriceScale(){
+  const el=document.getElementById('chart-secondary');
+  alignPriceScaleToMain(chart2, el, el&&el.clientHeight);
 }
 
 function showSecondaryChart(){
@@ -6054,6 +6396,7 @@ async function selectRow(i){
     if(bars.error)throw new Error(bars.error);
     if (activeOhlcvController !== reqController) return;
     currentBars=bars;
+    try{ if(typeof patselClearDraft === 'function') patselClearDraft(); }catch(e){}
     candleSeries.setData(bars.map(b=>({time:b.time,open:b.open,high:b.high,low:b.low,close:b.close})));
     volSeries.setData(bars.map(b => {
       const volUp = isLightTheme ? '#d4efe6' : '#1a3a35';
@@ -6273,6 +6616,13 @@ function computeTradeIndexEquity(){
   let runningEq=cap;
   realized.push({time:encodeTradeIndex(0),value:cap});
   let dayOff=1;
+  // Open-trade MTM is AGGREGATED across all currently-open trades into a
+  // single dashed stub at the tail of the curve. Drawing a separate stub
+  // per open trade produced N diverging dashed segments from the same
+  // handoff point — visually wrong (the user's equity is the sum, not N
+  // parallel forecasts).
+  let openUnrealizedPL = 0;
+  let openCount = 0;
   // Display ordinal mirrors the trade-list label (#0001, #0002 ...) — see
   // simRenderTradesList where the same chronological numbering is built.
   visTrades.forEach((t,i)=>{
@@ -6286,26 +6636,42 @@ function computeTradeIndexEquity(){
     const realizedPL=visExits.reduce((s,e)=>s+sign*(e.price-avgEntry)*e.shares,0);
     const remainShares=totalShares-realizedShares;
     const curBar=simCurrentBar();
-    const curPrice=curBar?curBar.close:null;
     // R contribution at this point. Honors the user's adjusted/simple
     // preference via computeTradeR(); the hover tip renders rUnit().
-    let realizedR=0,unrealizedR=0;
+    let realizedR=0;
     try{
-      const ri=computeTradeR(t,visExits,totalShares,avgEntry,curPrice);
+      const ri=computeTradeR(t,visExits,totalShares,avgEntry,curBar?curBar.close:null);
       realizedR=ri.realizedR||0;
-      unrealizedR=ri.unrealizedR||0;
     }catch(e){}
     if(realizedShares>0){
       runningEq+=realizedPL;
       realized.push({time:encodeTradeIndex(dayOff++),value:runningEq,tradeId:ordinal,r:realizedR});
     }
     if(remainShares>0){
-      const unrealizedPL=curBar?remainShares*sign*(curBar.close-avgEntry):0;
-      const lastRealized=realized[realized.length-1];
-      unrealized.push({time:lastRealized.time,value:lastRealized.value,tradeId:ordinal,r:realizedR});
-      unrealized.push({time:encodeTradeIndex(dayOff++),value:runningEq+unrealizedPL,tradeId:ordinal,r:unrealizedR});
+      openUnrealizedPL += curBar?remainShares*sign*(curBar.close-avgEntry):0;
+      openCount++;
     }
   });
+  if(openCount>0){
+    // Stub start mirrors the last realized point so hover at the
+    // handoff column keeps showing that closed trade's tag (the
+    // tooltip lookup prefers `unrealized` at overlapping times).
+    const lastRealized=realized[realized.length-1];
+    unrealized.push({
+      time:lastRealized.time,
+      value:lastRealized.value,
+      tradeId:lastRealized.tradeId ?? null,
+      r:lastRealized.r ?? null,
+    });
+    // Stub end is the aggregate. No single trade owns it, so tradeId/r
+    // are null — the tooltip shows $ value and delta, no per-trade tag.
+    unrealized.push({
+      time:encodeTradeIndex(dayOff++),
+      value:runningEq+openUnrealizedPL,
+      tradeId:null,
+      r:null,
+    });
+  }
   return{realized,unrealized};
 }
 
@@ -8249,6 +8615,42 @@ function applyRelativeStartDate(inputId, months){
   el.dispatchEvent(new Event('change', {bubbles: true}));
 }
 
+// Active-highlight for the quick-range rows (3M / 6M / ... / 5Y) used by
+// the Ticker, Surprise, Fast, and Duel/Self-Duel dialogs. Delegated at
+// document level so every .qd-row inherits the behavior with zero changes
+// to the inline onclick handlers.
+//
+//   - Click a .qd-btn: it becomes active; siblings in the same .qd-row
+//     lose their active state.
+//   - Edit the paired date input (calendar pick, typed value, or any
+//     other path that fires `change`): clear the row's active state, so
+//     the highlight only ever reflects the LAST quick-button click and
+//     not a stale one after the user moved on.
+//
+// applyRelativeStartDate dispatches `change` on the input, which fires
+// the clear listener first; the click listener then runs on bubble and
+// re-marks the clicked button, leaving exactly one active per row.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest && e.target.closest('.qd-btn');
+  if(!btn) return;
+  const row = btn.closest('.qd-row');
+  if(!row) return;
+  row.querySelectorAll('.qd-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+});
+document.addEventListener('change', (e) => {
+  const input = e.target;
+  if(!input || input.tagName !== 'INPUT' || input.type !== 'date') return;
+  const needle = "'" + input.id + "'";
+  document.querySelectorAll('.qd-row').forEach(row => {
+    const firstBtn = row.querySelector('.qd-btn');
+    if(!firstBtn) return;
+    const oc = firstBtn.getAttribute('onclick') || '';
+    if(oc.indexOf(needle) === -1) return;
+    row.querySelectorAll('.qd-btn').forEach(b => b.classList.remove('active'));
+  });
+});
+
 // Surprise-Me start-date sanity: if start_date + min_years exceeds today,
 // no ticker can possibly satisfy the request (we don't have future data),
 // so the Start button is disabled with an inline message until the user
@@ -8538,6 +8940,21 @@ function simShowBankruptModal(opts){
   });
 })();
 
+// Single gate used by every "leave the sim" entry point — the Exit button
+// itself, AND each view-switch button (Chart / Simulations / Pattern
+// Library / Duel / Data) that the user might hit while a sim is running.
+// Returns true when the caller is free to proceed (no sim was running, or
+// the user confirmed and the sim was exited cleanly), false on cancel.
+async function confirmAndExitSimForViewSwitch(){
+  if(typeof simState === 'undefined' || simState === 'idle') return true;
+  const msg = simId
+    ? 'Exit simulation? It will be saved and you can resume from the Simulations tab.'
+    : 'Exit simulation? This is an unsaved Quick sim — it will be discarded and cannot be recovered.';
+  if(!confirm(msg)) return false;
+  try{ await simExit(); } catch(_){}
+  return true;
+}
+
 async function simExit(){
   // Wind down any live duel so the MQTT relay closes cleanly and the saved
   // duelState gets flipped to null before we flush+drop this sim.
@@ -8802,6 +9219,8 @@ function showPage(page){
   document.getElementById('page-simulations').classList.toggle('hidden',page!=='simulations');
   document.getElementById('page-analysis').classList.toggle('hidden',page!=='analysis');
   document.getElementById('page-compare').classList.toggle('hidden',page!=='compare');
+  document.getElementById('page-patterns').classList.toggle('hidden',page!=='patterns');
+  document.getElementById('page-pattern-view').classList.toggle('hidden',page!=='pattern-view');
   // NOTE: page-preferences is an overlay, not a page. It's shown/hidden
   // independently so closing it returns the user to whatever was behind
   // it (chart, simulations, duel, etc.) instead of bouncing to home.
@@ -8815,6 +9234,7 @@ function showPage(page){
   if(topbar) topbar.style.display = (page === 'home') ? 'none' : '';
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.toggle('active',t.dataset.page==='simulations'&&(page==='simulations'||page==='analysis'||page==='compare')?true:t.dataset.page===page));
   if(page==='simulations')loadSimsList();
+  if(page==='patterns'){ try{ patLibraryLoad(); }catch(e){} }
   if(page==='chart'){
     const simActive=simState!=='idle';
     simSetLayoutActive(simActive);
@@ -9992,10 +10412,14 @@ async function importDataCheck(imported){
 }
 
 // Wire up UI events
-document.querySelectorAll('.nav-tab').forEach(t=>t.addEventListener('click',()=>{
+document.querySelectorAll('.nav-tab').forEach(t=>t.addEventListener('click', async ()=>{
   // Only route to showPage() for tabs that declare a page. Buttons like
   // Duel and Data open modals / popovers and own their own click handlers.
-  if(t.dataset.page) showPage(t.dataset.page);
+  if(!t.dataset.page) return;
+  // Sim active → prompt to exit before navigating. Helper no-ops when
+  // simState is already idle.
+  if(!(await confirmAndExitSimForViewSwitch())) return;
+  showPage(t.dataset.page);
 }));
 
 // Duel tab → open the host/join modal directly (not a page). We jump to
@@ -10004,7 +10428,8 @@ document.querySelectorAll('.nav-tab').forEach(t=>t.addEventListener('click',()=>
 (function(){
   const btn = document.getElementById('nav-duel');
   if(!btn) return;
-  btn.addEventListener('click', ()=>{
+  btn.addEventListener('click', async ()=>{
+    if(!(await confirmAndExitSimForViewSwitch())) return;
     showPage('simulations');
     setTimeout(()=>{ if(window.duelUI) window.duelUI.open(); }, 50);
   });
@@ -10687,8 +11112,13 @@ async function loadTemplatesIntoPicker(pickerId){
   const newName = document.getElementById('tpl-mgmt-new-name');
   const saveNewBtn = document.getElementById('tpl-mgmt-save-new');
   const closeBtn= document.getElementById('tpl-mgmt-close');
-  const openBtn = document.getElementById('sim-templates-btn');
-  if(!modal || !listEl || !openBtn) return;
+  // Two access points to the same modal — sim-controls (visible in sims +
+  // duel mode) and the topbar (visible always, so Chart view has it too).
+  const openBtns = [
+    document.getElementById('sim-templates-btn'),
+    document.getElementById('topbar-templates-btn'),
+  ].filter(Boolean);
+  if(!modal || !listEl || !openBtns.length) return;
 
   // Shared payload builder — snapshots the current chart/indicator/trade
   // prefs state in the exact shape the server expects for /api/templates.
@@ -10704,8 +11134,6 @@ async function loadTemplatesIntoPicker(pickerId){
       }
     };
   }
-
-  function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
   let cachedItems = [];
   let cachedDefaultId = '';
@@ -10751,7 +11179,7 @@ async function loadTemplatesIntoPicker(pickerId){
   }
   function close(){ modal.classList.add('hidden'); }
 
-  openBtn.addEventListener('click', open);
+  openBtns.forEach(b => b.addEventListener('click', open));
   closeBtn.addEventListener('click', close);
   modal.addEventListener('click', e=>{ if(e.target===modal) close(); });
 
@@ -11263,14 +11691,11 @@ function simSyncSlModeUI(){
   const cb=document.getElementById('sim-entry-bar-protect-live');
   if(cb&&simConfig)cb.checked=simConfig.entryBarSLProtection!==false;
 }
-document.getElementById('sim-exit').addEventListener('click',()=>{
-  // simId is null for ephemeral sims (Quick mode with "Don't save" on),
-  // so they won't appear in Saved Simulations. Warn the user accordingly.
-  const msg = simId
-    ? 'Exit simulation? It will be saved and you can resume from the Simulations tab.'
-    : 'Exit simulation? This is an unsaved Quick sim — it will be discarded and cannot be recovered.';
-  if(!confirm(msg)) return;
-  simExit();
+document.getElementById('sim-exit').addEventListener('click', ()=>{
+  // The "Exit" button is just another entry point into the same gate the
+  // view-switch buttons use. The prompt copy + Quick-sim wording lives in
+  // confirmAndExitSimForViewSwitch — keep it single-sourced.
+  confirmAndExitSimForViewSwitch();
 });
 
 // ==============================================
@@ -11474,7 +11899,10 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
     const cb = pendingCloseCb; pendingCloseCb = null;
     if (cb) { try { cb(); } catch(e) {} }
   }
-  openBtn.addEventListener('click', ()=>openModal());
+  openBtn.addEventListener('click', async ()=>{
+    if(!(await confirmAndExitSimForViewSwitch())) return;
+    openModal();
+  });
   closeBtn.addEventListener('click', closeModal);
   // Public API so other UI (e.g. the sim modal) can hand off a symbol for download
   window.openYahooModal = (sym, opts) => openModal(sym, opts);
@@ -11641,6 +12069,142 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
     if (!activeJobId) return;
     cancelBtn.disabled = true;
     try { await fetch(`/api/yahoo/job/${activeJobId}/cancel`, {method:'POST'}); } catch(e) {}
+  });
+
+  // ---- Yahoo search (live suggestions) -----------------------------------
+  // Lets the user find tickers by company name or partial symbol when they
+  // don't remember the exact ticker. Picking a result pipes into the same
+  // symInput + checkSymbol() pipeline above, so all download/range logic
+  // stays DRY (one path for downloading, regardless of how the symbol was
+  // entered).
+  const searchInput = document.getElementById('yd-search');
+  const searchPanel = document.getElementById('yd-search-results');
+  let searchTimer = null;
+  let searchSeq = 0;
+
+  function hideSearchPanel(){ if(searchPanel) searchPanel.classList.add('hidden'); }
+  function showSearchPanel(){ if(searchPanel) searchPanel.classList.remove('hidden'); }
+
+  function renderSearchResults(results){
+    if(!Array.isArray(results) || !results.length){
+      searchPanel.innerHTML = `<div class="yd-search-empty">No matches.</div>`;
+      showSearchPanel();
+      return;
+    }
+    searchPanel.innerHTML = results.map(r => {
+      const tag = r.inLocal
+        ? `<span class="yd-tag local">local</span>`
+        : `<span class="yd-tag missing">missing</span>`;
+      const exch = r.exchange ? ` &middot; ${escapeHtml(r.exchange)}` : '';
+      return `<div class="yd-search-row" data-sym="${escapeHtml(r.symbol)}">
+        <span class="yd-sym">${escapeHtml(r.symbol)}</span>
+        <span class="yd-name">${escapeHtml(r.name || '')}${exch}</span>
+        ${tag}
+      </div>`;
+    }).join('');
+    searchPanel.querySelectorAll('.yd-search-row').forEach(row => {
+      row.addEventListener('mousedown', e => {
+        // mousedown (not click) so we win over the input's blur which
+        // would otherwise hide the panel before the click fires.
+        e.preventDefault();
+        const sym = row.dataset.sym || '';
+        symInput.value = sym;
+        searchInput.value = '';
+        hideSearchPanel();
+        checkSymbol();
+      });
+    });
+    showSearchPanel();
+  }
+
+  if(searchInput && searchPanel){
+    searchInput.addEventListener('input', () => {
+      const q = (searchInput.value || '').trim();
+      if(searchTimer) clearTimeout(searchTimer);
+      if(!q){ hideSearchPanel(); return; }
+      const mySeq = ++searchSeq;
+      searchTimer = setTimeout(async () => {
+        try {
+          const j = await fetchJson(`/api/yahoo/search?q=${encodeURIComponent(q)}`);
+          if(mySeq !== searchSeq) return; // a newer query has fired
+          renderSearchResults(j.results || []);
+        } catch(e){
+          if(mySeq !== searchSeq) return;
+          searchPanel.innerHTML = `<div class="yd-search-empty" style="color:var(--red);">${escapeHtml(e.message || String(e))}</div>`;
+          showSearchPanel();
+        }
+      }, 200);
+    });
+    searchInput.addEventListener('blur', () => {
+      // Delay so a mousedown on a result gets to fire first.
+      setTimeout(hideSearchPanel, 150);
+    });
+    searchInput.addEventListener('focus', () => {
+      if((searchInput.value || '').trim() && searchPanel.innerHTML){
+        showSearchPanel();
+      }
+    });
+  }
+})();
+
+// ==============================================
+// ⬇ Full button (topbar) — one-click "download all available" for the
+// currently selected ticker. Uses the same /api/yahoo endpoints as the
+// Data modal; just removes the click-through. Existing modal still
+// available for date-range tweaks and bulk updates.
+// ==============================================
+(function(){
+  const btn = document.getElementById('dl-current-btn');
+  if(!btn) return;
+  btn.addEventListener('click', async () => {
+    // Prefer what the user typed into the Symbol filter (#f-sym) so
+    // they can grab a ticker that ISN'T in their local list yet by
+    // just typing it and clicking the button. Fall back to the
+    // currently-selected row only when the filter is empty, so the
+    // existing "select a row, click Full" flow still works.
+    const filterEl = document.getElementById('f-sym');
+    const typed = (filterEl && filterEl.value || '').trim().toUpperCase();
+    const sym = typed
+      || (typeof currentSymbol !== 'undefined' && currentSymbol || '').toString().toUpperCase();
+    if(!sym){ flash('Type a symbol in the box or pick a ticker first'); return; }
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = `… ${sym}`;
+    try{
+      const info = await fetch(`/api/yahoo/info?symbol=${encodeURIComponent(sym)}`).then(r => r.json());
+      const y = info && info.yahoo;
+      if(!y || !y.exists){
+        flash(`${sym}: not found on Yahoo${y && y.error ? ' — '+y.error : ''}`);
+        return;
+      }
+      if(!y.lastDate){
+        flash(`${sym}: quote-only stub on Yahoo, no series available`);
+        return;
+      }
+      const start = y.firstTradeDate;
+      const end = y.lastDate;
+      const result = await fetch('/api/yahoo/download', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({symbol: sym, start, end, mode: 'merge'})
+      }).then(r => r.json());
+      if(result && result.error){ flash(`${sym}: ${result.error}`); return; }
+      if(result && result.written === false){
+        flash(`${sym}: Yahoo returned 0 usable bars`);
+        return;
+      }
+      flash(`✓ ${sym}: ${result.bars_total} bars (${result.first} → ${result.last})`);
+      // Refresh the ticker list so date ranges update, then reselect the
+      // current row so the chart re-renders against the new bars.
+      try { await loadTickers(); } catch(e) {}
+      const idx = (typeof filtered !== 'undefined' ? filtered : []).findIndex(r => (r.symbol || '').toUpperCase() === sym);
+      if(idx >= 0){ try { await selectRow(idx); } catch(e) {} }
+    } catch(e){
+      flash(`${sym}: ${e.message || e}`);
+    } finally {
+      btn.textContent = originalLabel;
+      btn.disabled = false;
+    }
   });
 })();
 
@@ -12180,11 +12744,13 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
     const skipPeriod = Math.max(1, parseInt($('duel-cfg-skipma-period').value, 10) || 50);
     const skipType = ($('duel-cfg-skipma-type').value || 'SMA').toUpperCase();
     const pinnedStartDate = ($('duel-cfg-start-date').value || '').trim();
+    const specificTicker = isSelfDuel ? (($('duel-cfg-ticker') && $('duel-cfg-ticker').value || '').trim().toUpperCase()) : '';
     duelConfig = {
       years, minAdr,
       skipMa: { enabled: skipEnabled, period: skipPeriod, type: skipType }
     };
     if(pinnedStartDate) duelConfig.startDate = pinnedStartDate;
+    if(specificTicker) duelConfig.specificTicker = specificTicker;
     if(isSelfDuel){
       duelConfig.kind = 'self-duel';
       duelConfig.tickerHidden = false;
@@ -12661,7 +13227,10 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
   }
 
   async function hostPickTickerAndVerify(){
-    const msg1 = 'Picking a random ticker that matches your filters…';
+    const specific = (duelConfig && duelConfig.specificTicker || '').toString().toUpperCase();
+    const msg1 = specific
+      ? `Preparing ${specific}…`
+      : 'Picking a random ticker that matches your filters…';
     setDuelStatus('duel-prep-mine-status', msg1);
     setHostStatusIfConnectVisible(msg1);
     try{
@@ -12671,6 +13240,7 @@ document.getElementById('sim-exit').addEventListener('click',()=>{
         skipMaEnabled: !!(duelConfig.skipMa && duelConfig.skipMa.enabled),
         skipMaPeriod: (duelConfig.skipMa && duelConfig.skipMa.period) || 0,
         startDate: duelConfig.startDate || '',
+        ticker: specific,
       });
     } catch(e){
       const errMsg = 'Ticker pick failed: '+e.message;
@@ -13524,6 +14094,750 @@ window.addEventListener('beforeunload', () => {
   try { saveSettings(); } catch (e) {}
   try { simFlushSave(); } catch (e) {}
 });
+
+// ============================================================================
+// PATTERN LIBRARY: selection tool + scan submission + library + results view
+// ============================================================================
+// User flow:
+//   1. Click the Pattern Select tool on the chart toolbar.
+//   2. Drag a time range on the chart -> a translucent band appears.
+//   3. Resize edges or pan the band's body until happy.
+//   4. Click Run Pattern Scan -> name + cutoff dialog -> background scan kicks off.
+//   5. Pattern Library tab shows scans with live progress and final results.
+//   6. Click a scan -> results view with matched ticker/date list + focused chart.
+
+const PATSEL_MIN_BARS = 15;
+const PATSEL_MAX_BARS = 200;
+
+let patselActive = false;          // true while the tool is selected
+let patselDraft = null;            // {startTime, endTime} or null
+let patselDragging = null;         // {edge: 'left'|'right'|'body', anchor:{...}}
+let patselUnsub = null;            // unsubscribe handle for chart range listener
+
+// Lightweight-charts returns BusinessDay {year,month,day} from
+// coordinateToTime() on a daily chart, NOT a string. Comparing that
+// object against bar.time strings ("2023-11-01") via < / >= coerces
+// the object to "[object Object]" and breaks every search. Normalize
+// every time value to an ISO yyyy-mm-dd string at the boundary.
+function patTimeToIso(t){
+  if(t == null) return null;
+  if(typeof t === 'string') return t;
+  if(typeof t === 'number'){
+    const d = new Date(t * 1000);
+    if(isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 10);
+  }
+  if(t.year != null && t.month != null && t.day != null){
+    const mm = String(t.month).padStart(2, '0');
+    const dd = String(t.day).padStart(2, '0');
+    return `${t.year}-${mm}-${dd}`;
+  }
+  return null;
+}
+
+function patselFindBarIndex(time){
+  // currentBars holds daily raw bars for the active chart symbol. The
+  // chart's logical x axis is daily; resampleBars only affects display.
+  // Pattern matching always operates on raw daily OHLC, so we anchor the
+  // selection to daily-bar indices regardless of timeframe.
+  if(!Array.isArray(currentBars) || !currentBars.length) return -1;
+  const iso = patTimeToIso(time);
+  if(!iso) return -1;
+  for(let i = 0; i < currentBars.length; i++){
+    if(currentBars[i].time >= iso) return i;
+  }
+  return currentBars.length - 1;
+}
+
+function patselSetActiveButton(active){
+  const btn = document.getElementById('tool-patsel');
+  if(btn) btn.classList.toggle('active', !!active);
+}
+
+function patselActivate(){
+  patselActive = true;
+  patselSetActiveButton(true);
+  // Toolbar tools share state via drawTool. Bumping to a special sentinel
+  // prevents existing draw handlers from also acting on chart mousedown.
+  drawTool = 'patsel';
+  // Disable the chart's own pan/zoom while the tool is active so a drag
+  // on the chart body draws a selection band instead of panning bars.
+  try{ chart.applyOptions({ handleScroll: false, handleScale: false }); }catch(e){}
+  // Subscribe to chart range changes so the band stays anchored to its
+  // bar times as the user zooms / pans the underlying chart.
+  if(patselUnsub) return;
+  try{
+    patselUnsub = chart.timeScale().subscribeVisibleTimeRangeChange(()=>patselRender());
+  }catch(e){}
+}
+
+function patselDeactivate(){
+  patselActive = false;
+  patselSetActiveButton(false);
+  try{ chart.applyOptions({ handleScroll: true, handleScale: true }); }catch(e){}
+  if(patselUnsub){
+    try{ chart.timeScale().unsubscribeVisibleTimeRangeChange(patselUnsub); }catch(e){}
+    patselUnsub = null;
+  }
+}
+
+function patselClearDraft(){
+  patselDraft = null;
+  patselDragging = null;
+  const band = document.getElementById('patsel-band');
+  if(band) band.classList.add('hidden');
+}
+
+// Position a translucent vertical band element (left/width in pixels)
+// anchored to two times on a lightweight-charts instance. Used by both
+// the Pattern Select draft band on the main chart and the matched-range
+// highlight on the results-view chart. Returns true if the band was
+// positioned, false if either coordinate was unavailable (which also
+// hides the band).
+function patPositionBand(bandEl, chartInstance, startTime, endTime){
+  if(!bandEl || !chartInstance){ if(bandEl) bandEl.classList.add('hidden'); return false; }
+  let x1 = null, x2 = null;
+  try{
+    const ts = chartInstance.timeScale();
+    x1 = ts.timeToCoordinate(startTime);
+    x2 = ts.timeToCoordinate(endTime);
+  } catch(e){}
+  if(x1 == null || x2 == null){ bandEl.classList.add('hidden'); return false; }
+  const left = Math.min(x1, x2);
+  const right = Math.max(x1, x2);
+  bandEl.style.left = left + 'px';
+  bandEl.style.width = Math.max(2, right - left) + 'px';
+  bandEl.classList.remove('hidden');
+  return true;
+}
+
+function patselRender(){
+  const band = document.getElementById('patsel-band');
+  if(!band) return;
+  if(!patselDraft){ band.classList.add('hidden'); return; }
+  if(!patPositionBand(band, chart, patselDraft.startTime, patselDraft.endTime)) return;
+  const s = patselFindBarIndex(patselDraft.startTime);
+  const e = patselFindBarIndex(patselDraft.endTime);
+  const nBars = (s >= 0 && e >= 0) ? (Math.abs(e - s) + 1) : 0;
+  const chip = document.getElementById('patsel-chip');
+  if(chip) chip.textContent = nBars + ' bars';
+  // Disable Run button when the selection is out of the allowed range.
+  const runBtn = document.getElementById('patsel-run');
+  if(runBtn){
+    const ok = (nBars >= PATSEL_MIN_BARS && nBars <= PATSEL_MAX_BARS);
+    runBtn.disabled = !ok;
+    runBtn.title = ok ? '' : `Selection must be ${PATSEL_MIN_BARS}-${PATSEL_MAX_BARS} bars; currently ${nBars}.`;
+  }
+}
+
+function patselClampDraft(){
+  // Enforce 15 <= N <= 200 by clipping the more-recently-moved edge to
+  // the allowed range. Called at the end of every drag.
+  if(!patselDraft) return;
+  const s = patselFindBarIndex(patselDraft.startTime);
+  const e = patselFindBarIndex(patselDraft.endTime);
+  if(s < 0 || e < 0) return;
+  let sIdx = Math.min(s, e), eIdx = Math.max(s, e);
+  const n = eIdx - sIdx + 1;
+  if(n < PATSEL_MIN_BARS){
+    eIdx = Math.min(currentBars.length - 1, sIdx + PATSEL_MIN_BARS - 1);
+  } else if(n > PATSEL_MAX_BARS){
+    eIdx = sIdx + PATSEL_MAX_BARS - 1;
+  }
+  patselDraft.startTime = currentBars[sIdx].time;
+  patselDraft.endTime = currentBars[eIdx].time;
+}
+
+// ---- Mouse handlers on the chart wrap (selection draw + drag) -------------
+(function patselWire(){
+  const wrap = document.getElementById('chart-wrap');
+  if(!wrap) return;
+
+  wrap.addEventListener('mousedown', e => {
+    if(!patselActive || !currentSymbol) return;
+    // Clicks on the floating action bar / bar-count chip are not chart
+    // events; let them through to their own button handlers.
+    if(e.target && (e.target.closest('.patsel-actions') || e.target.closest('.patsel-chip'))) return;
+    // If user clicked an edge or the body of an existing band, start drag.
+    const edge = e.target && e.target.dataset && e.target.dataset.edge;
+    if(edge){
+      e.preventDefault();
+      const rect = wrap.getBoundingClientRect();
+      const startBarIdx = patselFindBarIndex(patselDraft.startTime);
+      const endBarIdx = patselFindBarIndex(patselDraft.endTime);
+      patselDragging = {
+        edge,
+        originX: e.clientX - rect.left,
+        startBarIdx, endBarIdx,
+      };
+      return;
+    }
+    // Otherwise: start a brand-new drag-rectangle selection from this point.
+    e.preventDefault();
+    const rect = wrap.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    let t = null;
+    try{ t = patTimeToIso(chart.timeScale().coordinateToTime(x)); }catch(_){}
+    if(!t) return;
+    patselDraft = { startTime: t, endTime: t };
+    patselDragging = { edge: 'right', originX: x, startBarIdx: -1, endBarIdx: -1 };
+    patselRender();
+  });
+
+  window.addEventListener('mousemove', e => {
+    if(!patselDragging) return;
+    const rect = wrap.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    let t = null;
+    try{ t = patTimeToIso(chart.timeScale().coordinateToTime(x)); }catch(_){}
+    if(!t) return;
+    if(patselDragging.edge === 'left'){
+      patselDraft.startTime = t;
+    } else if(patselDragging.edge === 'right'){
+      patselDraft.endTime = t;
+    } else if(patselDragging.edge === 'body'){
+      // Translate both endpoints by the bar-delta from the original click.
+      const baseIdx = patselFindBarIndex(t);
+      const originT = patTimeToIso(chart.timeScale().coordinateToTime(patselDragging.originX)) || t;
+      const originIdx = patselFindBarIndex(originT);
+      const delta = baseIdx - originIdx;
+      if(delta !== 0 && Array.isArray(currentBars) && currentBars.length){
+        const sNew = Math.max(0, Math.min(currentBars.length - 1, patselDragging.startBarIdx + delta));
+        const eNew = Math.max(0, Math.min(currentBars.length - 1, patselDragging.endBarIdx + delta));
+        patselDraft.startTime = currentBars[sNew].time;
+        patselDraft.endTime = currentBars[eNew].time;
+      }
+    }
+    patselRender();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if(!patselDragging) return;
+    patselDragging = null;
+    patselClampDraft();
+    patselRender();
+  });
+
+  document.addEventListener('keydown', e => {
+    if(e.key === 'Escape' && patselActive){
+      if(patselDraft){ patselClearDraft(); patselRender(); }
+      else patselDeactivate();
+    }
+  });
+
+  document.getElementById('patsel-clear').addEventListener('click', e => {
+    e.stopPropagation();
+    patselClearDraft();
+  });
+  document.getElementById('patsel-run').addEventListener('click', e => {
+    e.stopPropagation();
+    patselOpenScanModal();
+  });
+})();
+
+// ---- Toolbar button wiring -----------------------------------------------
+document.getElementById('tool-patsel').addEventListener('click', () => {
+  if(patselActive){
+    patselDeactivate();
+    return;
+  }
+  // Activating Pattern Select implicitly switches OFF other draw tools.
+  document.querySelectorAll('.tb-btn').forEach(b => b.classList.remove('active'));
+  patselActivate();
+});
+
+// Picking any other draw tool must turn Pattern Select off; otherwise the
+// chart-wrap mousedown handler would still try to draw selection bands.
+(function(){
+  try{
+    if(typeof setTool === 'function'){
+      const _origSetTool = setTool;
+      setTool = function(t){ patselDeactivate(); return _origSetTool(t); };
+    }
+  }catch(e){}
+})();
+
+// ---- Run Pattern Scan modal ----------------------------------------------
+function patselOpenScanModal(){
+  if(!patselDraft || !currentSymbol) return;
+  const s = patselFindBarIndex(patselDraft.startTime);
+  const e = patselFindBarIndex(patselDraft.endTime);
+  if(s < 0 || e < 0) return;
+  const sIdx = Math.min(s, e), eIdx = Math.max(s, e);
+  const nBars = eIdx - sIdx + 1;
+  if(nBars < PATSEL_MIN_BARS || nBars > PATSEL_MAX_BARS) return;
+  const modal = document.getElementById('pat-scan-modal');
+  modal.classList.remove('hidden');
+  document.getElementById('pat-scan-name').value = '';
+  document.getElementById('pat-scan-mincorr').value = '0.90';
+  document.getElementById('pat-scan-mincorr-val').textContent = '0.90';
+  document.getElementById('pat-scan-max').value = '50';
+  document.getElementById('pat-scan-multi').checked = true;
+  document.getElementById('pat-scan-summary').textContent =
+    `Source: ${currentSymbol}  |  ${currentBars[sIdx].time} -> ${currentBars[eIdx].time}  |  ${nBars} bars`;
+  // Stash the resolved indices so submit doesn't have to re-find them.
+  modal.dataset.startIdx = sIdx;
+  modal.dataset.endIdx = eIdx;
+  modal.dataset.ticker = currentSymbol;
+  document.getElementById('pat-scan-name').focus();
+}
+
+document.getElementById('pat-scan-mincorr').addEventListener('input', e => {
+  document.getElementById('pat-scan-mincorr-val').textContent = (+e.target.value).toFixed(2);
+});
+
+document.getElementById('pat-scan-cancel').addEventListener('click', () => {
+  document.getElementById('pat-scan-modal').classList.add('hidden');
+});
+
+document.getElementById('pat-scan-modal').addEventListener('click', e => {
+  if(e.target.id === 'pat-scan-modal') e.target.classList.add('hidden');
+});
+
+document.getElementById('pat-scan-submit').addEventListener('click', async () => {
+  const modal = document.getElementById('pat-scan-modal');
+  const sIdx = parseInt(modal.dataset.startIdx, 10);
+  const eIdx = parseInt(modal.dataset.endIdx, 10);
+  const ticker = modal.dataset.ticker || '';
+  if(!Number.isFinite(sIdx) || !Number.isFinite(eIdx) || !ticker) return;
+  const name = (document.getElementById('pat-scan-name').value || '').trim();
+  if(!name){ alert('Please give the pattern a name.'); return; }
+  const min_corr = parseFloat(document.getElementById('pat-scan-mincorr').value);
+  const max_results = parseInt(document.getElementById('pat-scan-max').value, 10);
+  const allow_multiple = !!document.getElementById('pat-scan-multi').checked;
+  const ohlc = [];
+  for(let i = sIdx; i <= eIdx; i++){
+    const b = currentBars[i];
+    ohlc.push([b.open, b.high, b.low, b.close]);
+  }
+  const body = {
+    name,
+    on_collision: 'error',
+    query: {
+      source_ticker: ticker,
+      source_start: currentBars[sIdx].time,
+      source_end: currentBars[eIdx].time,
+      window_len: ohlc.length,
+      ohlc, min_corr, max_results, allow_multiple_per_ticker: allow_multiple,
+    },
+  };
+  const submit = document.getElementById('pat-scan-submit');
+  submit.disabled = true;
+  try{
+    let resp = await fetch('/api/patterns', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if(resp.status === 409){
+      if(!confirm(`A pattern named "${name}" already exists. Overwrite it? The previous scan and its results will be lost.`)){ submit.disabled = false; return; }
+      body.on_collision = 'overwrite';
+      resp = await fetch('/api/patterns', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    }
+    if(!resp.ok){ const err = await resp.json().catch(()=>({error:'unknown'})); throw new Error(err.error || `HTTP ${resp.status}`); }
+    const j = await resp.json();
+    modal.classList.add('hidden');
+    flash(`Scanning corpus for "${name}" (background)`);
+    // Land on the library so the user sees the progress row immediately.
+    showPage('patterns');
+  } catch(e){
+    alert('Scan failed: ' + (e.message || e));
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+// ---- Pattern Library page ------------------------------------------------
+let _patLibraryPollTimer = null;
+
+async function patLibraryLoad(){
+  const el = document.getElementById('pat-list');
+  if(!el) return;
+  // Load saved core config into the picker. The server resolves "max"
+  // to the resolved physical-core count before storing, so we map it
+  // back here: if the saved value equals physical_max, show "max" in
+  // the dropdown. Otherwise show the integer if it's one of the
+  // listed options. If the saved value matches nothing in the list
+  // (e.g. a manually edited config), fall back to "max" rather than
+  // silently snapping to the static default option ("4"), which is
+  // what caused the apparent non-persistence.
+  try{
+    const cfg = await (await fetch('/api/patterns/config')).json();
+    const sel = document.getElementById('pat-cfg-cores');
+    if(sel){
+      const stored = String(cfg.max_cores);
+      const phys = String(cfg.physical_max || '');
+      const options = Array.from(sel.options).map(o => o.value);
+      if(phys && stored === phys && options.includes('max')){
+        sel.value = 'max';
+      } else if(options.includes(stored)){
+        sel.value = stored;
+      } else {
+        sel.value = 'max';
+      }
+    }
+  }catch(e){}
+  await patLibraryRender();
+  // Poll while any scan is processing.
+  if(_patLibraryPollTimer) clearInterval(_patLibraryPollTimer);
+  _patLibraryPollTimer = setInterval(async () => {
+    const cur = document.getElementById('page-patterns');
+    if(!cur || cur.classList.contains('hidden')){
+      clearInterval(_patLibraryPollTimer); _patLibraryPollTimer = null; return;
+    }
+    await patLibraryRender();
+  }, 2000);
+}
+
+let _patEmptyStreak = 0;
+
+async function patLibraryRender(){
+  const el = document.getElementById('pat-list');
+  if(!el) return;
+  let list = null;
+  try{
+    list = await (await fetch('/api/patterns')).json();
+  } catch(e){
+    // Transient fetch error during polling: leave existing rows
+    // untouched so the user doesn't see flicker. Only show the error
+    // when we have nothing to show (first load failure).
+    if(!el.querySelector('.pat-row')){
+      el.innerHTML = `<div style="color:var(--red);padding:14px;">Failed to load: ${escapeHtml(e.message || String(e))}</div>`;
+    }
+    return;
+  }
+  if(!Array.isArray(list)) list = [];
+  if(!list.length){
+    // Empty responses also happen transiently when every pattern file
+    // is briefly unreadable mid-write (server retry helps but isn't
+    // 100%). Require two consecutive empties before believing it.
+    _patEmptyStreak += 1;
+    if(_patEmptyStreak < 2 && el.querySelector('.pat-row')){
+      return;
+    }
+    el.innerHTML = `<div style="color:var(--muted);padding:14px;">No saved patterns yet. Use the Pattern Select tool on the chart to create one.</div>`;
+    return;
+  }
+  _patEmptyStreak = 0;
+  el.innerHTML = list.map(p => {
+      const statusClass = (p.status === 'error') ? 'error' : (p.status === 'paused' ? 'paused' : '');
+      const matchCount = +p.results_count || 0;
+      const matchLabel = `${matchCount} match${matchCount === 1 ? '' : 'es'}`;
+      const statusText = p.status === 'processing' ? `Processing ${Math.round(p.progress || 0)}%`
+                       : p.status === 'paused'     ? `Paused at ${Math.round(p.progress || 0)}%`
+                       : p.status === 'error'      ? 'Error'
+                       : `${matchLabel} · Complete (${(p.modified || '').slice(0,10)})`;
+      const actions = [];
+      if(p.status === 'processing') actions.push(`<button class="sim-btn sim-btn-sm" data-act="pause">Pause</button>`);
+      else if(p.status === 'paused') actions.push(`<button class="sim-btn sim-btn-sm" data-act="resume">Resume</button>`);
+      actions.push(`<button class="sim-btn sim-btn-sm" data-act="rename">Rename</button>`);
+      actions.push(`<button class="sim-btn sim-btn-sm danger" data-act="delete">Delete</button>`);
+      return `<div class="pat-row" data-id="${p.id}">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="flex:1;">
+            <div class="pat-name">${escapeHtml(p.name || 'Untitled')}</div>
+            <div class="pat-meta">source: ${escapeHtml(p.source_ticker || '?')}  |  ${p.window_len || '?'} bars  |  min corr ${(+p.min_corr || 0).toFixed(2)}  |  results: ${p.results_count || 0}</div>
+          </div>
+          <div class="pat-status ${statusClass}">${statusText}</div>
+          <div style="display:flex;gap:4px;">${actions.join('')}</div>
+        </div>
+      </div>`;
+    }).join('');
+  el.querySelectorAll('.pat-row').forEach(row => {
+    const id = row.dataset.id;
+    row.addEventListener('click', e => {
+      if(e.target.tagName === 'BUTTON') return;
+      patViewOpen(id);
+    });
+    row.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', async e => {
+        e.stopPropagation();
+        const act = btn.dataset.act;
+        if(act === 'pause' || act === 'resume'){
+          const status = (act === 'pause') ? 'paused' : 'processing';
+          await fetch(`/api/patterns/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({status}) });
+        } else if(act === 'rename'){
+          const cur = (row.querySelector('.pat-name')||{}).textContent || '';
+          const next = prompt('New name:', cur);
+          if(next && next.trim() && next !== cur){
+            await fetch(`/api/patterns/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name: next.trim()}) });
+          }
+        } else if(act === 'delete'){
+          if(!confirm('Delete this pattern and all its results?')) return;
+          await fetch(`/api/patterns/${id}`, { method: 'DELETE' });
+        }
+        await patLibraryRender();
+      });
+    });
+  });
+}
+
+document.getElementById('pat-cfg-cores').addEventListener('change', async e => {
+  await fetch('/api/patterns/config', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({max_cores: e.target.value}) });
+});
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ---- Pattern Results view ------------------------------------------------
+// Lightweight standalone chart (lightweight-charts v3) that loads a ticker
+// on demand for each match the user clicks. Highlights the matched range
+// with two vertical price lines and a faint background band.
+
+let _patvChart = null, _patvSeries = null;
+let _patvCurrent = { pattern: null, focus: null };
+
+// Reposition the translucent match-range overlay anchored to the
+// chart's current visible-range coordinates. Called from the chart's
+// visibleTimeRangeChange subscription and from ResizeObserver. The
+// overlay is two divs (band + edge lines) NOT a canvas, so no DPR
+// math is needed and the band scales naturally with chart geometry.
+function patvUpdateMatchBand(){
+  const band = document.getElementById('patv-match-band');
+  if(!band) return;
+  if(!_patvChart || !_patvCurrent.focus){ band.classList.add('hidden'); return; }
+  patPositionBand(band, _patvChart, _patvCurrent.focus.start_date, _patvCurrent.focus.end_date);
+}
+
+function patvEnsureChart(){
+  const host = document.getElementById('patv-chart');
+  if(!host) return;
+  if(_patvChart) return;
+  _patvChart = LightweightCharts.createChart(host, {
+    layout: { background: { color: getComputedStyle(document.body).getPropertyValue('--bg') || '#0a0a0a' }, textColor: '#888' },
+    grid: { vertLines: { color: 'rgba(255,255,255,0.04)' }, horzLines: { color: 'rgba(255,255,255,0.04)' } },
+    timeScale: { borderColor: '#222' },
+    rightPriceScale: { borderColor: '#222' },
+    crosshair: { mode: 0 },
+  });
+  _patvSeries = _patvChart.addCandlestickSeries({ upColor:'#00d4aa', downColor:'#ff6b35', borderUpColor:'#00d4aa', borderDownColor:'#ff6b35', wickUpColor:'#00d4aa', wickDownColor:'#ff6b35' });
+  // Resize on container size changes; reposition the band each time
+  // so the highlight stays anchored to the same bars across resizes.
+  new ResizeObserver(() => {
+    if(!_patvChart) return;
+    _patvChart.applyOptions({ width: host.clientWidth, height: host.clientHeight });
+    patvUpdateMatchBand();
+  }).observe(host);
+  _patvChart.applyOptions({ width: host.clientWidth, height: host.clientHeight });
+  // Logical-range change is the reliable signal: it fires on every
+  // zoom/pan including panning into whitespace (where the visible
+  // TIME range stays clamped to data bounds and doesn't fire). The
+  // time-range subscription is redundant insurance.
+  _patvChart.timeScale().subscribeVisibleLogicalRangeChange(patvUpdateMatchBand);
+  _patvChart.timeScale().subscribeVisibleTimeRangeChange(patvUpdateMatchBand);
+  // Active user interaction (drag-pan or wheel-zoom) needs per-frame
+  // updates because lightweight-charts batches its internal redraw
+  // and our overlay must follow tick by tick, not just on the final
+  // event. The rAF loop runs only while the mouse is held or
+  // immediately after a wheel event, so the steady-state cost is
+  // zero.
+  let dragRaf = null;
+  const stopDragLoop = () => {
+    if(dragRaf){ cancelAnimationFrame(dragRaf); dragRaf = null; }
+    patvUpdateMatchBand();
+  };
+  const startDragLoop = () => {
+    if(dragRaf) return;
+    const loop = () => {
+      patvUpdateMatchBand();
+      dragRaf = requestAnimationFrame(loop);
+    };
+    dragRaf = requestAnimationFrame(loop);
+  };
+  host.addEventListener('mousedown', () => {
+    startDragLoop();
+    window.addEventListener('mouseup', stopDragLoop, { once: true });
+  });
+  host.addEventListener('wheel', () => {
+    patvUpdateMatchBand();
+    // Two follow-up frames catch the late chart settling after the
+    // wheel delta is applied (the internal animation lasts a few
+    // frames on some platforms).
+    requestAnimationFrame(patvUpdateMatchBand);
+    requestAnimationFrame(() => requestAnimationFrame(patvUpdateMatchBand));
+  }, { passive: true });
+}
+
+async function patViewOpen(patternId){
+  showPage('pattern-view');
+  patvEnsureChart();
+  const pat = await (await fetch('/api/patterns/' + patternId)).json();
+  if(pat.error){ alert(pat.error); return; }
+  _patvCurrent.pattern = pat;
+  document.getElementById('patv-title').textContent = pat.name || 'Pattern';
+  // Restore previously-used pre/post values per pattern (independent of
+  // the in-chart view zoom).
+  try{
+    const savedPre = localStorage.getItem('bm_pattern_export_pre');
+    const savedPost = localStorage.getItem('bm_pattern_export_post');
+    if(savedPre != null) document.getElementById('patv-pre').value = savedPre;
+    if(savedPost != null) document.getElementById('patv-post').value = savedPost;
+  }catch(e){}
+  const rowsEl = document.getElementById('patv-rows');
+  // The original-pattern row sits at the top, has no checkbox (it's
+  // always rendered as the reference in exports), and has no score.
+  const originalRow = `<div class="patv-row original" data-which="original">
+    <div class="patv-body">
+      <div class="patv-ticker">${escapeHtml(pat.query.source_ticker)} (original)</div>
+      <div class="patv-dates">${pat.query.source_start} &rarr; ${pat.query.source_end}</div>
+    </div>
+  </div>`;
+  const matchRows = (pat.results || []).map((r, i) => `
+    <div class="patv-row" data-which="match" data-index="${i}">
+      <input type="checkbox" class="patv-check" data-index="${i}" checked aria-label="Include in export">
+      <div class="patv-body">
+        <div class="patv-ticker">${escapeHtml(r.ticker)}</div>
+        <div class="patv-dates">${r.start_date} &rarr; ${r.end_date}</div>
+      </div>
+      <span class="patv-score">${(r.score || 0).toFixed(3)}</span>
+    </div>`).join('');
+  rowsEl.innerHTML = originalRow + matchRows;
+  rowsEl.querySelectorAll('.patv-row').forEach(r => {
+    r.addEventListener('click', e => {
+      // Clicking the checkbox should toggle it, NOT focus the chart.
+      if(e.target && e.target.classList.contains('patv-check')) return;
+      rowsEl.querySelectorAll('.patv-row').forEach(x => x.classList.remove('active'));
+      r.classList.add('active');
+      if(r.dataset.which === 'original'){
+        patViewFocus({
+          ticker: pat.query.source_ticker,
+          start_date: pat.query.source_start,
+          end_date: pat.query.source_end,
+          score: 1.0,
+          isOriginal: true,
+        });
+      } else {
+        const idx = parseInt(r.dataset.index, 10);
+        const m = pat.results[idx];
+        if(m) patViewFocus(m);
+      }
+    });
+  });
+  rowsEl.querySelectorAll('.patv-check').forEach(cb => {
+    cb.addEventListener('change', patvUpdateSelectionCount);
+    cb.addEventListener('click', e => e.stopPropagation());
+  });
+  patvUpdateSelectionCount();
+  // Auto-focus the top match (or the original if no matches).
+  const first = rowsEl.querySelector('.patv-row');
+  if(first) first.click();
+}
+
+function patvGetIncludedIndices(){
+  const out = [];
+  document.querySelectorAll('#patv-rows .patv-check').forEach(cb => {
+    if(cb.checked){
+      const i = parseInt(cb.dataset.index, 10);
+      if(Number.isFinite(i)) out.push(i);
+    }
+  });
+  return out;
+}
+
+function patvUpdateSelectionCount(){
+  const total = document.querySelectorAll('#patv-rows .patv-check').length;
+  const checked = patvGetIncludedIndices().length;
+  const el = document.getElementById('patv-export-count');
+  if(el) el.textContent = `${checked} of ${total} selected`;
+  const pdf = document.getElementById('patv-export-pdf');
+  const csv = document.getElementById('patv-export-csv');
+  if(pdf) pdf.disabled = (checked === 0);
+  if(csv) csv.disabled = (checked === 0);
+}
+
+function patvBuildExportUrl(kind){
+  const pat = _patvCurrent.pattern;
+  if(!pat) return null;
+  const indices = patvGetIncludedIndices();
+  if(!indices.length) return null;
+  const include = encodeURIComponent(indices.join(','));
+  if(kind === 'pdf'){
+    const pre = Math.max(0, parseInt(document.getElementById('patv-pre').value, 10) || 0);
+    const post = Math.max(0, parseInt(document.getElementById('patv-post').value, 10) || 0);
+    return `/api/patterns/${pat.id}/export.pdf?pre=${pre}&post=${post}&include=${include}`;
+  }
+  return `/api/patterns/${pat.id}/export.csv?include=${include}`;
+}
+
+// Trigger a browser download for a server-side export endpoint. Using
+// a temporary <a download> beats window.location because it preserves
+// the current page state and works even if the response is large.
+function patvTriggerDownload(url){
+  const a = document.createElement('a');
+  a.href = url;
+  a.rel = 'noopener';
+  // Letting the server's Content-Disposition pick the filename.
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+document.getElementById('patv-select-all').addEventListener('click', () => {
+  document.querySelectorAll('#patv-rows .patv-check').forEach(cb => { cb.checked = true; });
+  patvUpdateSelectionCount();
+});
+document.getElementById('patv-select-none').addEventListener('click', () => {
+  document.querySelectorAll('#patv-rows .patv-check').forEach(cb => { cb.checked = false; });
+  patvUpdateSelectionCount();
+});
+['patv-pre','patv-post'].forEach(id => {
+  document.getElementById(id).addEventListener('change', e => {
+    try{ localStorage.setItem('bm_pattern_export_' + id.split('-')[1], e.target.value); }catch(_){}
+  });
+});
+document.getElementById('patv-export-pdf').addEventListener('click', () => {
+  const url = patvBuildExportUrl('pdf');
+  if(url) patvTriggerDownload(url);
+});
+document.getElementById('patv-export-csv').addEventListener('click', () => {
+  const url = patvBuildExportUrl('csv');
+  if(url) patvTriggerDownload(url);
+});
+
+async function patViewFocus(match){
+  _patvCurrent.focus = match;
+  const info = document.getElementById('patv-info');
+  if(info) info.textContent = `${match.ticker}  |  ${match.start_date} -> ${match.end_date}  |  score ${(match.score || 0).toFixed(3)}${match.isOriginal ? '  (original pattern)' : ''}`;
+  let bars = [];
+  try{
+    const resp = await fetch('/api/ohlcv?symbol=' + encodeURIComponent(match.ticker));
+    bars = await resp.json();
+  }catch(e){ bars = []; }
+  if(!Array.isArray(bars) || !bars.length){
+    if(info) info.textContent += '  |  no data';
+    return;
+  }
+  // lightweight-charts wants OHLC with time strings as YYYY-MM-DD.
+  const data = bars.map(b => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close }));
+  _patvSeries.setData(data);
+  // Find match indices in the loaded bars.
+  let sIdx = -1, eIdx = -1;
+  for(let i = 0; i < bars.length; i++){
+    if(sIdx < 0 && bars[i].time >= match.start_date) sIdx = i;
+    if(bars[i].time <= match.end_date) eIdx = i;
+  }
+  if(sIdx < 0 || eIdx < 0){
+    _patvChart.timeScale().fitContent();
+    requestAnimationFrame(patvUpdateMatchBand);
+    return;
+  }
+  // Center the view on the match. Target a total visible width of
+  // ~4x the match length (1.5x before, match, 1.5x after) and keep
+  // the match centered. When the match is near the start or end of
+  // available history, extend the visible window on the opposite
+  // side instead of letting the match drift to a chart edge.
+  const matchLen = eIdx - sIdx + 1;
+  const matchCenter = (sIdx + eIdx) / 2;
+  const totalView = matchLen * 4;
+  let viewStart = Math.round(matchCenter - totalView / 2);
+  let viewEnd = Math.round(matchCenter + totalView / 2);
+  if(viewStart < 0){ viewEnd = Math.min(bars.length - 1, viewEnd - viewStart); viewStart = 0; }
+  if(viewEnd > bars.length - 1){ const over = viewEnd - (bars.length - 1); viewStart = Math.max(0, viewStart - over); viewEnd = bars.length - 1; }
+  _patvChart.timeScale().setVisibleRange({ from: bars[viewStart].time, to: bars[viewEnd].time });
+  // setVisibleRange's effect on coordinates lands on the next frame.
+  // visibleTimeRangeChange subscription will also fire on the change;
+  // call once more on the next frame as a safety net for the initial
+  // layout when the page just opened (clientWidth could have been 0).
+  requestAnimationFrame(patvUpdateMatchBand);
+  setTimeout(patvUpdateMatchBand, 50);
+}
+
+document.getElementById('patv-back').addEventListener('click', () => showPage('patterns'));
 </script>
 </body>
 </html>

@@ -200,6 +200,20 @@ class PivBOLauncher(toga.App):
         try:
             self._pivbo_server._ensure_sim_dir()
             self._pivbo_server._ensure_templates_dir()
+            self._pivbo_server._ensure_patterns_dir()
+            # Apply saved pool size for pattern scans before any scan can
+            # be submitted. Then flip any scan that was left "processing"
+            # by a previous crash to "paused" so the user can resume
+            # manually. Mirrors the dev-server boot block in pivbo_server.py.
+            try:
+                cfg = self._pivbo_server._load_patterns_config()
+                self._pivbo_server._set_pattern_pool_size(cfg.get("max_cores", 4))
+            except Exception:
+                pass
+            try:
+                self._pivbo_server._flip_processing_to_paused_on_boot()
+            except Exception:
+                pass
             self._pivbo_server._reap_stale_servers(port)
         except Exception:
             pass

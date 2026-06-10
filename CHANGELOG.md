@@ -8,6 +8,63 @@ The newest version is at the top.
 
 ## Unreleased
 
+- **Pattern Library: PDF and CSV export**. Results view gets an inline
+  controls strip above the match list with **Select All / None**
+  buttons, **pre / post bar** number inputs (persisted across
+  sessions), and **PDF** / **CSV** export buttons. Each match row
+  carries a checkbox (default checked) so individual matches can be
+  excluded from an export without losing them from the scan.
+  - **PDF**: cover page with the query summary (source ticker, date
+    range, window length, min correlation, included-of-total count,
+    pre/post context), then the original pattern full-width with the
+    matched range highlighted, then a 2-column grid of every checked
+    match, each rendered as a dark-theme candlestick chart with the
+    matched bars overlaid with a translucent accent band and edge
+    lines. Pre/post bar counts are independent of the live view zoom
+    so you can browse interactively at one scale and print at another.
+  - **CSV**: header row plus one line per included match (`ticker,
+    start_date, end_date, score`), sorted by score descending. Plain
+    enough to paste into other charting platforms or a spreadsheet.
+  - Endpoints: `GET /api/patterns/<id>/export.pdf?pre=N&post=M&include=...`
+    and `GET /api/patterns/<id>/export.csv?include=...`. The `include`
+    query param is an optional comma-separated list of result indices;
+    omit it to include every match.
+- **Pattern Library (initial release)**. New top-level nav tab next to
+  Simulations. Pick a range on any chart, scan the local corpus for
+  visually similar OHLC patterns, and browse the matches.
+  - **Pattern Select tool** on the chart drawing toolbar. Activate it,
+    click-drag a horizontal range on the chart, then drag either edge
+    to resize or the body to translate. A floating chip shows the bar
+    count; window length is clamped to 15-200 bars.
+  - **Run Pattern Scan dialog** with name, min correlation
+    (0.80-0.99), max results (50-500), and an "allow multiple matches
+    per ticker" toggle. Required naming with overwrite-confirm on name
+    collision.
+  - **OHLC matching** with joint window normalization (subtract window
+    mean close, divide by full price range) and Pearson correlation
+    against every sliding window in every local ticker. Wicks and
+    bodies both contribute; matches that look visually similar to the
+    query window score highest.
+  - **Greedy non-overlap dedup** keeps the BEST match in each cluster
+    of overlapping high-scoring windows. Without "Allow multiple",
+    only the single best match per ticker survives. With it on, every
+    non-overlapping match above the cutoff is kept (capped at 20 per
+    ticker as a safety net).
+  - **Background scans with checkpointing**. Long scans run in a
+    thread pool (default 4 workers, configurable in the library page),
+    save progress after every ticker, and survive a server restart as
+    paused. Pause / Resume / Delete from the library row.
+  - **Results view** with a left-rail list of matches sorted by score
+    descending and a main chart that loads the focused ticker, centers
+    on the matched range with about 1.5x the window before and after,
+    and overlays a translucent accent band plus start/end edge lines
+    on the matched bars. Click any row to focus; the pinned "Original"
+    row at the top shows the source pattern on the source ticker.
+  - **Storage** mirrors the simulations convention: per-pattern JSON
+    files under `data/patterns/` with a `pivbo_pattern_index.json`
+    listing all scans for fast library loads.
+
+
 ## v0.0.6 (2026-05-19)
 
 - **Save As (fork) in the sim panel header**. New button next to

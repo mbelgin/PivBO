@@ -102,6 +102,7 @@ STOCKS_DIRS = [
 SIMULATIONS_DIR = os.path.join(USER_DATA_DIR, "simulations")
 TEMPLATES_DIR = os.path.join(USER_DATA_DIR, "templates")
 ANALYSES_DIR = os.path.join(USER_DATA_DIR, "analyses")
+PATTERNS_DIR = os.path.join(USER_DATA_DIR, "patterns")
 _TICKER_RANGES_CACHE = None
 
 # -----------------------------------------------------------------
@@ -797,13 +798,18 @@ def api_duel_pick_ticker():
 
     Request body:
       { years:int, minAdr:float, minPrice:float, skipMaEnabled:bool,
-        skipMaPeriod:int, startDate?:"YYYY-MM-DD" }
+        skipMaPeriod:int, startDate?:"YYYY-MM-DD", ticker?:"AAPL" }
 
     If startDate is omitted, the start bar is chosen at random within the
     eligible window. If startDate is provided, it is used as a hard pin:
     eligible tickers must have warmup bars before that date AND duel_bars
     after, and the chosen ticker's start bar is the first one on/after
     startDate.
+
+    If `ticker` is provided (self-duel "specify a ticker" path), only that
+    one symbol is considered. The minAdr / minPrice filters are bypassed
+    (the caller explicitly chose this ticker). startDate still applies if
+    given; otherwise the start bar is random within the eligible window.
 
     Response:
       { ticker, startDate, endDate, warmupBars, startBarIdx, endBarIdx,
@@ -828,10 +834,74 @@ def api_duel_pick_ticker():
     except (TypeError, ValueError):
         skip_period = 1
     pinned_start = (body.get("startDate") or "").strip()
+    specific_ticker = (body.get("ticker") or "").strip().upper()
 
     warmup = (skip_period - 1) if skip_enabled else 0
     duel_bars = years * _DUEL_BARS_PER_YEAR
     min_total = warmup + duel_bars + 1  # +1 so there's at least one bar of slack
+
+    # Specific-ticker branch: caller named the symbol. Skip the random
+    # sampling and the minAdr / minPrice filters (user explicitly chose
+    # it). Honor startDate if given, otherwise pick a random start within
+    # the eligible window on THIS ticker.
+    if specific_ticker:
+        bars = _read_ticker_bars(specific_ticker)
+        if not bars:
+            return jsonify({
+                "error": f"Ticker {specific_ticker} not found in local data. Download it from the Data dialog (or click ⬇ Full on the chart), then retry.",
+                "eligibleCount": 0,
+            }), 404
+        total = len(bars)
+        if total < min_total:
+            return jsonify({
+                "error": (f"{specific_ticker} has only {total} bars; this duel needs at least "
+                          f"{min_total} (= {warmup} warmup + {duel_bars} duel + 1). "
+                          "Pick fewer years or disable MA warmup."),
+                "eligibleCount": 0,
+            }), 404
+
+        if pinned_start:
+            si = None
+            for i, b in enumerate(bars):
+                if (b.get("time") or "") >= pinned_start:
+                    si = i
+                    break
+            if si is None:
+                return jsonify({
+                    "error": f"{specific_ticker} has no bars on or after {pinned_start}.",
+                    "eligibleCount": 0,
+                }), 404
+            if si < warmup:
+                return jsonify({
+                    "error": (f"{specific_ticker} has only {si} bars before {pinned_start}; "
+                              f"need {warmup} for MA warmup. Pick a later start date."),
+                    "eligibleCount": 0,
+                }), 404
+            if si + duel_bars > total - 1:
+                return jsonify({
+                    "error": (f"{specific_ticker} runs out of data before the duel completes. "
+                              f"Start {pinned_start} + {duel_bars} bars exceeds the available history."),
+                    "eligibleCount": 0,
+                }), 404
+            start_idx = si
+        else:
+            min_s = warmup
+            max_s = total - duel_bars - 1
+            start_idx = random.randint(min_s, max_s) if max_s > min_s else min_s
+
+        end_idx = min(start_idx + duel_bars, total - 1)
+        return jsonify({
+            "ticker": specific_ticker,
+            "startDate": bars[start_idx]["time"],
+            "endDate": bars[end_idx]["time"],
+            "warmupBars": warmup,
+            "startBarIdx": start_idx,
+            "endBarIdx": end_idx,
+            "totalBars": total,
+            "duelBars": end_idx - start_idx,
+            "avgAdr": round(_avg_adr_pct(bars), 2),
+            "eligibleCount": 1,
+        })
 
     ranges = _load_ticker_ranges()
     eligible = []
@@ -3102,6 +3172,1020 @@ def api_simulations_import():
 
 
 # ==============================================
+# PATTERN LIBRARY (Phase 1: storage + endpoints + thread pool)
+# ==============================================
+# Stores user-submitted "pattern scan" jobs: a saved range from one
+# chart that asks the platform to find visually similar OHLC patterns
+# across the local ticker corpus. Each scan is persisted as a JSON
+# file in PATTERNS_DIR. Background workers process one ticker at a
+# time, checkpoint after each, and cooperatively check the on-disk
+# status so pause/resume/cancel survive server restarts.
+#
+# Phase 1 ships the storage layer, REST endpoints, and a stub worker.
+# Phase 2 plugs the real OHLC matching algorithm into the worker.
+
+from concurrent.futures import ThreadPoolExecutor
+
+_PATTERN_INDEX_NAME = "pivbo_pattern_index.json"
+_PATTERN_CONFIG_NAME = "pivbo_pattern_config.json"
+
+# Module-global thread pool. Lazily constructed; resized via the config
+# endpoint. Old pools shut down without waiting so in-flight workers
+# finish on their own threads.
+_PATTERN_POOL = None
+_PATTERN_POOL_SIZE = 4
+_PATTERN_POOL_GUARD = threading.Lock()
+
+# Per-pattern file locks. Workers writing a checkpoint take the lock
+# for their pattern so concurrent finalizations cannot interleave.
+_PATTERN_LOCKS = {}
+_PATTERN_LOCKS_GUARD = threading.Lock()
+
+
+def _ensure_patterns_dir():
+    os.makedirs(PATTERNS_DIR, exist_ok=True)
+
+
+def _pattern_path(pattern_id):
+    return os.path.join(PATTERNS_DIR, f"{pattern_id}.json")
+
+
+def _pattern_lock(pattern_id):
+    with _PATTERN_LOCKS_GUARD:
+        lk = _PATTERN_LOCKS.get(pattern_id)
+        if lk is None:
+            lk = threading.Lock()
+            _PATTERN_LOCKS[pattern_id] = lk
+        return lk
+
+
+def _patterns_config_path():
+    return os.path.join(PATTERNS_DIR, _PATTERN_CONFIG_NAME)
+
+
+def _load_patterns_config():
+    p = _patterns_config_path()
+    if not os.path.exists(p):
+        return {"max_cores": 4}
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            cfg = json.load(f) or {}
+        n = cfg.get("max_cores", 4)
+        return {"max_cores": int(n) if isinstance(n, (int, float)) else 4}
+    except Exception:
+        return {"max_cores": 4}
+
+
+def _save_patterns_config(cfg):
+    _ensure_patterns_dir()
+    p = _patterns_config_path()
+    tmp = p + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, p)
+    except OSError as e:
+        try:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        except OSError:
+            pass
+        print(f"[pattern_config] write skipped ({e.__class__.__name__}: {e})")
+
+
+def _get_pattern_pool():
+    """Return the current pool. Lazy construct on first use."""
+    global _PATTERN_POOL
+    with _PATTERN_POOL_GUARD:
+        if _PATTERN_POOL is None:
+            _PATTERN_POOL = ThreadPoolExecutor(
+                max_workers=_PATTERN_POOL_SIZE,
+                thread_name_prefix="pattern-scan",
+            )
+        return _PATTERN_POOL
+
+
+def _set_pattern_pool_size(n):
+    """Swap the pool to a new size. In-flight tasks keep running on
+    the old pool's threads; new submissions land on the new one."""
+    global _PATTERN_POOL, _PATTERN_POOL_SIZE
+    with _PATTERN_POOL_GUARD:
+        _PATTERN_POOL_SIZE = max(1, int(n))
+        old = _PATTERN_POOL
+        _PATTERN_POOL = ThreadPoolExecutor(
+            max_workers=_PATTERN_POOL_SIZE,
+            thread_name_prefix="pattern-scan",
+        )
+        if old is not None:
+            old.shutdown(wait=False)
+
+
+def _read_pattern_json_with_retry(path):
+    """Read a pattern JSON, retrying on transient errors. With many
+    workers writing checkpoints via os.replace, a concurrent reader can
+    see ERROR_SHARING_VIOLATION or a partial file between the open()
+    and the rename. Exponential backoff up to ~3.5s total rides out
+    bursts (antivirus scans, many concurrent writers) so the list and
+    status endpoints don't spuriously return empty mid-scan."""
+    last = None
+    for attempt in range(12):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (PermissionError, OSError, ValueError) as e:
+            last = e
+            time.sleep(min(0.4, 0.01 * (2 ** attempt)))
+    if last is not None:
+        raise last
+
+
+def _read_pattern(pattern_id):
+    path = _pattern_path(pattern_id)
+    if not os.path.exists(path):
+        return None
+    try:
+        return _read_pattern_json_with_retry(path)
+    except Exception:
+        return None
+
+
+def _write_pattern_atomic(pattern_id, data):
+    """Atomic write with retry. The per-pattern lock prevents two
+    workers from clobbering each other, but a concurrent reader
+    (status poll, index rebuild, another scan's read) can still hold a
+    transient shared handle that makes os.replace fail on Windows with
+    ERROR_SHARING_VIOLATION. Exponential backoff up to ~4.5s total
+    rides out longer contention windows than the original 0.3s budget,
+    which wasn't enough when a PUT raced the library page's poll
+    reading every pattern file in sequence."""
+    _ensure_patterns_dir()
+    path = _pattern_path(pattern_id)
+    # Per-thread tmp suffix so two workers serialized by the pattern
+    # lock can't collide on the tmp filename if a previous write left
+    # an orphan tmp behind from a crash.
+    tmp = f"{path}.{threading.get_ident()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    last_err = None
+    for attempt in range(15):
+        try:
+            os.replace(tmp, path)
+            if attempt > 2:
+                # Surface unusually contentious paths in the log so they're
+                # easy to spot if something pathological starts happening
+                # (e.g. an antivirus hot-scanning the patterns directory).
+                print(f"[pattern_atomic] {os.path.basename(path)}: "
+                      f"succeeded after {attempt + 1} attempts")
+            return
+        except PermissionError as e:
+            last_err = e
+            time.sleep(min(0.4, 0.01 * (2 ** attempt)))
+    # Last-ditch cleanup so a failed write doesn't leak the tmp file.
+    try:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    except OSError:
+        pass
+    raise last_err
+
+
+def _pattern_index_entry(pat):
+    q = pat.get("query") or {}
+    return {
+        "id": pat.get("id"),
+        "name": pat.get("name"),
+        "status": pat.get("status"),
+        "progress": pat.get("progress", 0),
+        "results_count": len(pat.get("results") or []),
+        "window_len": q.get("window_len"),
+        "min_corr": q.get("min_corr"),
+        "source_ticker": q.get("source_ticker"),
+        "created": pat.get("created"),
+        "modified": pat.get("modified"),
+    }
+
+
+def _load_pattern_index():
+    p = os.path.join(PATTERNS_DIR, _PATTERN_INDEX_NAME)
+    if not os.path.exists(p):
+        return []
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            return json.load(f) or []
+    except Exception:
+        return []
+
+
+def _save_pattern_index(index):
+    _ensure_patterns_dir()
+    p = os.path.join(PATTERNS_DIR, _PATTERN_INDEX_NAME)
+    tmp = p + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(index, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, p)
+    except OSError as e:
+        try:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        except OSError:
+            pass
+        print(f"[pattern_index] write skipped ({e.__class__.__name__}: {e})")
+
+
+def _compute_pattern_index():
+    """Scan the patterns directory and return a fresh in-memory index.
+    Does NOT write to disk. Use this for read paths (list endpoint)
+    that need current progress. Reads go through the retry helper so
+    a worker mid-checkpoint doesn't cause a row to vanish briefly."""
+    _ensure_patterns_dir()
+    index = []
+    for fname in os.listdir(PATTERNS_DIR):
+        if fname == _PATTERN_INDEX_NAME or fname == _PATTERN_CONFIG_NAME:
+            continue
+        if not fname.endswith(".json"):
+            continue
+        path = os.path.join(PATTERNS_DIR, fname)
+        try:
+            pat = _read_pattern_json_with_retry(path)
+            index.append(_pattern_index_entry(pat))
+        except Exception:
+            continue
+    index.sort(key=lambda p: p.get("modified") or "", reverse=True)
+    return index
+
+
+def _rebuild_pattern_index():
+    index = _compute_pattern_index()
+    _save_pattern_index(index)
+    return index
+
+
+def _flip_processing_to_paused_on_boot():
+    """Any scan that was running when the server died gets flipped to
+    paused on startup. The user resumes manually from the library; we
+    do NOT auto-resume because the design explicitly puts that control
+    in the user's hands."""
+    _ensure_patterns_dir()
+    flipped = 0
+    for fname in os.listdir(PATTERNS_DIR):
+        if fname == _PATTERN_INDEX_NAME or fname == _PATTERN_CONFIG_NAME:
+            continue
+        if not fname.endswith(".json"):
+            continue
+        path = os.path.join(PATTERNS_DIR, fname)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                pat = json.load(f)
+            if pat.get("status") == "processing":
+                pat["status"] = "paused"
+                pat["modified"] = _iso_now()
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(pat, f, ensure_ascii=False, indent=2)
+                flipped += 1
+        except Exception:
+            continue
+    if flipped:
+        _rebuild_pattern_index()
+        print(f"[patterns] flipped {flipped} processing-on-boot scan(s) to paused")
+
+
+def _pattern_normalize_window(ohlc_arr):
+    """Joint-normalize an OHLC window: subtract mean close from all
+    channels, divide by full range (highest high - lowest low). Returns
+    (normalized_flat, valid). normalized_flat is a 1-D vector of length
+    4*N with O,H,L,C interleaved per bar. valid is False for degenerate
+    (zero-range) windows so callers can skip them."""
+    import numpy as np
+    arr = np.asarray(ohlc_arr, dtype=np.float64)
+    if arr.ndim != 2 or arr.shape[1] != 4 or arr.shape[0] < 2:
+        return None, False
+    mean_close = arr[:, 3].mean()
+    full_range = arr[:, 1].max() - arr[:, 2].min()
+    if full_range <= 0:
+        return None, False
+    normalized = (arr - mean_close) / full_range
+    return normalized.reshape(-1), True
+
+
+def _pattern_match_ticker(query_zscore, bars, window_len, min_corr,
+                          allow_multiple, per_ticker_cap):
+    """Find OHLC pattern matches in one ticker. query_zscore is the
+    pre-normalized + z-scored query vector (shape: 4*window_len).
+    Returns a list of (start_idx, end_idx_inclusive, score). The greedy
+    non-overlap dedup picks the best score in each cluster of
+    overlapping high-scoring windows."""
+    import numpy as np
+    from numpy.lib.stride_tricks import sliding_window_view
+
+    n = len(bars)
+    if n < window_len:
+        return []
+
+    # Stack OHLC into (n, 4)
+    arr = np.empty((n, 4), dtype=np.float64)
+    for i, b in enumerate(bars):
+        arr[i, 0] = b["open"]
+        arr[i, 1] = b["high"]
+        arr[i, 2] = b["low"]
+        arr[i, 3] = b["close"]
+
+    # Sliding windows: (n_windows, 4, window_len) -> transpose to
+    # (n_windows, window_len, 4).
+    n_windows = n - window_len + 1
+    sliding = sliding_window_view(arr, window_shape=window_len, axis=0)
+    sliding = sliding.transpose(0, 2, 1)
+
+    mean_close = sliding[:, :, 3].mean(axis=1)
+    full_range = sliding[:, :, 1].max(axis=1) - sliding[:, :, 2].min(axis=1)
+    valid = full_range > 0
+
+    # Avoid divide-by-zero on degenerate windows; we'll mask them after.
+    safe_range = np.where(valid, full_range, 1.0)
+    normalized = (sliding - mean_close[:, np.newaxis, np.newaxis]) / safe_range[:, np.newaxis, np.newaxis]
+    candidates = normalized.reshape(n_windows, -1)  # (n_windows, 4*w)
+
+    # Z-score each candidate row so the @ product gives Pearson.
+    cand_mean = candidates.mean(axis=1, keepdims=True)
+    cand_std = candidates.std(axis=1, keepdims=True)
+    cand_std = np.where(cand_std == 0, 1.0, cand_std)
+    cand_z = (candidates - cand_mean) / cand_std
+
+    scores = (cand_z @ query_zscore) / candidates.shape[1]
+    scores = np.where(valid, scores, -np.inf)
+
+    above = np.where(scores >= min_corr)[0]
+    if len(above) == 0:
+        return []
+
+    sorted_idx = above[np.argsort(-scores[above])]
+    used = np.zeros(n, dtype=bool)
+    selected = []
+    for i in sorted_idx:
+        i = int(i)
+        if used[i:i + window_len].any():
+            continue
+        selected.append((i, i + window_len - 1, float(scores[i])))
+        used[i:i + window_len] = True
+        if not allow_multiple:
+            break
+        if len(selected) >= per_ticker_cap:
+            break
+    return selected
+
+
+# Per-pattern cached query vectors so each worker doesn't re-normalize
+# the same query block. Cleared when a scan finalizes or is deleted.
+_PATTERN_QUERY_CACHE = {}
+_PATTERN_QUERY_CACHE_GUARD = threading.Lock()
+
+
+def _get_query_zscore(pattern_id, query):
+    import numpy as np
+    with _PATTERN_QUERY_CACHE_GUARD:
+        cached = _PATTERN_QUERY_CACHE.get(pattern_id)
+        if cached is not None:
+            return cached
+    flat, valid = _pattern_normalize_window(query.get("ohlc") or [])
+    if not valid:
+        return None
+    m = flat.mean()
+    s = flat.std()
+    if s == 0:
+        return None
+    z = (flat - m) / s
+    with _PATTERN_QUERY_CACHE_GUARD:
+        _PATTERN_QUERY_CACHE[pattern_id] = z
+    return z
+
+
+def _scan_worker_ticker(pattern_id, ticker):
+    """Process one ticker for one scan, then exit. Workers re-read the
+    pattern's status from disk on entry and bail if anything other than
+    'processing', so pause/cancel/delete are felt at the next ticker
+    boundary."""
+    try:
+        # Cheap status precheck before taking the lock.
+        pre = _read_pattern(pattern_id)
+        if pre is None or pre.get("status") != "processing":
+            return
+
+        query = pre.get("query") or {}
+        window_len = int(query.get("window_len") or 0)
+        min_corr = float(query.get("min_corr") or 0.9)
+        allow_multiple = bool(query.get("allow_multiple_per_ticker", False))
+        per_ticker_cap = 20 if allow_multiple else 1
+
+        new_matches = []
+        try:
+            qz = _get_query_zscore(pattern_id, query)
+            if qz is None or window_len < 2:
+                # Degenerate query (flat window or zero std). Skip
+                # matching but still advance the checkpoint so the
+                # scan can complete.
+                pass
+            else:
+                bars = _read_ticker_bars(ticker)
+                if len(bars) >= window_len:
+                    hits = _pattern_match_ticker(
+                        qz, bars, window_len, min_corr,
+                        allow_multiple, per_ticker_cap,
+                    )
+                    for s_idx, e_idx, score in hits:
+                        new_matches.append({
+                            "ticker": ticker,
+                            "start_date": bars[s_idx]["time"],
+                            "end_date": bars[e_idx]["time"],
+                            "start_idx": s_idx,
+                            "end_idx": e_idx,
+                            "score": round(score, 4),
+                        })
+        except Exception as inner:
+            # Per-ticker failure should not poison the whole scan. Log
+            # it and advance the checkpoint with an empty match list.
+            print(f"[pattern_match] {ticker}: {type(inner).__name__}: {inner}")
+
+        with _pattern_lock(pattern_id):
+            pat = _read_pattern(pattern_id)
+            if pat is None or pat.get("status") != "processing":
+                return
+
+            cp = pat.setdefault("checkpoint", {
+                "tickers_remaining": [],
+                "tickers_processed": [],
+            })
+            remaining = cp.get("tickers_remaining") or []
+            processed = cp.get("tickers_processed") or []
+            if ticker in remaining:
+                remaining.remove(ticker)
+            if ticker not in processed:
+                processed.append(ticker)
+            cp["tickers_remaining"] = remaining
+            cp["tickers_processed"] = processed
+
+            results = pat.setdefault("results", [])
+            if new_matches:
+                results.extend(new_matches)
+
+            total = len(processed) + len(remaining)
+            pat["progress"] = (
+                100.0 if total == 0
+                else round(100.0 * len(processed) / total, 1)
+            )
+            pat["modified"] = _iso_now()
+
+            finalize = (len(remaining) == 0)
+            if finalize:
+                q = pat.get("query") or {}
+                cap = int(q.get("max_results") or 50)
+                results.sort(key=lambda r: r.get("score", 0), reverse=True)
+                pat["results"] = results[:cap]
+                pat["status"] = "complete"
+                pat["progress"] = 100.0
+
+            _write_pattern_atomic(pattern_id, pat)
+
+        if finalize:
+            with _PATTERN_QUERY_CACHE_GUARD:
+                _PATTERN_QUERY_CACHE.pop(pattern_id, None)
+            _rebuild_pattern_index()
+    except Exception as e:
+        # Best-effort: stamp the scan as errored so the UI can show it.
+        # Don't re-raise: a worker exception must not poison the pool.
+        try:
+            with _pattern_lock(pattern_id):
+                pat = _read_pattern(pattern_id)
+                if pat is not None:
+                    pat["status"] = "error"
+                    pat["error"] = f"{type(e).__name__}: {e}"
+                    pat["modified"] = _iso_now()
+                    _write_pattern_atomic(pattern_id, pat)
+            _rebuild_pattern_index()
+        except Exception:
+            pass
+
+
+def _submit_scan_remaining(pattern_id):
+    """Submit one Future per remaining ticker to the pool. Safe to call
+    multiple times (idempotent if all tickers are already complete)."""
+    pat = _read_pattern(pattern_id)
+    if pat is None or pat.get("status") != "processing":
+        return 0
+    cp = pat.get("checkpoint") or {}
+    remaining = list(cp.get("tickers_remaining") or [])
+    pool = _get_pattern_pool()
+    for t in remaining:
+        pool.submit(_scan_worker_ticker, pattern_id, t)
+    return len(remaining)
+
+
+@app.route("/api/patterns/config", methods=["GET", "PUT"])
+def api_patterns_config():
+    if request.method == "GET":
+        cfg = _load_patterns_config()
+        cfg["physical_max"] = os.cpu_count() or 4
+        return jsonify(cfg)
+    data = request.get_json(silent=True) or {}
+    cfg = _load_patterns_config()
+    if "max_cores" in data:
+        raw = data["max_cores"]
+        if isinstance(raw, str) and raw.lower() == "max":
+            n = os.cpu_count() or 4
+        else:
+            try:
+                n = int(raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "max_cores must be an integer or 'max'"}), 400
+        n = max(1, min(n, os.cpu_count() or 4))
+        cfg["max_cores"] = n
+    _save_patterns_config(cfg)
+    _set_pattern_pool_size(cfg["max_cores"])
+    return jsonify(cfg)
+
+
+@app.route("/api/patterns", methods=["GET"])
+def api_patterns_list():
+    # Compute fresh so the library page sees live progress on running
+    # scans. Per-ticker checkpoint writes only update the pattern JSON;
+    # the cached index file is only rewritten on finalize / create /
+    # rename / delete. Reading every file each call is cheap (small
+    # JSONs, low pattern count) and avoids the polling staleness bug.
+    return jsonify(_compute_pattern_index())
+
+
+@app.route("/api/patterns", methods=["POST"])
+def api_patterns_create():
+    _ensure_patterns_dir()
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+
+    query = body.get("query") or {}
+    required = ("source_ticker", "source_start", "source_end",
+                "window_len", "ohlc", "min_corr", "max_results")
+    for field in required:
+        if field not in query:
+            return jsonify({"error": f"query.{field} is required"}), 400
+
+    try:
+        window_len = int(query["window_len"])
+    except (TypeError, ValueError):
+        return jsonify({"error": "query.window_len must be an integer"}), 400
+    if not (15 <= window_len <= 200):
+        return jsonify({"error": "query.window_len must be between 15 and 200"}), 400
+
+    ohlc = query.get("ohlc")
+    if not isinstance(ohlc, list) or len(ohlc) != window_len:
+        return jsonify({"error": "query.ohlc must be a list of length window_len"}), 400
+    for row in ohlc:
+        if not isinstance(row, (list, tuple)) or len(row) != 4:
+            return jsonify({"error": "each query.ohlc entry must be [O,H,L,C]"}), 400
+
+    try:
+        min_corr = float(query["min_corr"])
+        max_results = int(query["max_results"])
+    except (TypeError, ValueError):
+        return jsonify({"error": "min_corr/max_results malformed"}), 400
+    if not (0.0 <= min_corr <= 1.0):
+        return jsonify({"error": "min_corr must be in [0,1]"}), 400
+    if not (1 <= max_results <= 500):
+        return jsonify({"error": "max_results must be in [1,500]"}), 400
+
+    # Overwrite handling for name collisions.
+    on_collision = (body.get("on_collision") or "error").lower()
+    existing = [p for p in _load_pattern_index() if p.get("name") == name]
+    if existing:
+        if on_collision != "overwrite":
+            return jsonify({
+                "error": "name_collision",
+                "existing_id": existing[0]["id"],
+            }), 409
+        for p in existing:
+            try:
+                old = _pattern_path(p["id"])
+                if os.path.exists(old):
+                    os.remove(old)
+            except OSError:
+                pass
+
+    tickers = _list_local_tickers()
+    if not tickers:
+        return jsonify({"error": "no tickers in local corpus"}), 400
+
+    pattern_id = str(uuid.uuid4())
+    now = _iso_now()
+    pattern = {
+        "id": pattern_id,
+        "name": name,
+        "created": now,
+        "modified": now,
+        "status": "processing",
+        "progress": 0.0,
+        "error": None,
+        "query": {
+            "source_ticker": query["source_ticker"],
+            "source_start": query["source_start"],
+            "source_end": query["source_end"],
+            "window_len": window_len,
+            "ohlc": ohlc,
+            "min_corr": min_corr,
+            "max_results": max_results,
+            "allow_multiple_per_ticker": bool(query.get("allow_multiple_per_ticker", False)),
+        },
+        "checkpoint": {
+            "tickers_remaining": tickers,
+            "tickers_processed": [],
+        },
+        "results": [],
+    }
+    _write_pattern_atomic(pattern_id, pattern)
+    _rebuild_pattern_index()
+    _submit_scan_remaining(pattern_id)
+    return jsonify({
+        "id": pattern_id,
+        "status": pattern["status"],
+        "progress": pattern["progress"],
+    }), 201
+
+
+@app.route("/api/patterns/<pattern_id>", methods=["GET"])
+def api_pattern_get(pattern_id):
+    pat = _read_pattern(pattern_id)
+    if pat is None:
+        return jsonify({"error": "Pattern not found"}), 404
+    return jsonify(pat)
+
+
+@app.route("/api/patterns/<pattern_id>/status", methods=["GET"])
+def api_pattern_status(pattern_id):
+    pat = _read_pattern(pattern_id)
+    if pat is None:
+        return jsonify({"error": "Pattern not found"}), 404
+    return jsonify({
+        "id": pat.get("id"),
+        "status": pat.get("status"),
+        "progress": pat.get("progress", 0),
+        "results_count": len(pat.get("results") or []),
+        "modified": pat.get("modified"),
+    })
+
+
+@app.route("/api/patterns/<pattern_id>", methods=["PUT"])
+def api_pattern_update(pattern_id):
+    data = request.get_json(silent=True) or {}
+    with _pattern_lock(pattern_id):
+        pat = _read_pattern(pattern_id)
+        if pat is None:
+            return jsonify({"error": "Pattern not found"}), 404
+
+        if "name" in data:
+            new_name = (data.get("name") or "").strip()
+            if not new_name:
+                return jsonify({"error": "name cannot be empty"}), 400
+            # Name collisions on rename: the UI confirms overwrite up
+            # front, then either renames here directly (no collision) or
+            # deletes the colliding one first (handled client-side).
+            pat["name"] = new_name
+
+        if "status" in data:
+            requested = (data.get("status") or "").lower()
+            current = pat.get("status")
+            if requested == "paused" and current == "processing":
+                pat["status"] = "paused"
+            elif requested == "processing" and current == "paused":
+                pat["status"] = "processing"
+            elif requested not in ("paused", "processing"):
+                return jsonify({"error": "status must be paused or processing"}), 400
+            # If the transition is a no-op we silently accept it.
+
+        pat["modified"] = _iso_now()
+        _write_pattern_atomic(pattern_id, pat)
+
+    _rebuild_pattern_index()
+
+    # If we just transitioned to processing, re-enqueue remaining work.
+    if pat.get("status") == "processing":
+        _submit_scan_remaining(pattern_id)
+
+    return jsonify({
+        "id": pat.get("id"),
+        "name": pat.get("name"),
+        "status": pat.get("status"),
+        "progress": pat.get("progress", 0),
+    })
+
+
+@app.route("/api/patterns/<pattern_id>", methods=["DELETE"])
+def api_pattern_delete(pattern_id):
+    path = _pattern_path(pattern_id)
+    if not os.path.exists(path):
+        return jsonify({"error": "Pattern not found"}), 404
+    # Pause first so any in-flight worker for this scan drops out at the
+    # next ticker boundary instead of writing to a soon-to-be-deleted file.
+    with _pattern_lock(pattern_id):
+        pat = _read_pattern(pattern_id)
+        if pat is not None and pat.get("status") == "processing":
+            pat["status"] = "paused"
+            pat["modified"] = _iso_now()
+            _write_pattern_atomic(pattern_id, pat)
+        try:
+            os.remove(path)
+        except OSError as e:
+            return jsonify({"error": f"delete failed: {e}"}), 500
+    with _PATTERN_LOCKS_GUARD:
+        _PATTERN_LOCKS.pop(pattern_id, None)
+    with _PATTERN_QUERY_CACHE_GUARD:
+        _PATTERN_QUERY_CACHE.pop(pattern_id, None)
+    _rebuild_pattern_index()
+    return ("", 204)
+
+
+def _parse_include_param(raw, total):
+    """Parse the comma-separated `include` query param into a list of
+    valid result indices. None/empty means include all. Out-of-range
+    and non-integer entries are silently dropped so a malformed URL
+    doesn't break the export."""
+    if raw is None or raw == "":
+        return list(range(total))
+    try:
+        idx = [int(x.strip()) for x in raw.split(",") if x.strip() != ""]
+    except ValueError:
+        return list(range(total))
+    seen = set()
+    out = []
+    for i in idx:
+        if 0 <= i < total and i not in seen:
+            seen.add(i)
+            out.append(i)
+    return out
+
+
+def _slice_bars_around_match(bars, match_start, match_end, pre, post):
+    """Return (sliced_bars, match_s_in_slice, match_e_in_slice) with
+    `pre` bars before the matched range and `post` bars after, clipped
+    to data bounds."""
+    if not bars:
+        return [], -1, -1
+    match_s = -1
+    match_e = -1
+    for i, b in enumerate(bars):
+        if match_s < 0 and b.get("time", "") >= match_start:
+            match_s = i
+        if b.get("time", "") <= match_end:
+            match_e = i
+    if match_s < 0 or match_e < 0 or match_e < match_s:
+        return [], -1, -1
+    view_s = max(0, match_s - int(pre or 0))
+    view_e = min(len(bars) - 1, match_e + int(post or 0))
+    sliced = bars[view_s:view_e + 1]
+    return sliced, (match_s - view_s), (match_e - view_s)
+
+
+def _render_pattern_candle_png(bars, match_s, match_e, label=None,
+                                width_in=3.5, height_in=2.2):
+    """Render a candlestick PNG for one matched window with `pre/post`
+    context already sliced in. `match_s` / `match_e` are the matched
+    range indices within `bars`. Highlights the matched range with a
+    translucent accent band and two edge lines. Returns BytesIO."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+    from matplotlib.collections import LineCollection, PatchCollection
+
+    n = len(bars)
+    if n == 0:
+        return None
+
+    fig, ax = plt.subplots(figsize=(width_in, height_in), dpi=140)
+    fig.patch.set_facecolor(_PDF_COLORS["bg"])
+    ax.set_facecolor(_PDF_COLORS["bg"])
+
+    # Highlight the matched range FIRST so candles draw on top.
+    if 0 <= match_s <= match_e < n:
+        ax.axvspan(match_s - 0.5, match_e + 0.5,
+                   color=_PDF_COLORS["accent"], alpha=0.14, zorder=0)
+        ax.axvline(match_s - 0.5, color=_PDF_COLORS["accent"],
+                   linewidth=1.2, alpha=0.85, zorder=1)
+        ax.axvline(match_e + 0.5, color=_PDF_COLORS["accent"],
+                   linewidth=1.2, alpha=0.85, zorder=1)
+
+    body_patches, body_colors = [], []
+    wick_segments, wick_colors = [], []
+    for i, b in enumerate(bars):
+        o, h, l, c = b["open"], b["high"], b["low"], b["close"]
+        is_up = c >= o
+        color = _PDF_COLORS["green"] if is_up else _PDF_COLORS["red"]
+        body_low = min(o, c)
+        body_height = max(abs(c - o), (h - l) * 0.001) if h > l else max(abs(c - o), 0.0001)
+        body_patches.append(Rectangle((i - 0.35, body_low), 0.7, body_height))
+        body_colors.append(color)
+        wick_segments.append([(i, l), (i, h)])
+        wick_colors.append(color)
+
+    ax.add_collection(PatchCollection(
+        body_patches, facecolors=body_colors, edgecolors=body_colors, linewidths=0.5,
+    ))
+    ax.add_collection(LineCollection(wick_segments, colors=wick_colors, linewidths=0.7))
+
+    ax.set_xlim(-1, n)
+    lows = [b["low"] for b in bars]
+    highs = [b["high"] for b in bars]
+    pad = (max(highs) - min(lows)) * 0.05 if (max(highs) > min(lows)) else 0.01
+    ax.set_ylim(min(lows) - pad, max(highs) + pad)
+
+    # Sparse date ticks: first, middle, last
+    if n >= 2:
+        positions = sorted(set([0, n // 2, n - 1]))
+        ax.set_xticks(positions)
+        ax.set_xticklabels([bars[i].get("time", "") for i in positions],
+                           fontsize=6, color=_PDF_COLORS["muted"])
+    for spine in ax.spines.values():
+        spine.set_edgecolor(_PDF_COLORS["border"])
+        spine.set_linewidth(0.5)
+    ax.tick_params(colors=_PDF_COLORS["muted"], labelsize=6)
+    ax.grid(True, axis="y", color=_PDF_COLORS["grid"], linewidth=0.4, alpha=0.5)
+    ax.set_axisbelow(True)
+
+    if label:
+        ax.set_title(label, fontsize=8, color=_PDF_COLORS["text"], pad=4)
+
+    fig.tight_layout(pad=0.3)
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=140, facecolor=_PDF_COLORS["bg"])
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _build_pattern_pdf(pat, pre, post, included_indices):
+    """Compose the pattern export PDF: cover + original full-width +
+    2-column grid of included matches."""
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                    Image, Table, TableStyle, PageBreak)
+    from reportlab.lib.colors import HexColor
+
+    st = _pdf_styles()
+    query = pat.get("query") or {}
+    results = pat.get("results") or []
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=letter,
+        leftMargin=0.5 * inch, rightMargin=0.5 * inch,
+        topMargin=0.5 * inch, bottomMargin=0.5 * inch,
+        title=f"Pattern: {pat.get('name', 'Untitled')}",
+    )
+
+    story = []
+
+    # ----- Cover -----
+    story.append(Paragraph(f"Pattern: {pat.get('name', 'Untitled')}", st["title"]))
+    summary = (
+        f"Source ticker: {query.get('source_ticker', '?')} &nbsp;|&nbsp; "
+        f"Window: {query.get('source_start', '?')} to {query.get('source_end', '?')} "
+        f"({query.get('window_len', '?')} bars) &nbsp;|&nbsp; "
+        f"Min correlation: {query.get('min_corr', 0):.2f} &nbsp;|&nbsp; "
+        f"Matches: {len(included_indices)} of {len(results)} &nbsp;|&nbsp; "
+        f"Context: {int(pre)} bars before, {int(post)} after"
+    )
+    story.append(Paragraph(summary, st["subtitle"]))
+
+    # ----- Original pattern (full width) -----
+    story.append(Paragraph("ORIGINAL PATTERN", st["h3"]))
+    src_bars = _read_ticker_bars(query.get("source_ticker", ""))
+    if src_bars:
+        sliced, ms, me = _slice_bars_around_match(
+            src_bars, query.get("source_start", ""), query.get("source_end", ""),
+            pre, post,
+        )
+        if sliced:
+            png = _render_pattern_candle_png(
+                sliced, ms, me,
+                label=f"{query.get('source_ticker')}  |  {query.get('source_start')} -> {query.get('source_end')}  |  source",
+                width_in=7.0, height_in=2.6,
+            )
+            if png:
+                story.append(Image(png, width=7.0 * inch, height=2.6 * inch))
+
+    story.append(Spacer(1, 10))
+
+    # ----- Matches grid (2 columns) -----
+    included = [results[i] for i in included_indices if 0 <= i < len(results)]
+    if included:
+        story.append(Paragraph("MATCHES", st["h3"]))
+        cells = []
+        for m in included:
+            mbars = _read_ticker_bars(m.get("ticker", ""))
+            placed = False
+            if mbars:
+                sliced, ms, me = _slice_bars_around_match(
+                    mbars, m.get("start_date", ""), m.get("end_date", ""),
+                    pre, post,
+                )
+                if sliced:
+                    label = (f"{m.get('ticker')}  |  {m.get('start_date')} -> "
+                             f"{m.get('end_date')}  |  score {m.get('score', 0):.3f}")
+                    png = _render_pattern_candle_png(
+                        sliced, ms, me, label=label, width_in=3.5, height_in=2.2,
+                    )
+                    if png:
+                        cells.append(Image(png, width=3.5 * inch, height=2.2 * inch))
+                        placed = True
+            if not placed:
+                cells.append(Paragraph(
+                    f"{m.get('ticker', '?')}: data unavailable", st["cell_label"]))
+
+        # Pad to an even count so the table rows are complete.
+        if len(cells) % 2 != 0:
+            cells.append("")
+        rows = [cells[i:i + 2] for i in range(0, len(cells), 2)]
+        t = Table(rows, colWidths=[3.6 * inch, 3.6 * inch])
+        t.setStyle(TableStyle([
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
+        story.append(t)
+    else:
+        story.append(Paragraph("(No matches included.)", st["small"]))
+
+    doc.build(story)
+    buf.seek(0)
+    return buf
+
+
+def _build_pattern_csv(pat, included_indices):
+    """CSV with one row per included match. Header: ticker, start_date,
+    end_date, score. Designed to copy-paste into other charting tools."""
+    results = pat.get("results") or []
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(["ticker", "start_date", "end_date", "score"])
+    for i in included_indices:
+        if 0 <= i < len(results):
+            r = results[i]
+            w.writerow([
+                r.get("ticker", ""),
+                r.get("start_date", ""),
+                r.get("end_date", ""),
+                f"{r.get('score', 0):.4f}",
+            ])
+    return out.getvalue()
+
+
+def _pattern_export_filename_stem(pat):
+    """Filename-safe stem for the export, derived from the pattern name."""
+    name = pat.get("name") or "pattern"
+    safe = "".join(c if c.isalnum() or c in "-_ " else "_" for c in name).strip()
+    return safe.replace(" ", "_") or "pattern"
+
+
+@app.route("/api/patterns/<pattern_id>/export.pdf", methods=["GET"])
+def api_pattern_export_pdf(pattern_id):
+    pat = _read_pattern(pattern_id)
+    if pat is None:
+        return jsonify({"error": "Pattern not found"}), 404
+    try:
+        pre = max(0, min(500, int(request.args.get("pre", 20))))
+        post = max(0, min(500, int(request.args.get("post", 40))))
+    except (TypeError, ValueError):
+        pre, post = 20, 40
+    include = _parse_include_param(request.args.get("include"),
+                                   len(pat.get("results") or []))
+    try:
+        buf = _build_pattern_pdf(pat, pre, post, include)
+    except Exception as e:
+        return jsonify({"error": f"PDF build failed: {type(e).__name__}: {e}"}), 500
+    stem = _pattern_export_filename_stem(pat)
+    return send_file(
+        buf, mimetype="application/pdf",
+        as_attachment=True, download_name=f"{stem}.pdf",
+    )
+
+
+@app.route("/api/patterns/<pattern_id>/export.csv", methods=["GET"])
+def api_pattern_export_csv(pattern_id):
+    pat = _read_pattern(pattern_id)
+    if pat is None:
+        return jsonify({"error": "Pattern not found"}), 404
+    include = _parse_include_param(request.args.get("include"),
+                                   len(pat.get("results") or []))
+    text = _build_pattern_csv(pat, include)
+    stem = _pattern_export_filename_stem(pat)
+    return Response(
+        text,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=\"{stem}.csv\""},
+    )
+
+
+# ==============================================
 # TEMPLATES
 # ==============================================
 
@@ -3469,6 +4553,48 @@ def api_yahoo_ping():
     return jsonify({"ok": True, "version": "yahoo-v1"})
 
 
+@app.route("/api/yahoo/search")
+def api_yahoo_search():
+    """Search Yahoo Finance for tickers by symbol or company name.
+    Returns a filtered list of EQUITY / ETF results with each entry
+    marked `inLocal` so the UI can highlight tickers that are not yet
+    downloaded."""
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return jsonify({"results": []})
+    # Yahoo's search endpoint returns up to ~10 matches without any
+    # auth. quotesCount caps the equity-style hits; newsCount=0 strips
+    # the news payload we don't need.
+    url = (
+        "https://query1.finance.yahoo.com/v1/finance/search"
+        f"?q={urllib.parse.quote(q)}&quotesCount=10&newsCount=0"
+    )
+    try:
+        data = _yahoo_http_get(url, timeout=10)
+    except urllib.error.HTTPError as e:
+        return jsonify({"error": f"HTTP {e.code}"}), 502
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+    raw = (data or {}).get("quotes") or []
+    local = set(_list_local_tickers())
+    results = []
+    for item in raw:
+        qt = (item.get("quoteType") or "").upper()
+        if qt not in ("EQUITY", "ETF"):
+            continue
+        sym = (item.get("symbol") or "").upper()
+        if not sym:
+            continue
+        results.append({
+            "symbol": sym,
+            "name": item.get("shortname") or item.get("longname") or "",
+            "exchange": item.get("exchDisp") or item.get("exchange") or "",
+            "type": qt,
+            "inLocal": sym in local,
+        })
+    return jsonify({"results": results})
+
+
 @app.route("/api/yahoo/info")
 def api_yahoo_info():
     symbol = (request.args.get("symbol") or "").strip().upper()
@@ -3743,6 +4869,17 @@ def _handle_shutdown_signal(signum, _frame):
 if __name__ == "__main__":
     _ensure_sim_dir()
     _ensure_templates_dir()
+    _ensure_patterns_dir()
+    # Apply saved pool size before any scan can start. Then flip any
+    # processing-on-boot scans to paused so the user resumes manually.
+    try:
+        _set_pattern_pool_size(_load_patterns_config().get("max_cores", 4))
+    except Exception:
+        pass
+    try:
+        _flip_processing_to_paused_on_boot()
+    except Exception:
+        pass
 
     # Kick off the chart-data seeder before the web server starts so the
     # /api/seed/status endpoint reports in-progress state the moment the

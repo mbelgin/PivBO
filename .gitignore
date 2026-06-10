@@ -36,6 +36,7 @@ logs/
 simulations/
 templates/
 analyses/
+patterns/
 drawings.json
 pivbo_ticker_ranges_cache.json
 sandbox/
