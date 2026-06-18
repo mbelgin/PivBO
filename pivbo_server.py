@@ -776,19 +776,34 @@ _DUEL_BARS_PER_YEAR = 252
 
 
 def _avg_adr_pct(bars, lookback=252):
-    """Average daily range % over the last `lookback` bars."""
+    """Return (unsigned, signed) average daily range % over the last `lookback` bars.
+
+    Unsigned: classic ADR%, avg of (high/low - 1) * 100.
+    Signed:   same magnitude, but each bar contributes with a +/- sign
+              based on close vs open. Trending-up names get a positive
+              value; declining names get negative; choppy ones tend
+              toward zero even when their unsigned ADR is high.
+    """
     if not bars:
-        return 0.0
+        return 0.0, 0.0
     tail = bars[-lookback:] if len(bars) > lookback else bars
     total = 0.0
+    signed_total = 0.0
     count = 0
     for b in tail:
         lo = b.get("low", 0) or 0
         hi = b.get("high", 0) or 0
+        op = b.get("open", 0) or 0
+        cl = b.get("close", 0) or 0
         if lo > 0 and hi > lo:
-            total += (hi / lo - 1.0) * 100.0
+            pct = (hi / lo - 1.0) * 100.0
+            total += pct
+            sign = 1.0 if cl >= op else -1.0
+            signed_total += sign * pct
             count += 1
-    return (total / count) if count else 0.0
+    if not count:
+        return 0.0, 0.0
+    return (total / count), (signed_total / count)
 
 
 @app.route("/api/duel/pick-ticker", methods=["POST"])
@@ -797,8 +812,14 @@ def api_duel_pick_ticker():
     Pick a random ticker + start bar matching the duel filters.
 
     Request body:
-      { years:int, minAdr:float, minPrice:float, skipMaEnabled:bool,
-        skipMaPeriod:int, startDate?:"YYYY-MM-DD", ticker?:"AAPL" }
+      { years:int, minAdr:float, signedAdr?:bool, minPrice:float,
+        skipMaEnabled:bool, skipMaPeriod:int,
+        startDate?:"YYYY-MM-DD", ticker?:"AAPL" }
+
+    When signedAdr is true, minAdr is compared against the signed ADR
+    (positive = trending up, negative = trending down) and negative
+    minAdr values are allowed. When false, it's the classic unsigned
+    range and minAdr is clamped non-negative.
 
     If startDate is omitted, the start bar is chosen at random within the
     eligible window. If startDate is provided, it is used as a hard pin:
@@ -813,17 +834,25 @@ def api_duel_pick_ticker():
 
     Response:
       { ticker, startDate, endDate, warmupBars, startBarIdx, endBarIdx,
-        totalBars, avgAdr, duelBars, eligibleCount }
+        totalBars, avgAdr, avgAdrSigned, avgAdrUnsigned, signedAdr,
+        duelBars, eligibleCount }
+    `avgAdr` is whichever variant (signed or unsigned) drove the filter;
+    `avgAdrSigned` and `avgAdrUnsigned` are always present.
     """
     body = request.get_json(silent=True) or {}
     try:
         years = max(1, int(body.get("years") or 2))
     except (TypeError, ValueError):
         years = 2
+    signed_adr = bool(body.get("signedAdr"))
     try:
-        min_adr = max(0.0, float(body.get("minAdr") or 0.0))
+        min_adr_raw = float(body.get("minAdr") or 0.0)
     except (TypeError, ValueError):
-        min_adr = 0.0
+        min_adr_raw = 0.0
+    # Unsigned filter clamps non-negative (current behavior). Signed filter
+    # allows negative thresholds so users can target trending-up names
+    # (minAdr=2 → avg signed move >= +2%) or even trending-down (minAdr=-2).
+    min_adr = min_adr_raw if signed_adr else max(0.0, min_adr_raw)
     try:
         min_price = max(0.0, float(body.get("minPrice") or 0.0))
     except (TypeError, ValueError):
@@ -890,6 +919,7 @@ def api_duel_pick_ticker():
             start_idx = random.randint(min_s, max_s) if max_s > min_s else min_s
 
         end_idx = min(start_idx + duel_bars, total - 1)
+        adr_u, adr_s = _avg_adr_pct(bars)
         return jsonify({
             "ticker": specific_ticker,
             "startDate": bars[start_idx]["time"],
@@ -899,7 +929,10 @@ def api_duel_pick_ticker():
             "endBarIdx": end_idx,
             "totalBars": total,
             "duelBars": end_idx - start_idx,
-            "avgAdr": round(_avg_adr_pct(bars), 2),
+            "avgAdr": round(adr_s if signed_adr else adr_u, 2),
+            "avgAdrSigned": round(adr_s, 2),
+            "avgAdrUnsigned": round(adr_u, 2),
+            "signedAdr": signed_adr,
             "eligibleCount": 1,
         })
 
@@ -912,10 +945,13 @@ def api_duel_pick_ticker():
             continue
         if len(bars) < min_total:
             continue
-        adr = _avg_adr_pct(bars)
-        if adr < min_adr:
+        adr_u, adr_s = _avg_adr_pct(bars)
+        adr_for_filter = adr_s if signed_adr else adr_u
+        if adr_for_filter < min_adr:
             continue
-        eligible.append({"sym": sym, "len": len(bars), "adr": adr, "bars": bars})
+        eligible.append({"sym": sym, "len": len(bars),
+                          "adr": adr_for_filter, "adr_unsigned": adr_u,
+                          "adr_signed": adr_s, "bars": bars})
 
     if not eligible:
         return jsonify({
@@ -1014,6 +1050,9 @@ def api_duel_pick_ticker():
         "totalBars": total_bars,
         "duelBars": end_idx - start_idx,
         "avgAdr": round(chosen["adr"], 2),
+        "avgAdrSigned": round(chosen["adr_signed"], 2),
+        "avgAdrUnsigned": round(chosen["adr_unsigned"], 2),
+        "signedAdr": signed_adr,
         "eligibleCount": len(eligible),
     })
 
@@ -1146,6 +1185,7 @@ def _rebuild_sim_index():
                 "hasAnalysis": has_cache,
                 "analysisStale": is_stale,
                 "duelKind": duel_kind,
+                "hasNotes": bool((sim.get("notes") or "").strip()),
             })
         except Exception:
             continue
@@ -1158,7 +1198,7 @@ def _rebuild_sim_index():
 def api_simulations_list():
     _ensure_sim_dir()
     index = _load_sim_index()
-    if not index or any("hasAnalysis" not in e or "startDate" not in e or "duelKind" not in e for e in index):
+    if not index or any("hasAnalysis" not in e or "startDate" not in e or "duelKind" not in e or "hasNotes" not in e for e in index):
         index = _rebuild_sim_index()
     # Refresh analysis-cache status on every read (cheap file-stat check).
     # Without this the list stays stale until the next sim write.

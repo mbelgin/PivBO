@@ -1959,7 +1959,7 @@
             <path d="M2,16 L6,14 L10,16 L14,12 L18,16" stroke="currentColor" fill="none" stroke-width="1.5" opacity="0.5"/>
           </svg>
         </button>
-        <button id="spy-toggle" class="ma-toggle-btn text" title="Benchmark overlay (VS SPY): Off → Line → Candle → Bar" aria-label="Benchmark overlay">VS</button>
+        <button id="spy-toggle" class="ma-toggle-btn text" title="Benchmark overlay (VS SPY): Off → Line → Candle → Bar" aria-label="Benchmark overlay" hidden style="display:none">VS</button>
         <div class="tb-sep"></div>
         <div class="tb-sep"></div>
       </div>
@@ -2442,8 +2442,13 @@
           <input type="number" id="sim-surprise-years" value="2" min="1" max="20" step="1" oninput="_simSurpriseValidate()">
         </div>
         <div>
-          <label style="margin-top:0;">Min average ADR%</label>
-          <input type="number" id="sim-surprise-adr" value="2" min="0" max="20" step="0.1">
+          <label style="margin-top:0;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+            <span>Min average ADR%</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);font-weight:normal;cursor:pointer;" title="Use signed ADR (positive for trending up, negative for trending down) instead of unsigned range.">
+              <input type="checkbox" id="sim-surprise-adr-signed" style="margin:0;">Signed
+            </span>
+          </label>
+          <input type="number" id="sim-surprise-adr" value="2" min="-20" max="20" step="0.1">
         </div>
         <div>
           <label style="margin-top:0;" title="Minimum closing price at the chosen start date. Filters out penny stocks.">Min price ($)</label>
@@ -2578,8 +2583,13 @@
                 <input type="number" id="duel-cfg-to" value="45" min="5" max="120" step="1">
               </div>
             </div>
-            <label style="margin-top:10px;">Min average ADR% (slow to fast)</label>
-            <input type="number" id="duel-cfg-adr" value="2" min="0" max="20" step="0.1">
+            <label style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+              <span>Min average ADR% (slow to fast)</span>
+              <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);font-weight:normal;cursor:pointer;" title="Use signed ADR (positive for trending up, negative for trending down) instead of unsigned range.">
+                <input type="checkbox" id="duel-cfg-adr-signed" style="margin:0;">Signed
+              </span>
+            </label>
+            <input type="number" id="duel-cfg-adr" value="2" min="-20" max="20" step="0.1">
             <div class="sim-check" style="margin-top:10px;align-items:center;gap:6px;flex-wrap:wrap;">
               <input type="checkbox" id="duel-cfg-skipma" checked>
               <span>Start from first bar with</span>
@@ -2779,6 +2789,20 @@
     </div>
     <div class="sim-actions" style="justify-content:center;">
       <button class="sim-btn primary" id="bankrupt-save-quit">Save and Quit</button>
+    </div>
+  </div>
+</div>
+
+<!-- Saved-sim Notes viewer/editor -->
+<div class="sim-modal-overlay hidden" id="sim-notes-modal">
+  <div class="sim-modal" style="width:560px;max-width:92vw;">
+    <h2 id="sim-notes-modal-title" style="margin-bottom:4px;">Notes</h2>
+    <div id="sim-notes-modal-sub" style="font-size:11px;color:var(--muted);margin-bottom:12px;"></div>
+    <textarea id="sim-notes-modal-text" placeholder="No notes yet. Add rules, observations, lessons learned here." style="width:100%;min-height:220px;max-height:55vh;resize:vertical;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;line-height:1.5;padding:8px 10px;border-radius:3px;box-sizing:border-box;outline:none;"></textarea>
+    <div class="sim-actions" style="justify-content:flex-end;margin-top:14px;align-items:center;">
+      <span id="sim-notes-modal-status" style="flex:1;font-size:11px;color:var(--muted);"></span>
+      <button class="sim-btn" id="sim-notes-modal-close">Close</button>
+      <button class="sim-btn primary" id="sim-notes-modal-save">Save</button>
     </div>
   </div>
 </div>
@@ -5832,9 +5856,10 @@ function initChart(){
     MA_DEFAULTS.forEach(d => addMaRow(d, true));
   }
   setLog(saved?.isLogScale||false);
-  // Restore VS overlay settings (no auto-fetch: overlay updates only when currentBars exist).
-  setSpyOverlayEnabled(spyOverlayEnabled, true);
-  setSpyOverlayMode(spyOverlayMode, true);
+  // VS benchmark overlay is disabled (superseded by the secondary chart). Force
+  // it off on load so any previously-saved "on" state is cleared and the hidden
+  // toggle can't leave a stuck overlay on the chart.
+  setSpyOverlayEnabled(false, true);
   chartType = (saved?.chartType === 'ohlc') ? 'ohlc' : 'candle';
   priceSeries = chartType === 'ohlc' ? ohlcSeries : candleSeries;
   candleSeries.setData([]);
@@ -8586,9 +8611,17 @@ function readTickerFilters(ids){
     const v = parseFloat(byId(id)?.value);
     return Math.max(min, isFinite(v) ? v : dflt);
   };
+  const signedAdr = ids.adrSigned ? !!byId(ids.adrSigned)?.checked : false;
+  // Unsigned ADR clamps at 0 (negative values are nonsensical for a range).
+  // Signed ADR allows negative thresholds (e.g. minAdr=-2 = "trending down").
+  const rawAdr = parseFloat(byId(ids.adr)?.value);
+  const minAdr = signedAdr
+    ? (isFinite(rawAdr) ? rawAdr : 0)
+    : Math.max(0, isFinite(rawAdr) ? rawAdr : 0);
   return {
     years: Math.max(1, parseInt(byId(ids.years)?.value, 10) || 2),
-    minAdr: num(ids.adr, 0, 0),
+    minAdr,
+    signedAdr,
     minPrice: ids.minPrice ? num(ids.minPrice, 0, 0) : 0,
     skipMaEnabled: !!byId(ids.skipMaEnabled)?.checked,
     skipMaPeriod: Math.max(1, parseInt(byId(ids.skipMaPeriod)?.value, 10) || 50),
@@ -9241,6 +9274,70 @@ function showPage(page){
   }
 }
 
+// Saved-sim notes overlay — fetches the sim's notes on demand (the list
+// index only carries a hasNotes flag), lets you read/edit them, and saves
+// via the same PUT the in-sim notes box uses. No need to load the whole sim.
+let _notesModalId=null;
+async function openSimNotes(id, name){
+  _notesModalId=id;
+  const modal=document.getElementById('sim-notes-modal');
+  const sub=document.getElementById('sim-notes-modal-sub');
+  const ta=document.getElementById('sim-notes-modal-text');
+  const status=document.getElementById('sim-notes-modal-status');
+  const saveBtn=document.getElementById('sim-notes-modal-save');
+  document.getElementById('sim-notes-modal-title').textContent=name||'Notes';
+  sub.textContent='Loading...';
+  ta.value='';ta.disabled=true;saveBtn.disabled=true;status.textContent='';
+  modal.classList.remove('hidden');
+  try{
+    const resp=await fetch(`/api/simulations/${id}`);
+    const sim=await resp.json();
+    if(sim.error)throw new Error(sim.error);
+    // Guard against a fast second click on a different row.
+    if(_notesModalId!==id)return;
+    sub.textContent=`${sim.ticker||''}`;
+    ta.value=sim.notes||'';ta.disabled=false;saveBtn.disabled=false;
+    ta.focus();
+  }catch(e){
+    if(_notesModalId!==id)return;
+    sub.textContent='';
+    status.textContent='Error: '+e.message;
+  }
+}
+async function saveSimNotes(){
+  const id=_notesModalId;if(!id)return;
+  const ta=document.getElementById('sim-notes-modal-text');
+  const status=document.getElementById('sim-notes-modal-status');
+  const saveBtn=document.getElementById('sim-notes-modal-save');
+  saveBtn.disabled=true;status.textContent='Saving...';
+  try{
+    await fetch(`/api/simulations/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({notes:ta.value})});
+    // If this sim is currently loaded, keep the in-app notes box in sync.
+    if(simId===id){const live=document.getElementById('sim-notes');if(live)live.value=ta.value;}
+    closeSimNotes();
+    loadSimsList();
+  }catch(e){
+    status.textContent='Error: '+e.message;saveBtn.disabled=false;
+  }
+}
+function closeSimNotes(){
+  _notesModalId=null;
+  document.getElementById('sim-notes-modal').classList.add('hidden');
+}
+(function wireSimNotesModal(){
+  const modal=document.getElementById('sim-notes-modal');
+  if(!modal)return;
+  document.getElementById('sim-notes-modal-close').addEventListener('click',closeSimNotes);
+  document.getElementById('sim-notes-modal-save').addEventListener('click',saveSimNotes);
+  // Click backdrop to dismiss (matches other overlays' feel).
+  modal.addEventListener('mousedown',e=>{if(e.target===modal)closeSimNotes();});
+  document.addEventListener('keydown',e=>{
+    if(modal.classList.contains('hidden'))return;
+    if(e.key==='Escape')closeSimNotes();
+    else if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))saveSimNotes();
+  });
+})();
+
 async function loadSimsList(){
   const el=document.getElementById('sims-list');
   el.innerHTML='<div style="color:var(--muted)">Loading...</div>';
@@ -9264,7 +9361,7 @@ async function loadSimsList(){
     el.innerHTML=toolbar+`<table style="width:100%;border-collapse:collapse;">
       <tr style="border-bottom:1px solid var(--border);color:var(--muted);font-size:10px;text-transform:uppercase;">
         <th style="width:22px;padding:6px;"><input type="checkbox" id="sims-head-check"></th>
-        <th style="text-align:left;padding:6px;">Name</th><th>Ticker</th><th>Capital</th><th>P/L</th><th>Trades</th><th>Range</th><th>Progress</th><th>Modified</th><th style="width:180px">Actions</th>
+        <th style="text-align:left;padding:6px;">Name</th><th>Ticker</th><th>Capital</th><th>P/L</th><th>Trades</th><th>Range</th><th>Progress</th><th>Modified</th><th style="width:240px">Actions</th>
       </tr>
       ${sims.map(s=>{
         const pl=s.currentCapital-s.startingCapital;
@@ -9287,6 +9384,7 @@ async function loadSimsList(){
           <td style="text-align:center;color:var(--muted);font-size:10px;cursor:pointer;" class="sim-row-name">${(s.modified||'').slice(0,10)}</td>
           <td style="padding:4px;white-space:nowrap;">
             <button class="sim-btn sim-analyze-btn sim-btn-sm${s.hasAnalysis&&!s.analysisStale?' muted':''}" data-id="${s.id}" title="${s.hasAnalysis?(s.analysisStale?'Re-analyze (stale)':'View cached analysis'):'Analyze'}">${s.hasAnalysis?(s.analysisStale?'Re-analyze':'View Analysis'):'Analyze'}</button>
+            <button class="sim-btn sim-notes-btn sim-btn-sm${s.hasNotes?'':' muted'}" data-id="${s.id}" data-name="${(s.name||'').replace(/"/g,'&quot;')}" title="${s.hasNotes?'View notes':'No notes yet'}">Notes${s.hasNotes?' •':''}</button>
             <button class="sim-btn sim-rename-btn sim-btn-sm" data-id="${s.id}">Rename</button>
             <button class="sim-btn sim-dup-btn sim-btn-sm" data-id="${s.id}">Save As</button>
             <button class="sim-btn danger sim-del-btn sim-btn-sm" data-id="${s.id}">Del</button>
@@ -9323,6 +9421,11 @@ async function loadSimsList(){
       if(!name)return;
       await fetch(`/api/simulations/${b.dataset.id}/duplicate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
       loadSimsList();
+    }));
+    // Notes — view/edit a sim's notes in an overlay without loading the sim
+    el.querySelectorAll('.sim-notes-btn').forEach(b=>b.addEventListener('click',e=>{
+      e.stopPropagation();
+      openSimNotes(b.dataset.id, b.dataset.name||'');
     }));
     wireSimsListToolbar(sims);
   }catch(e){
@@ -11023,6 +11126,7 @@ document.getElementById('sim-modal-start').addEventListener('click',async()=>{
         const filters = readTickerFilters({
           years: 'sim-surprise-years',
           adr:   'sim-surprise-adr',
+          adrSigned: 'sim-surprise-adr-signed',
           minPrice: 'sim-surprise-minprice',
           skipMaEnabled: 'sim-skip-to-ma',
           skipMaPeriod:  'sim-skip-ma-period',
@@ -11383,7 +11487,20 @@ function simSubmitTrade(){
     ? Math.floor((posPct/100)*cap/fillPrice)
     : 0;
   if(!shares||shares<=0){
-    dbg.textContent='Set SL + risk% or enter a position size %';
+    // Diagnose: the most common reason pos-pct ends up empty is risk math
+    // rounded down to 0 shares (cap * risk% < risk-per-share). Spell that
+    // out instead of the generic message so the user can see exactly what
+    // to change — raise risk%, tighten SL, or type a pos-size % directly.
+    const riskPct=parseFloat(document.getElementById('tf-risk-pct').value)||0;
+    const rps=(sl&&fillPrice)?Math.abs(fillPrice-sl):0;
+    if(sl && riskPct>0 && rps>0 && cap>0){
+      const neededPct=(rps/cap)*100;
+      const riskAmt=cap*(riskPct/100);
+      const fmt=n=>n.toLocaleString(undefined,{maximumFractionDigits:2});
+      dbg.textContent=`Risk too tight: ${riskPct}% of $${fmt(cap)} = $${fmt(riskAmt)}, but stop is $${fmt(rps)}/share. Raise risk% to ≥ ${neededPct.toFixed(2)}%, tighten SL, or type a position size %.`;
+    } else {
+      dbg.textContent='Set SL + risk% or enter a position size %';
+    }
     dbg.style.color='var(--red)';
     return;
   }
@@ -12739,14 +12856,18 @@ document.getElementById('sim-exit').addEventListener('click', ()=>{
     // Read duel config from the form. Self-duel skips toSec (no per-bar
     // timer) and tickerHidden (no point — same user owns both windows).
     const years = Math.max(1, parseInt($('duel-cfg-years').value, 10) || 2);
-    const minAdr = Math.max(0, parseFloat($('duel-cfg-adr').value) || 0);
+    const signedAdr = !!$('duel-cfg-adr-signed').checked;
+    const rawAdr = parseFloat($('duel-cfg-adr').value);
+    const minAdr = signedAdr
+      ? (isFinite(rawAdr) ? rawAdr : 0)
+      : Math.max(0, isFinite(rawAdr) ? rawAdr : 0);
     const skipEnabled = $('duel-cfg-skipma').checked;
     const skipPeriod = Math.max(1, parseInt($('duel-cfg-skipma-period').value, 10) || 50);
     const skipType = ($('duel-cfg-skipma-type').value || 'SMA').toUpperCase();
     const pinnedStartDate = ($('duel-cfg-start-date').value || '').trim();
     const specificTicker = isSelfDuel ? (($('duel-cfg-ticker') && $('duel-cfg-ticker').value || '').trim().toUpperCase()) : '';
     duelConfig = {
-      years, minAdr,
+      years, minAdr, signedAdr,
       skipMa: { enabled: skipEnabled, period: skipPeriod, type: skipType }
     };
     if(pinnedStartDate) duelConfig.startDate = pinnedStartDate;
@@ -13113,9 +13234,12 @@ document.getElementById('sim-exit').addEventListener('click', ()=>{
       : '';
     const perBarTxt = isSelfDuel ? 'no per-bar timer' : `${c.toSec}s per bar`;
     const label = isSelfDuel ? 'Self-Duel parameters' : 'Duel parameters';
+    const adrTxt = c.signedAdr
+      ? `signed ADR ≥ ${c.minAdr}%`
+      : `ADR ≥ ${c.minAdr}%`;
     const html =
       `<b style="color:var(--text);">${label}:</b> `+
-      `${c.years}y history · ADR ≥ ${c.minAdr}% · ${perBarTxt} · ${skipTxt}.`+
+      `${c.years}y history · ${adrTxt} · ${perBarTxt} · ${skipTxt}.`+
       hiddenTxt;
     // Populate both the honor-stage and prep-stage summary boxes. Prep can
     // sit on screen for a while (data downloads, ticker pick) and the
@@ -13237,6 +13361,7 @@ document.getElementById('sim-exit').addEventListener('click', ()=>{
       tickerChoice = await pickRandomTicker({
         years: duelConfig.years,
         minAdr: duelConfig.minAdr,
+        signedAdr: !!duelConfig.signedAdr,
         skipMaEnabled: !!(duelConfig.skipMa && duelConfig.skipMa.enabled),
         skipMaPeriod: (duelConfig.skipMa && duelConfig.skipMa.period) || 0,
         startDate: duelConfig.startDate || '',

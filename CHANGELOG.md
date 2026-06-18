@@ -8,6 +8,23 @@ The newest version is at the top.
 
 ## Unreleased
 
+- **Signed ADR filter** in Surprise Me and Duel/Self-Duel host dialogs.
+  A new **Signed** toggle next to **Min average ADR%** switches the
+  metric from the classic unsigned daily range to a signed average:
+  each bar's range contributes positively when the close is at or
+  above the open, negatively otherwise. Trending-up names score
+  positive, declining names score negative, choppy names trend toward
+  zero. Filtering by signed ADR avoids the case where a "high ADR"
+  surprise pick turns out to be a fast decline that just happens to
+  have wide bars. Unsigned remains the default and behaves exactly as
+  before; the input also accepts negative thresholds when signed is on.
+- **Better message when sizing math rounds to 0 shares.** Opening a
+  trade with Risk% set but a stop wide enough that the implied position
+  size rounds below one share used to fail with the generic "Set SL +
+  risk% or enter a position size %" hint, even though both were set.
+  The trade form now diagnoses the actual cause and shows, e.g.,
+  "Risk too tight: 1% of $100,000 = $1,000, but stop is $1,236/share.
+  Raise risk% to >= 1.24%, tighten SL, or type a position size %."
 - **Pattern Library: PDF and CSV export**. Results view gets an inline
   controls strip above the match list with **Select All / None**
   buttons, **pre / post bar** number inputs (persisted across
