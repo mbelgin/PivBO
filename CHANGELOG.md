@@ -8,9 +8,9 @@ The newest version is at the top.
 
 ## Unreleased
 
-- **Bitcoin and other crypto in ticker search.** The Data dialog's
-  search now lists cryptocurrencies alongside stocks and ETFs, tagged
-  `crypto`, with ETFs tagged `etf`. Bitcoin is `BTC-USD` (daily bars
+- **Every asset type in ticker search.** The Data dialog's search now
+  lists everything Yahoo matches (stocks, ETFs, crypto, futures,
+  indexes), each tagged with its type. Bitcoin is `BTC-USD` (daily bars
   since September 2014); plain `BTC` is the Grayscale Bitcoin Mini
   Trust ETF. `BTC-USD` is now part of the bundled ticker set.
 - **Signed ADR filter** in Surprise Me and Duel/Self-Duel host dialogs.

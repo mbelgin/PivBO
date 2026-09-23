@@ -4596,14 +4596,14 @@ def api_yahoo_ping():
 @app.route("/api/yahoo/search")
 def api_yahoo_search():
     """Search Yahoo Finance for tickers by symbol or company name.
-    Returns a filtered list of EQUITY / ETF / CRYPTOCURRENCY results with each entry
-    marked `inLocal` so the UI can highlight tickers that are not yet
-    downloaded."""
+    Returns every quote Yahoo matched, each tagged with Yahoo's own
+    display type and marked `inLocal` so the UI can highlight tickers
+    that are not yet downloaded."""
     q = (request.args.get("q") or "").strip()
     if not q:
         return jsonify({"results": []})
     # Yahoo's search endpoint returns up to ~10 matches without any
-    # auth. quotesCount caps the equity-style hits; newsCount=0 strips
+    # auth. quotesCount caps the quote hits; newsCount=0 strips
     # the news payload we don't need.
     url = (
         "https://query1.finance.yahoo.com/v1/finance/search"
@@ -4619,9 +4619,6 @@ def api_yahoo_search():
     local = set(_list_local_tickers())
     results = []
     for item in raw:
-        qt = (item.get("quoteType") or "").upper()
-        if qt not in ("EQUITY", "ETF", "CRYPTOCURRENCY"):
-            continue
         sym = (item.get("symbol") or "").upper()
         if not sym:
             continue
@@ -4629,7 +4626,7 @@ def api_yahoo_search():
             "symbol": sym,
             "name": item.get("shortname") or item.get("longname") or "",
             "exchange": item.get("exchDisp") or item.get("exchange") or "",
-            "type": qt,
+            "type": item.get("typeDisp") or item.get("quoteType") or "",
             "inLocal": sym in local,
         })
     return jsonify({"results": results})
