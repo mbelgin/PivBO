@@ -121,6 +121,7 @@ _TICKER_RANGES_CACHE = None
 SEED_LIST_URL = "https://api.github.com/repos/mbelgin/PivBO/git/trees/main:collected_stocks"
 SEED_BASE_URL = "https://raw.githubusercontent.com/mbelgin/PivBO/main/collected_stocks"
 SEED_WORKER_COUNT = 8
+SEED_RETRY_BACKOFF_SEC = (1, 3)  # pauses between the 3 attempts per file
 
 _seed_lock = threading.Lock()
 _seed_state = {
@@ -166,39 +167,47 @@ def _seed_download_one(ticker, dest_dir):
     Returns one of:
         "skipped"    — file already existed; untouched.
         "downloaded" — fetched and written successfully.
-        "failed"     — network / write error (caller logs).
+        "failed"     — network / write error after all retries (caller logs).
+
+    GitHub occasionally resets connections mid-burst when several files
+    are pulled in parallel, so transient errors are retried with a short
+    backoff. A 4xx response (e.g. file removed from the repo) fails at once.
     """
     final_path = os.path.join(dest_dir, f"{ticker}.csv.gz")
     if os.path.exists(final_path):
         return "skipped"
     url = f"{SEED_BASE_URL}/{ticker}.csv.gz"
     tmp_path = final_path + ".part"
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "PivBO-seeder/1"})
-        with urllib.request.urlopen(req, timeout=30) as resp, open(tmp_path, "wb") as out:
-            while True:
-                chunk = resp.read(64 * 1024)
-                if not chunk:
-                    break
-                out.write(chunk)
-        # Atomic rename — partial .part files never appear at final_path.
-        os.replace(tmp_path, final_path)
-        # Invalidate the ticker-ranges cache so the next /api/ticker-ranges
-        # call re-scans and picks up this brand-new ticker. Without this,
-        # the UI only sees newly-seeded tickers after the cache is
-        # explicitly refreshed (or on seeder completion).
-        global _TICKER_RANGES_CACHE
-        _TICKER_RANGES_CACHE = None
-        return "downloaded"
-    except Exception as e:
-        with _seed_lock:
-            _seed_state["last_error"] = f"{ticker}: {e}"
+    for attempt, backoff in enumerate(SEED_RETRY_BACKOFF_SEC + (None,)):
         try:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-        except OSError:
-            pass
-        return "failed"
+            req = urllib.request.Request(url, headers={"User-Agent": "PivBO-seeder/1"})
+            with urllib.request.urlopen(req, timeout=30) as resp, open(tmp_path, "wb") as out:
+                while True:
+                    chunk = resp.read(64 * 1024)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+            # Atomic rename — partial .part files never appear at final_path.
+            os.replace(tmp_path, final_path)
+            # Invalidate the ticker-ranges cache so the next /api/ticker-ranges
+            # call re-scans and picks up this brand-new ticker. Without this,
+            # the UI only sees newly-seeded tickers after the cache is
+            # explicitly refreshed (or on seeder completion).
+            global _TICKER_RANGES_CACHE
+            _TICKER_RANGES_CACHE = None
+            return "downloaded"
+        except Exception as e:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
+            client_error = isinstance(e, urllib.error.HTTPError) and 400 <= e.code < 500
+            if backoff is None or client_error:
+                with _seed_lock:
+                    _seed_state["last_error"] = f"{ticker}: {e}"
+                return "failed"
+            time.sleep(backoff)
 
 
 def _seed_run():
