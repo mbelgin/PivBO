@@ -2466,6 +2466,7 @@
         <button type="button" class="qd-btn" onclick="applyRelativeStartDate('sim-surprise-start-date',60)">5Y</button>
       </div>
       <div id="sim-surprise-start-err" style="font-size:10px;color:var(--red);margin-top:4px;display:none;"></div>
+      <div id="sim-surprise-err" style="font-size:11px;color:var(--red);margin-top:6px;display:none;line-height:1.4;"></div>
     </div>
 
     <!-- Mode panel: Quick. data-sim-mode stays "fast" internally; only the
@@ -11019,6 +11020,9 @@ document.getElementById('sim-modal-cancel').addEventListener('click',()=>{
     // Fast-mode status line is per-open; clear stale text on every switch.
     const fStatus = document.getElementById('sim-fast-status');
     if(fStatus) fStatus.textContent = '';
+    // Same for the Surprise-Me error line from a prior failed pick.
+    const sErr = document.getElementById('sim-surprise-err');
+    if(sErr){ sErr.textContent=''; sErr.style.display='none'; }
     if(which === 'surprise'){
       _simSurpriseValidate();
     }else{
@@ -11121,6 +11125,11 @@ document.getElementById('sim-modal-start').addEventListener('click',async()=>{
       }
     } else if(mode === 'surprise'){
       // Random pick: server chooses ticker + start bar from filters.
+      // Errors go to the in-panel #sim-surprise-err div, not flash():
+      // the sim modal's dark backdrop sits above the flash toast so
+      // toasts would render invisibly behind it.
+      const errEl = document.getElementById('sim-surprise-err');
+      if(errEl){ errEl.textContent=''; errEl.style.display='none'; }
       setBusy();
       try {
         const filters = readTickerFilters({
@@ -11137,7 +11146,12 @@ document.getElementById('sim-modal-start').addEventListener('click',async()=>{
         startDate = choice.startDate;
         useFirstBar = false;
       } catch(e) {
-        flash(`No ticker matched: ${e.message}`);
+        if(errEl){
+          errEl.textContent = `Can't find a ticker that matches these criteria. ${e.message}`;
+          errEl.style.display = '';
+        } else {
+          flash(`No ticker matched: ${e.message}`);
+        }
         return;
       }
     } else {

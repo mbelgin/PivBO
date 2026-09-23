@@ -13,6 +13,14 @@ The newest version is at the top.
   indexes), each tagged with its type. Bitcoin is `BTC-USD` (daily bars
   since September 2014); plain `BTC` is the Grayscale Bitcoin Mini
   Trust ETF. `BTC-USD` is now part of the bundled ticker set.
+- **Surprise Me now says why it couldn't pick a ticker.** When the
+  filter combination in New Simulation's Surprise Me tab excludes
+  every candidate, the modal previously reported the failure via a
+  toast that rendered behind the modal backdrop, looking like a silent
+  timeout. The error now appears as a red line inside the Surprise Me
+  panel with the server's specific reason (e.g. "No tickers match
+  those filters. Relax the criteria...") so you can see immediately
+  what to adjust.
 - **Signed ADR filter** in Surprise Me and Duel/Self-Duel host dialogs.
   A new **Signed** toggle next to **Min average ADR%** switches the
   metric from the classic unsigned daily range to a signed average:
