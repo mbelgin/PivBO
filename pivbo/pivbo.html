@@ -14156,7 +14156,7 @@ window.addEventListener('load',async()=>{
         const done       = total - remaining;
 
         // Fast-path: seeder isn't running AND it produced no downloads
-        // (every file existed locally already OR manifest was empty).
+        // (every file existed locally already OR the seed list was empty).
         // Banner never shows, poller stops. Also skips the "Update
         // to today?" prompt because a returning user doesn't need it.
         const idleNothingToDo = !s.running && remaining === 0 && downloaded === 0 && failed === 0;

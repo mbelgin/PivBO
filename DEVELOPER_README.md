@@ -54,7 +54,6 @@ pivbo/                          # Python package (everything bundled into instal
   __main__.py                   # Entry point. The installed app launches here
   launcher.py                   # Toga control window (Start/Stop/Port/Open browser)
   pivbo.html                    # Single-page web UI (chart, sim, duel, prefs)
-  collected_stocks_manifest.txt # Ticker list consumed by the first-launch seeder
   assets/                       # Icons, favicon
 pivbo_server.py                 # Flask server. Serves pivbo.html + /api/*
 collected_stocks/               # 931 historical .csv.gz files (repo-tracked seed data,
@@ -87,8 +86,8 @@ requirements.txt                # Dev-time dependencies
   clients use `mqtt.js` from a CDN. Full protocol notes were in the
   (now-private) `duel_mode_handover.md`.
 - **First-launch seeder**: `pivbo_server.py :: _seed_run()`. On startup a
-  daemon thread iterates `collected_stocks_manifest.txt` and pulls any
-  missing `.csv.gz` from `raw.githubusercontent.com/mbelgin/PivBO/main/collected_stocks/<TICKER>.csv.gz`
+  daemon thread lists the repo's `collected_stocks/` folder via the GitHub
+  API and pulls any missing `.csv.gz` from `raw.githubusercontent.com/mbelgin/PivBO/main/collected_stocks/<TICKER>.csv.gz`
   into `USER_DATA_DIR/collected_stocks/`. Existence-only check; never
   overwrites an existing file, so a user's own wider-range downloads
   survive re-runs. `/api/seed/status` drives the UI banner.
@@ -156,7 +155,6 @@ before briefcase runs. So locally you don't need to bump anything; just
 tag and push.
 
 ```bash
-# Optional: regenerate the ticker manifest if collected_stocks/ changed.
 python scripts/pin_version.py            # shows current version, no changes
 
 # Optional: bump the committed version so dev-mode `/api/version`
@@ -179,14 +177,6 @@ artifacts land on the Release page with the tag's version baked in:
 
 (If wired) winget and Homebrew tap manifests auto-bump from the same
 workflow. See the workflow file for details.
-
-### Regenerating the ticker manifest
-
-Only needed when you add or remove `.csv.gz` files in `collected_stocks/`:
-
-```bash
-python -c "import os; names = sorted(n[:-7].upper() for n in os.listdir('collected_stocks') if n.lower().endswith('.csv.gz')); open('pivbo/collected_stocks_manifest.txt','w',encoding='utf-8',newline='\n').writelines(n+'\n' for n in names)"
-```
 
 ### Version source of truth
 

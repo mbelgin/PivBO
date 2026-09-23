@@ -108,16 +108,17 @@ _TICKER_RANGES_CACHE = None
 # -----------------------------------------------------------------
 # First-launch seeder for historical stock data
 # -----------------------------------------------------------------
-# The installer ships only a small manifest (ticker names, one per line).
-# On startup, a background thread iterates the manifest and downloads
-# any missing .csv.gz from the GitHub repo's collected_stocks/ folder.
+# On startup, a background thread lists the GitHub repo's
+# collected_stocks/ folder (one API call) and downloads any .csv.gz
+# that isn't already in the local data dir. The repo folder is the
+# only list of seed tickers; nothing ships with the installer.
 #
 # Rule (confirmed with user): existence is the only check. If the file
 # already exists — even partially, even corrupt — we skip it. Downloads
 # land via os.replace() so a crash mid-download never leaves a truncated
 # file at the final path. The seeder is idempotent: running twice after
-# a full seed is effectively a no-op (just 931 stat() calls).
-SEED_MANIFEST_PATH = os.path.join(RESOURCE_DIR, "collected_stocks_manifest.txt")
+# a full seed is effectively a no-op (one listing call + a stat() per file).
+SEED_LIST_URL = "https://api.github.com/repos/mbelgin/PivBO/git/trees/main:collected_stocks"
 SEED_BASE_URL = "https://raw.githubusercontent.com/mbelgin/PivBO/main/collected_stocks"
 SEED_WORKER_COUNT = 8
 
@@ -125,7 +126,7 @@ _seed_lock = threading.Lock()
 _seed_state = {
     "started": False,     # has the seeder thread been kicked off yet?
     "running": False,     # is it currently working?
-    "total": 0,           # total tickers in manifest
+    "total": 0,           # total tickers in the repo's seed folder
     "remaining": 0,       # how many we still need to check/fetch
     "downloaded": 0,      # completed downloads in THIS session
     "skipped": 0,         # already present in USER_DATA_DIR
@@ -134,13 +135,29 @@ _seed_state = {
 }
 
 
-def _seed_manifest_tickers():
-    """Read the bundled manifest of ticker symbols. Returns [] on any error."""
+def _seed_list_tickers():
+    """List ticker names in the repo's collected_stocks/ folder.
+
+    Names keep the repo's exact casing since raw.githubusercontent.com
+    paths are case-sensitive. Returns [] on any error.
+    """
     try:
-        with open(SEED_MANIFEST_PATH, "r", encoding="utf-8") as f:
-            return [line.strip().upper() for line in f if line.strip()]
-    except OSError:
+        req = urllib.request.Request(
+            SEED_LIST_URL,
+            headers={"User-Agent": "PivBO-seeder/1", "Accept": "application/vnd.github+json"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        with _seed_lock:
+            _seed_state["last_error"] = f"listing seed tickers: {e}"
         return []
+    names = []
+    for entry in payload.get("tree") or []:
+        path = entry.get("path") or ""
+        if entry.get("type") == "blob" and path.lower().endswith(".csv.gz"):
+            names.append(path[:-7])
+    return names
 
 
 def _seed_download_one(ticker, dest_dir):
@@ -185,8 +202,8 @@ def _seed_download_one(ticker, dest_dir):
 
 
 def _seed_run():
-    """Worker loop: process every manifest entry through a thread pool."""
-    tickers = _seed_manifest_tickers()
+    """Worker loop: process every seed ticker through a thread pool."""
+    tickers = _seed_list_tickers()
     dest = STOCKS_DIRS[0]
     os.makedirs(dest, exist_ok=True)
     with _seed_lock:
