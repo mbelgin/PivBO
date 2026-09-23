@@ -12212,11 +12212,17 @@ document.getElementById('sim-exit').addEventListener('click', ()=>{
       const tag = r.inLocal
         ? `<span class="yd-tag local">local</span>`
         : `<span class="yd-tag missing">missing</span>`;
-      const exch = r.exchange ? ` &middot; ${escapeHtml(r.exchange)}` : '';
+      // Crypto quotes carry a placeholder exchange code, so show the
+      // asset type instead. ETFs get a type tag too so a crypto ETF
+      // (e.g. BTC) can't be mistaken for the coin itself (BTC-USD).
+      const isCrypto = r.type === 'CRYPTOCURRENCY';
+      const exch = (r.exchange && !isCrypto) ? ` &middot; ${escapeHtml(r.exchange)}` : '';
+      const typeTag = isCrypto ? `<span class="yd-tag">crypto</span>`
+        : r.type === 'ETF' ? `<span class="yd-tag">etf</span>` : '';
       return `<div class="yd-search-row" data-sym="${escapeHtml(r.symbol)}">
         <span class="yd-sym">${escapeHtml(r.symbol)}</span>
         <span class="yd-name">${escapeHtml(r.name || '')}${exch}</span>
-        ${tag}
+        ${typeTag}${tag}
       </div>`;
     }).join('');
     searchPanel.querySelectorAll('.yd-search-row').forEach(row => {

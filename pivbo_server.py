@@ -4596,7 +4596,7 @@ def api_yahoo_ping():
 @app.route("/api/yahoo/search")
 def api_yahoo_search():
     """Search Yahoo Finance for tickers by symbol or company name.
-    Returns a filtered list of EQUITY / ETF results with each entry
+    Returns a filtered list of EQUITY / ETF / CRYPTOCURRENCY results with each entry
     marked `inLocal` so the UI can highlight tickers that are not yet
     downloaded."""
     q = (request.args.get("q") or "").strip()
@@ -4620,7 +4620,7 @@ def api_yahoo_search():
     results = []
     for item in raw:
         qt = (item.get("quoteType") or "").upper()
-        if qt not in ("EQUITY", "ETF"):
+        if qt not in ("EQUITY", "ETF", "CRYPTOCURRENCY"):
             continue
         sym = (item.get("symbol") or "").upper()
         if not sym:
